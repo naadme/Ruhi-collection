@@ -1,0 +1,6 @@
+# Supabase + local secrets — never commit these
+.env
+.env.local
+
+# Scratch output from source-mapped debugging builds
+dist-debug/

@@ -3,13 +3,22 @@ import { MapPin, Phone, Mail, Clock } from 'lucide-react'
 import Img from '../components/Img'
 import { img } from '../data/images'
 import { site } from '../data/site'
+import { supabase } from '../lib/supabase'
 import usePageTitle from '../hooks/usePageTitle'
 export default function Contact() {
   usePageTitle('Contact')
   const [sent, setSent] = useState(false)
   const [f, setF] = useState({ name: '', email: '', phone: '', comment: '' })
   const on = (k) => (e) => setF({ ...f, [k]: e.target.value })
-  const submit = (e) => { e.preventDefault(); setSent(true); setF({ name: '', email: '', phone: '', comment: '' }) }
+  const submit = (e) => {
+    e.preventDefault()
+    // Persist in the background — the thank-you message must appear either way,
+    // so a missing table or a rejected insert never blocks the user.
+    supabase.from('contact_messages').insert({ name: f.name, email: f.email, phone: f.phone, comment: f.comment }).then(({ error }) => {
+      if (error) console.warn('[Supabase] contact message not saved:', error.message)
+    })
+    setSent(true); setF({ name: '', email: '', phone: '', comment: '' })
+  }
   const info = [[MapPin, site.address], [Phone, site.phone], [Mail, site.email], [Clock, site.hours]]
   return (
     <>

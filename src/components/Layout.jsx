@@ -6,6 +6,9 @@ import Footer from './Footer'
 import CartDrawer from './CartDrawer'
 export default function Layout() {
   const { pathname } = useLocation()
-  useEffect(() => window.scrollTo(0, 0), [pathname])
+  // Block body: an effect must return undefined or a cleanup *function*.
+  // `window.scrollTo()` can return a non-function value, which React would later
+  // try to invoke as a cleanup and crash on every route change.
+  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
   return (<><AnnouncementBar /><Header /><main><Outlet /></main><Footer /><CartDrawer /></>)
 }
