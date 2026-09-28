@@ -4,3 +4,6 @@
 
 # Scratch output from source-mapped debugging builds
 dist-debug/
+
+# Dependencies
+node_modules/
