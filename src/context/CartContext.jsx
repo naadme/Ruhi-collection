@@ -1,0 +1,19 @@
+import { createContext, useContext, useEffect, useState } from 'react'
+import { getProduct } from '../data/products'
+const Ctx = createContext(null)
+export const useCart = () => useContext(Ctx)
+export function CartProvider({ children }) {
+  const [items, setItems] = useState(() => { try { return JSON.parse(localStorage.getItem('cart')) || [] } catch { return [] } })
+  const [open, setOpen] = useState(false)
+  useEffect(() => localStorage.setItem('cart', JSON.stringify(items)), [items])
+  const add = (id, qty = 1, size = 'M') => {
+    setItems((c) => { const k = c.find((i) => i.id === id && i.size === size); return k ? c.map((i) => (i === k ? { ...i, qty: i.qty + qty } : i)) : [...c, { id, qty, size }] })
+    setOpen(true)
+  }
+  const setQty = (id, size, qty) => setItems((c) => c.map((i) => (i.id === id && i.size === size ? { ...i, qty: Math.max(1, qty) } : i)))
+  const remove = (id, size) => setItems((c) => c.filter((i) => !(i.id === id && i.size === size)))
+  const lines = items.map((i) => ({ ...i, product: getProduct(i.id) })).filter((l) => l.product)
+  const count = lines.reduce((s, l) => s + l.qty, 0)
+  const total = lines.reduce((s, l) => s + l.qty * l.product.price, 0)
+  return <Ctx.Provider value={{ lines, count, total, add, setQty, remove, open, setOpen }}>{children}</Ctx.Provider>
+}
