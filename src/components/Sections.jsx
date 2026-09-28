@@ -49,7 +49,7 @@ export const Reviews = () => (
         <p className="text-[#f59e0b] text-[28px] mt-6 tracking-widest">★★★★★</p>
         <p className="mt-2 text-[22px]"><b className="font-ui">{r.name}</b> <span className="text-black/60 text-[18px] ml-2">✓ Verified Buyer</span></p>
         <p className="text-[18px] leading-[29px] text-black/70 mt-5 pb-4 border-b border-black/10">{r.text}</p>
-        <Link to={`/product/${r.product}`} className="flex gap-4 mt-4 items-center"><Img src={r.img} alt="" className="w-[68px] h-[68px] object-cover rounded" /><div><p className="text-[17px] leading-6">{r.title}</p><p className="font-ui font-semibold text-black/60 mt-2">Rs. {r.price}.00</p></div></Link>
+        <Link to={`/product/${r.product}`} className="flex gap-4 mt-4 items-center"><Img src={r.img} alt="" className="w-[68px] h-[68px] object-cover rounded" /><div><p className="text-[17px] leading-6">{r.title}</p><p className="font-ui font-semibold text-black/60 mt-2">₹{r.price}</p></div></Link>
       </div>))}</div>
   </section>
 )

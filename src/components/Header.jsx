@@ -1,14 +1,18 @@
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { Search, User, ShoppingBag, Menu, X } from 'lucide-react'
 import Logo from './Logo'
 import SearchBar from './SearchBar'
 import { site } from '../data/site'
 import { useCart } from '../context/CartContext'
+import useOverlay from '../hooks/useOverlay'
 export default function Header() {
   const [menu, setMenu] = useState(false)
   const [search, setSearch] = useState(false)
   const { count, setOpen } = useCart()
+  const panel = useRef(null)
+  const closeMenu = useCallback(() => setMenu(false), [])
+  useOverlay(menu, closeMenu, panel)
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-black/10">
       <div className="max-w-page mx-auto flex items-center justify-between px-4 md:px-12 h-[84px] md:h-[104px]">
@@ -29,10 +33,10 @@ export default function Header() {
       </div>
       {search && <SearchBar onClose={() => setSearch(false)} />}
       {menu && (
-        <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setMenu(false)}>
-          <aside className="bg-white w-[85%] max-w-sm h-full p-6" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setMenu(false)} className="mb-6" aria-label="Close"><X /></button>
-            {[...site.nav, { label: 'Log in', to: '/account' }, { label: 'Cart', to: '/cart' }].map((n) => <Link key={n.to} to={n.to} onClick={() => setMenu(false)} className="block py-4 text-xl border-b border-black/10">{n.label}</Link>)}
+        <div className="fixed inset-0 z-50 bg-black/40" onClick={closeMenu}>
+          <aside ref={panel} role="dialog" aria-modal="true" aria-label="Menu" tabIndex={-1} className="bg-white w-[85%] max-w-sm h-full p-6 outline-none" onClick={(e) => e.stopPropagation()}>
+            <button onClick={closeMenu} className="mb-6" aria-label="Close"><X /></button>
+            {[...site.nav, { label: 'Log in', to: '/account' }, { label: 'Cart', to: '/cart' }].map((n) => <Link key={n.to} to={n.to} onClick={closeMenu} className="block py-4 text-xl border-b border-black/10">{n.label}</Link>)}
           </aside>
         </div>
       )}

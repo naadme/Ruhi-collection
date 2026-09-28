@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Star, Heart } from 'lucide-react'
 import Img from './Img'
-import useWishlist from '../hooks/useWishlist'
+import { useWishlist } from '../context/WishlistContext'
 export default function ProductCard({ product: p }) {
   const { has, toggle } = useWishlist(); const fav = has(p.id)
   const off = p.compare ? Math.round((1 - p.price / p.compare) * 100) : 0

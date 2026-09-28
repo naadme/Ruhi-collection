@@ -16,9 +16,9 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Home />} /><Route path="shop" element={<Shop />} /><Route path="catalog" element={<Navigate to="/shop" replace />} /><Route path="collections" element={<Collections />} /><Route path="about" element={<About />} /><Route path="product/:id" element={<Product />} />
         <Route path="contact" element={<Contact />} /><Route path="cart" element={<Cart />} /><Route path="policies/:slug" element={<Policy />} />
+        <Route path="account" element={<Account />} />
         <Route path="*" element={<NotFound />} />
       </Route>
-      <Route path="account" element={<Account />} />
     </Routes>
   )
 }

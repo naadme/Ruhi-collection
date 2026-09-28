@@ -13,7 +13,7 @@ const A = {
 }
 const p = (id, gender, type, title, price, rating, reviews, compare) => ({ ...base, id, gender, type, title, price, compare, rating, reviews, image: u(A[id][0], 900), hover: u(A[id][1], 900) })
 export const products = [
-  p('men-shirt-1', 'men', 'shirt', "Men's Caudrauy Co-Ord Set Black", 899, 4.8, 223, 999),
+  p('men-shirt-1', 'men', 'shirt', "Men's Caudray Co-Ord Set Black", 899, 4.8, 223, 999),
   p('men-shirt-2', 'men', 'shirt', "Men's Shirt", 799, 4.9, 346),
   p('men-shirt-3', 'men', 'shirt', "Men's Printed Spread Collar Casual Shirt Navy Blue", 599, 5.0, 469),
   p('men-shirt-4', 'men', 'shirt', "Men's Printed Spread Collar Casual Shirt Multicolor", 599, 5.1, 592),
@@ -47,9 +47,12 @@ export const reviews = [
   { name: 'Neha', img: img.r3, product: 'women-pant-1', title: "Women's Classic Stylish Pant Pink", price: 699, text: 'These pants are super comfortable, skin-friendly material, and stylish fitting. Looks great with both jeans and tops. Definitely recommend!' },
   { name: 'Priya', img: img.r4, product: 'women-tshirt-1', title: 'Ketex Maroon Cotton Blend Polo Neck Tshirt', price: 499, text: 'The T-shirt design is trendy and the cotton fabric is really soft. Feels light and comfortable even in summer. Loved the colors as well' },
 ]
+// Tiles reference products by id so reordering or adding products cannot
+// silently repoint them at the wrong image.
+const tileImg = (id) => getProduct(id).image
 export const collectionTiles = [
-  { title: "Men's Shirts", text: 'Printed, casual and co-ord sets', image: products[0].image, to: '/shop?gender=men&type=shirt' },
-  { title: "Men's Pants", text: 'Relaxed and tailored fits', image: products[4].image, to: '/shop?gender=men&type=pant' },
-  { title: "Women's Tops", text: 'Polo tees in every colour', image: products[8].image, to: '/shop?gender=women&type=tshirt' },
-  { title: "Women's Pants", text: 'Wide-leg and straight cuts', image: products[12].image, to: '/shop?gender=women&type=pant' },
+  { title: "Men's Shirts", text: 'Printed, casual and co-ord sets', image: tileImg('men-shirt-1'), to: '/shop?gender=men&type=shirt' },
+  { title: "Men's Pants", text: 'Relaxed and tailored fits', image: tileImg('men-pant-1'), to: '/shop?gender=men&type=pant' },
+  { title: "Women's Tops", text: 'Polo tees in every colour', image: tileImg('women-tshirt-1'), to: '/shop?gender=women&type=tshirt' },
+  { title: "Women's Pants", text: 'Wide-leg and straight cuts', image: tileImg('women-pant-1'), to: '/shop?gender=women&type=pant' },
 ]
