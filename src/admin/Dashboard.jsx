@@ -7,6 +7,7 @@ import {
 import { useProducts } from '../context/ProductsContext'
 import { supabase } from '../lib/supabase'
 import ProductEditor from './ProductEditor'
+import OrdersPanel from './OrdersPanel'
 
 function Toast({ toast, onClose }) {
   useEffect(() => {
@@ -89,9 +90,36 @@ function ConfirmDelete({ product, busy, onCancel, onConfirm }) {
 }
 
 const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
+const SECTIONS = [['products', 'Products'], ['orders', 'Orders']]
+
+function SectionSwitch({ value, onChange }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Dashboard sections"
+      className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit"
+    >
+      {SECTIONS.map(([k, label]) => (
+        <button
+          key={k}
+          role="tab"
+          aria-selected={value === k}
+          aria-controls={`panel-${k}`}
+          onClick={() => onChange(k)}
+          className={`px-4 h-10 rounded-md text-[15px] font-medium transition ${
+            value === k ? 'bg-black text-white' : 'text-black/60 hover:text-black'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const { all, loading, error, reload } = useProducts()
+  const [section, setSection] = useState('products')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [editing, setEditing] = useState(null) // { isNew, product }
@@ -163,193 +191,213 @@ export default function Dashboard() {
     }
   }
 
+  // Orders live behind their own section; returning early here keeps the
+  // products panel (and every hook above it) untouched.
+  if (section === 'orders') {
+    return (
+      <div className="font-ui">
+        <SectionSwitch value={section} onChange={setSection} />
+        <div id="panel-orders" role="tabpanel" className="mt-8">
+          <OrdersPanel notify={notify} />
+        </div>
+        <Toast toast={toast} onClose={() => setToast(null)} />
+      </div>
+    )
+  }
+
   return (
     <div className="font-ui">
-      {/* Page head */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[34px] md:text-[40px] font-bold tracking-tight leading-none">Products</h1>
-          <p className="text-black/55 mt-2 text-[15px]">
-            {counts.all} {counts.all === 1 ? 'product' : 'products'} · {counts.live} live · {counts.hidden} hidden
-          </p>
-        </div>
-        <button
-          onClick={openNew}
-          className="inline-flex items-center gap-2 h-[48px] px-5 rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#12572f] transition"
-        >
-          <Plus size={18} /> Add product
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <SectionSwitch value={section} onChange={setSection} />
       </div>
 
-      {error && (
-        <div className="mt-6 flex items-start gap-3 border border-amber-200 bg-amber-50 text-amber-900 rounded-xl px-4 py-3 text-[14px]">
-          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-          <span className="min-w-0">
-            Showing the bundled catalogue — the database couldn’t be reached. <strong>{error}</strong>
-          </span>
+      <div id="panel-products" role="tabpanel">
+        {/* Page head */}
+        <div className="flex flex-wrap items-end justify-between gap-4 mt-8">
+          <div>
+            <h1 className="text-[34px] md:text-[40px] font-bold tracking-tight leading-none">Products</h1>
+            <p className="text-black/55 mt-2 text-[15px]">
+              {counts.all} {counts.all === 1 ? 'product' : 'products'} · {counts.live} live · {counts.hidden} hidden
+            </p>
+          </div>
+          <button
+            onClick={openNew}
+            className="inline-flex items-center gap-2 h-[48px] px-5 rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#12572f] transition"
+          >
+            <Plus size={18} /> Add product
+          </button>
         </div>
-      )}
 
-      {/* Toolbar */}
-      <div className="mt-6 flex flex-wrap gap-3 items-center justify-between border-y border-black/10 py-4">
-        <div className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1">
-          {TABS.map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setFilter(k)}
-              className={`px-3.5 h-9 rounded-md text-[14px] font-medium transition ${
-                filter === k ? 'bg-black text-white' : 'text-black/60 hover:text-black'
-              }`}
-            >
-              {label}
-              <span className={`ml-1.5 text-[12px] ${filter === k ? 'text-white/70' : 'text-black/40'}`}>{counts[k]}</span>
-            </button>
-          ))}
+        {error && (
+          <div className="mt-6 flex items-start gap-3 border border-amber-200 bg-amber-50 text-amber-900 rounded-xl px-4 py-3 text-[14px]">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <span className="min-w-0">
+              Showing the bundled catalogue — the database couldn’t be reached. <strong>{error}</strong>
+            </span>
+          </div>
+        )}
+
+        {/* Toolbar */}
+        <div className="mt-6 flex flex-wrap gap-3 items-center justify-between border-y border-black/10 py-4">
+          <div className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1">
+            {TABS.map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setFilter(k)}
+                className={`px-3.5 h-9 rounded-md text-[14px] font-medium transition ${
+                  filter === k ? 'bg-black text-white' : 'text-black/60 hover:text-black'
+                }`}
+              >
+                {label}
+                <span className={`ml-1.5 text-[12px] ${filter === k ? 'text-white/70' : 'text-black/40'}`}>{counts[k]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="relative flex-1 min-w-[220px] sm:max-w-[320px]">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-black/35" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search products…"
+              aria-label="Search products"
+              className="w-full h-10 pl-9 pr-3 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35"
+            />
+          </div>
         </div>
-        <div className="relative flex-1 min-w-[220px] sm:max-w-[320px]">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-black/35" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search products…"
-            aria-label="Search products"
-            className="w-full h-10 pl-9 pr-3 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35"
-          />
-        </div>
-      </div>
 
-      {/* List */}
-      {loading ? (
-        <ul className="mt-6 space-y-3">
-          {[0, 1, 2, 3].map((i) => (
-            <li key={i} className="bg-white border border-black/10 rounded-xl p-4 flex items-center gap-4 animate-pulse">
-              <div className="w-14 h-16 rounded-lg bg-neutral-200" />
-              <div className="flex-1 space-y-2">
-                <div className="h-4 bg-neutral-200 rounded w-1/2" />
-                <div className="h-3 bg-neutral-200 rounded w-1/4" />
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : rows.length === 0 ? (
-        <div className="mt-10 text-center py-16 border border-dashed border-black/15 rounded-2xl bg-white">
-          <Inbox size={34} className="mx-auto text-black/25" strokeWidth={1.4} />
-          <p className="text-[18px] font-semibold mt-4">
-            {all.length === 0 ? 'No products yet' : filter === 'all' && !query ? 'No products yet' : 'Nothing matches'}
-          </p>
-          <p className="text-black/55 mt-1 text-[15px]">
-            {all.length === 0
-              ? 'Add your first product to publish it to the storefront.'
-              : 'Try a different search or filter.'}
-          </p>
-          {all.length === 0 && (
-            <button
-              onClick={openNew}
-              className="mt-6 inline-flex items-center gap-2 h-[46px] px-5 rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#12572f] transition"
-            >
-              <Plus size={18} /> Add product
-            </button>
-          )}
-        </div>
-      ) : (
-        <ul className="mt-6 space-y-3">
-          {rows.map((p) => (
-            <li
-              key={p.id}
-              className="bg-white border border-black/10 rounded-xl p-3 sm:p-4 flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 hover:border-black/25 transition"
-            >
-              <div className="w-14 h-16 sm:w-16 sm:h-20 rounded-lg overflow-hidden bg-neutral-100 shrink-0">
-                {p.image ? (
-                  <img
-                    src={p.image}
-                    alt=""
-                    loading="lazy"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none'
-                    }}
-                  />
-                ) : (
-                  <span className="w-full h-full grid place-items-center text-black/25">
-                    <Package size={20} />
-                  </span>
-                )}
-              </div>
-
-              <div className="min-w-0 flex-1 basis-[calc(100%-4.5rem)] sm:basis-auto">
-                <p className="font-semibold text-[16px] leading-snug truncate">{p.title}</p>
-                <p className="text-[13px] text-black/50 mt-0.5 capitalize">
-                  {p.gender} · {p.type.replace('tshirt', 't-shirt')} · <span className="font-mono normal-case">{p.id}</span>
-                </p>
-                <p className="text-[15px] mt-1 font-medium">
-                  <span className="text-red-600 font-bold">₹{p.price}</span>
-                  {p.compare ? <span className="text-black/40 text-[13px] line-through ml-2">₹{p.compare}</span> : null}
-                  {p.badge ? <span className="ml-2 text-[11px] font-bold bg-brand-badge text-white px-1.5 py-0.5 rounded-sm">{p.badge}</span> : null}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 sm:gap-3 ml-auto shrink-0">
-                <button
-                  onClick={() => toggleActive(p)}
-                  disabled={busyId === p.id}
-                  role="switch"
-                  aria-checked={p.is_active}
-                  aria-label={p.is_active ? `Hide ${p.title}` : `Show ${p.title}`}
-                  title={p.is_active ? 'Live — click to hide' : 'Hidden — click to show'}
-                  className={`inline-flex items-center gap-2 h-9 px-3 rounded-full border text-[13px] font-medium transition disabled:opacity-60 ${
-                    p.is_active
-                      ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
-                      : 'bg-neutral-100 border-black/15 text-black/50 hover:border-black/40'
-                  }`}
-                >
-                  {busyId === p.id ? (
-                    <Loader2 size={13} className="animate-spin" />
+        {/* List */}
+        {loading ? (
+          <ul className="mt-6 space-y-3">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i} className="bg-white border border-black/10 rounded-xl p-4 flex items-center gap-4 animate-pulse">
+                <div className="w-14 h-16 rounded-lg bg-neutral-200" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-neutral-200 rounded w-1/2" />
+                  <div className="h-3 bg-neutral-200 rounded w-1/4" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : rows.length === 0 ? (
+          <div className="mt-10 text-center py-16 border border-dashed border-black/15 rounded-2xl bg-white">
+            <Inbox size={34} className="mx-auto text-black/25" strokeWidth={1.4} />
+            <p className="text-[18px] font-semibold mt-4">
+              {all.length === 0 ? 'No products yet' : filter === 'all' && !query ? 'No products yet' : 'Nothing matches'}
+            </p>
+            <p className="text-black/55 mt-1 text-[15px]">
+              {all.length === 0
+                ? 'Add your first product to publish it to the storefront.'
+                : 'Try a different search or filter.'}
+            </p>
+            {all.length === 0 && (
+              <button
+                onClick={openNew}
+                className="mt-6 inline-flex items-center gap-2 h-[46px] px-5 rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#12572f] transition"
+              >
+                <Plus size={18} /> Add product
+              </button>
+            )}
+          </div>
+        ) : (
+          <ul className="mt-6 space-y-3">
+            {rows.map((p) => (
+              <li
+                key={p.id}
+                className="bg-white border border-black/10 rounded-xl p-3 sm:p-4 flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 hover:border-black/25 transition"
+              >
+                <div className="w-14 h-16 sm:w-16 sm:h-20 rounded-lg overflow-hidden bg-neutral-100 shrink-0">
+                  {p.image ? (
+                    <img
+                      src={p.image}
+                      alt=""
+                      loading="lazy"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
                   ) : (
-                    <span className={`w-2 h-2 rounded-full ${p.is_active ? 'bg-green-600' : 'bg-black/35'}`} />
+                    <span className="w-full h-full grid place-items-center text-black/25">
+                      <Package size={20} />
+                    </span>
                   )}
-                  {p.is_active ? 'Live' : 'Hidden'}
-                </button>
+                </div>
 
-                <button
-                  onClick={() => openEdit(p)}
-                  aria-label={`Edit ${p.title}`}
-                  className="w-9 h-9 grid place-items-center rounded-lg border border-black/20 hover:bg-black hover:text-white transition"
-                >
-                  <Pencil size={15} />
-                </button>
-                <button
-                  onClick={() => setConfirm(p)}
-                  aria-label={`Delete ${p.title}`}
-                  className="w-9 h-9 grid place-items-center rounded-lg border border-black/20 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+                <div className="min-w-0 flex-1 basis-[calc(100%-4.5rem)] sm:basis-auto">
+                  <p className="font-semibold text-[16px] leading-snug truncate">{p.title}</p>
+                  <p className="text-[13px] text-black/50 mt-0.5 capitalize">
+                    {p.gender} · {p.type.replace('tshirt', 't-shirt')} · <span className="font-mono normal-case">{p.id}</span>
+                  </p>
+                  <p className="text-[15px] mt-1 font-medium">
+                    <span className="text-red-600 font-bold">₹{p.price}</span>
+                    {p.compare ? <span className="text-black/40 text-[13px] line-through ml-2">₹{p.compare}</span> : null}
+                    {p.badge ? <span className="ml-2 text-[11px] font-bold bg-brand-badge text-white px-1.5 py-0.5 rounded-sm">{p.badge}</span> : null}
+                  </p>
+                </div>
 
-      <p className="mt-8 text-[14px] text-black/45 flex items-center gap-1.5">
-        <ArrowUpRight size={15} />
-        Changes go live on the storefront immediately.{' '}
-        <Link to="/shop" className="underline underline-offset-2 hover:text-black">Preview the store</Link>
-      </p>
+                <div className="flex items-center gap-2 sm:gap-3 ml-auto shrink-0">
+                  <button
+                    onClick={() => toggleActive(p)}
+                    disabled={busyId === p.id}
+                    role="switch"
+                    aria-checked={p.is_active}
+                    aria-label={p.is_active ? `Hide ${p.title}` : `Show ${p.title}`}
+                    title={p.is_active ? 'Live — click to hide' : 'Hidden — click to show'}
+                    className={`inline-flex items-center gap-2 h-9 px-3 rounded-full border text-[13px] font-medium transition disabled:opacity-60 ${
+                      p.is_active
+                        ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                        : 'bg-neutral-100 border-black/15 text-black/50 hover:border-black/40'
+                    }`}
+                  >
+                    {busyId === p.id ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <span className={`w-2 h-2 rounded-full ${p.is_active ? 'bg-green-600' : 'bg-black/35'}`} />
+                    )}
+                    {p.is_active ? 'Live' : 'Hidden'}
+                  </button>
 
-      <ProductEditor
-        open={!!editing}
-        isNew={!!editing?.isNew}
-        initial={editing?.product}
-        onClose={() => setEditing(null)}
-        onSave={handleSave}
-      />
+                  <button
+                    onClick={() => openEdit(p)}
+                    aria-label={`Edit ${p.title}`}
+                    className="w-9 h-9 grid place-items-center rounded-lg border border-black/20 hover:bg-black hover:text-white transition"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    onClick={() => setConfirm(p)}
+                    aria-label={`Delete ${p.title}`}
+                    className="w-9 h-9 grid place-items-center rounded-lg border border-black/20 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
 
-      <ConfirmDelete
-        product={confirm}
-        busy={!!busyId && busyId === confirm?.id}
-        onCancel={() => setConfirm(null)}
-        onConfirm={() => handleDelete(confirm)}
-      />
+        <p className="mt-8 text-[14px] text-black/45 flex items-center gap-1.5">
+          <ArrowUpRight size={15} />
+          Changes go live on the storefront immediately.{' '}
+          <Link to="/shop" className="underline underline-offset-2 hover:text-black">Preview the store</Link>
+        </p>
+
+        <ProductEditor
+          open={!!editing}
+          isNew={!!editing?.isNew}
+          initial={editing?.product}
+          onClose={() => setEditing(null)}
+          onSave={handleSave}
+        />
+
+        <ConfirmDelete
+          product={confirm}
+          busy={!!busyId && busyId === confirm?.id}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => handleDelete(confirm)}
+        />
+      </div>
 
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>

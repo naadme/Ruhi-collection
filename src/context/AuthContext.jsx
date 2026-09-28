@@ -50,13 +50,33 @@ export function AuthProvider({ children }) {
     } finally { setBusy(false) }
   }, [])
 
+  // Customer self-registration. This grants nothing but a session: admin rights
+  // still require an `admins` allowlist row, which is provisioned by the owner.
+  const signUp = useCallback(async (email, password) => {
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.auth.signUp({ email: email.trim(), password })
+      if (error) return { error: error.message }
+      // GoTrue answers with a user that has no identities when the address is
+      // already registered but unconfirmed — surface that instead of a fake success.
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        return { error: 'An account already exists for this email. Try signing in instead.' }
+      }
+      if (!data.session) return { ok: true, needsConfirmation: true }
+      setSession(data.session); setUser(data.session?.user ?? null)
+      return { ok: true }
+    } catch (e) {
+      return { error: e?.message || 'Unable to create the account right now.' }
+    } finally { setBusy(false) }
+  }, [])
+
   const signOut = useCallback(async () => {
     setBusy(true)
     try { await supabase.auth.signOut() } finally { setBusy(false) }
   }, [])
 
   return (
-    <Ctx.Provider value={{ ready, session, user, isAdmin, busy, signIn, signOut }}>
+    <Ctx.Provider value={{ ready, session, user, isAdmin, busy, signIn, signUp, signOut }}>
       {children}
     </Ctx.Provider>
   )

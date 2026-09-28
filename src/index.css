@@ -4,3 +4,13 @@ body{@apply font-sans text-[#121212] bg-white antialiased;letter-spacing:.03em}
 .marquee{animation:marquee 30s linear infinite}
 .field{@apply w-full border border-black/55 rounded-lg px-8 h-[72px] text-[17px] bg-white focus:outline-none focus:ring-2 focus:ring-black/70 placeholder:text-black/60}
 .btn-outline{@apply inline-block border border-black px-8 py-2 text-sm font-ui tracking-wide hover:bg-black hover:text-white transition}
+/* Checkout + account forms: a calmer, denser field than the big `.field` used
+   by the contact page, with a visible invalid state. */
+.cfield{@apply w-full border border-black/30 rounded-lg px-4 h-[52px] text-[16px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/40 transition}
+textarea.cfield{@apply h-auto py-3.5 min-h-[92px]}
+.cfield[aria-invalid="true"]{@apply border-red-500 focus:border-red-500 focus:ring-red-100}
+.clabel{@apply block text-[14px] font-medium text-black/70 mb-1.5}
+.cerror{@apply block text-[13px] text-red-600 mt-1.5}
+/* Keyboard users should always see where they are; mouse users should not. */
+:where(a,button,input,select,textarea,summary,[tabindex]):focus-visible{@apply outline-none ring-2 ring-black/60 ring-offset-2 ring-offset-white rounded-sm}
+@media (prefers-reduced-motion: reduce){.marquee{animation:none}}

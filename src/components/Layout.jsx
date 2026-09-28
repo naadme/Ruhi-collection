@@ -10,5 +10,19 @@ export default function Layout() {
   // `window.scrollTo()` can return a non-function value, which React would later
   // try to invoke as a cleanup and crash on every route change.
   useEffect(() => { window.scrollTo(0, 0) }, [pathname])
-  return (<><AnnouncementBar /><Header /><main><Outlet /></main><Footer /><CartDrawer /></>)
+  return (
+    <>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:z-50 focus:top-3 focus:left-3 focus:bg-white focus:border focus:border-black focus:px-4 focus:py-2 focus:rounded-md focus:text-[15px] focus:font-ui"
+      >
+        Skip to content
+      </a>
+      <AnnouncementBar />
+      <Header />
+      <main id="main-content"><Outlet /></main>
+      <Footer />
+      <CartDrawer />
+    </>
+  )
 }

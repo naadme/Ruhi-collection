@@ -1,4 +1,6 @@
 // Business details — edit these constants; they feed the footer, contact page and announcement bar.
+// Shipping charges live in src/lib/pricing.js and must match the database rule
+// in supabase/migrations/20260928181500_orders_and_checkout.sql.
 export const site = {
   name: 'Rohi Collection',
   short: 'ROHI',
@@ -11,18 +13,28 @@ export const site = {
   announcements: ['Fast delivery across India', 'Free shipping on orders over ₹999', '30-day easy returns', 'Customer support 10am – 7pm', 'Secure checkout'],
   nav: [{ label: 'Home', to: '/' }, { label: 'Shop', to: '/shop' }, { label: 'Collections', to: '/collections' }, { label: 'About', to: '/about' }, { label: 'Contact', to: '/contact' }],
   shopLinks: [{ label: 'All products', to: '/shop' }, { label: "Men's shirts", to: '/shop?gender=men&type=shirt' }, { label: "Men's pants", to: '/shop?gender=men&type=pant' }, { label: "Women's tops", to: '/shop?gender=women&type=tshirt' }, { label: "Women's pants", to: '/shop?gender=women&type=pant' }],
-  service: [{ label: 'Contact us', to: '/contact' }, { label: 'Shipping policy', to: '/policies/shipping-policy' }, { label: 'Refund policy', to: '/policies/refund-policy' }, { label: 'Your cart', to: '/cart' }],
+  service: [
+    { label: 'Contact us', to: '/contact' },
+    { label: 'Shipping policy', to: '/policies/shipping-policy' },
+    { label: 'Refund policy', to: '/policies/refund-policy' },
+    { label: 'Your cart', to: '/cart' },
+    { label: 'Wishlist', to: '/wishlist' },
+    { label: 'Your account', to: '/account' },
+  ],
   legal: [{ label: 'Privacy policy', to: '/policies/privacy-policy' }, { label: 'Terms of service', to: '/policies/terms-of-service' }],
+  // Payment badges shown in the footer. Only list methods the store actually
+  // accepts — add 'VISA', 'MC', 'AMEX', 'UPI' once an online gateway is live.
+  payments: ['COD'],
   features: [
     { icon: 'Truck', title: 'Free shipping', text: 'Free shipping on orders over ₹999' },
     { icon: 'Headset', title: 'Friendly support', text: 'We reply within one working day' },
     { icon: 'RefreshCcw', title: 'Easy returns', text: '30-day returns, no questions asked' },
-    { icon: 'ShieldCheck', title: 'Secure payment', text: 'Your payment information is safe' },
+    { icon: 'ShieldCheck', title: 'Pay on delivery', text: 'Cash on delivery across India' },
   ],
-  stats: [['10K+', 'Happy customers'], ['500+', 'Styles'], ['5+', 'Years in fashion'], ['1000+', 'Orders shipped weekly']],
+  stats: [['30', 'Day easy returns'], ['₹999', 'Free shipping over'], ['3–7', 'Working day delivery'], ['COD', 'Pay on delivery']],
   faq: [
     ['How long does delivery take?', 'Most orders arrive in 3–7 working days across India.'],
     ['Can I return or exchange an item?', 'Yes — unworn items can be returned or exchanged within 30 days.'],
-    ['Which payment methods do you accept?', 'UPI, cards, net banking and cash on delivery on eligible pincodes.'],
+    ['Which payment methods do you accept?', 'Cash on delivery across India. Online payment (UPI, cards, net banking) is not connected yet.'],
   ],
 }

@@ -4,11 +4,11 @@ import { img } from '../data/images'
 import { site } from '../data/site'
 import usePageTitle from '../hooks/usePageTitle'
 export default function About() {
-  usePageTitle('About')
+  usePageTitle('About', 'The story behind Rohi Collection — thoughtfully made everyday fashion for men and women, checked for fabric, stitching and fit before it ships.')
   return (
     <>
       <section className="relative h-[70vh] min-h-[440px] bg-neutral-300">
-        <Img src={img.aboutHero} alt="Rohi Collection" className="absolute inset-0 w-full h-full object-cover" />
+        <Img src={img.aboutHero} alt="Rohi Collection studio" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/35" />
         <div className="relative h-full max-w-page mx-auto px-4 md:px-12 flex flex-col justify-end pb-14 text-white">
           <p className="tracking-[.3em] text-sm">ABOUT ROHI COLLECTION</p>
