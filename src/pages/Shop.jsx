@@ -1,11 +1,12 @@
 import { useSearchParams } from 'react-router-dom'
 import ProductGrid from '../components/ProductGrid'
-import { products } from '../data/products'
+import { useProducts } from '../context/ProductsContext'
 import usePageTitle from '../hooks/usePageTitle'
 const Sel = ({ label, value, onChange, opts }) => (
   <label className="flex items-center gap-2 font-ui text-sm">{label}<select value={value} onChange={(e) => onChange(e.target.value)} className="border border-black/40 rounded px-3 h-10 bg-white">{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>)
 export default function Shop() {
   usePageTitle('Shop')
+  const { products } = useProducts()
   const [sp, setSp] = useSearchParams()
   const g = sp.get('gender') || '', t = sp.get('type') || '', q = sp.get('q') || '', sort = sp.get('sort') || ''
   const set = (k) => (v) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n) }

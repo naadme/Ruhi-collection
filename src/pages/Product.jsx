@@ -1,16 +1,16 @@
 import usePageTitle from '../hooks/usePageTitle'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getProduct, products } from '../data/products'
+import { useProducts } from '../context/ProductsContext'
 import { useCart } from '../context/CartContext'
 import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
 import ProductCard from '../components/ProductCard'
 export default function Product() {
-  
-  const { id } = useParams(); const p = getProduct(id)
+  const { id } = useParams(); const { getProduct, products, loading } = useProducts(); const p = getProduct(id)
   usePageTitle(p ? p.title : 'Product not found')
   const [size, setSize] = useState('M'); const [qty, setQty] = useState(1); const { add } = useCart()
+  if (!p && loading) return <div className="text-center py-32"><p className="text-black/50">Loading product…</p></div>
   if (!p) return <div className="text-center py-32"><h1 className="text-4xl mb-6">Product not found</h1><Link to="/shop" className="btn-outline">Back to catalog</Link></div>
   const rel = products.filter((x) => x.gender === p.gender && x.id !== p.id).slice(0, 4)
   return (

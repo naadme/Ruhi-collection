@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { getProduct } from '../data/products'
+import { useProducts } from './ProductsContext'
 const Ctx = createContext(null)
 export const useCart = () => useContext(Ctx)
 export function CartProvider({ children }) {
+  const { getProduct } = useProducts()
   const [items, setItems] = useState(() => { try { return JSON.parse(localStorage.getItem('cart')) || [] } catch { return [] } })
   const [open, setOpen] = useState(false)
   useEffect(() => localStorage.setItem('cart', JSON.stringify(items)), [items])

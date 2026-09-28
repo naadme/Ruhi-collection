@@ -10,9 +10,13 @@ import Contact from './pages/Contact'
 import Cart from './pages/Cart'
 import Account from './pages/Account'
 import Policy from './pages/Policy'
+import AdminRoot from './admin/AdminRoot'
 export default function App() {
   return (
     <Routes>
+      {/* Private dashboard — deliberately outside <Layout> so the public
+          header, footer and navigation never wrap admin screens. */}
+      <Route path="/admin" element={<AdminRoot />} />
       <Route element={<Layout />}>
         <Route index element={<Home />} /><Route path="shop" element={<Shop />} /><Route path="catalog" element={<Navigate to="/shop" replace />} /><Route path="collections" element={<Collections />} /><Route path="about" element={<About />} /><Route path="product/:id" element={<Product />} />
         <Route path="contact" element={<Contact />} /><Route path="cart" element={<Cart />} /><Route path="policies/:slug" element={<Policy />} />

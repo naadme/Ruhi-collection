@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import ProductGrid from './ProductGrid'
-import { products } from '../data/products'
+import { useProducts } from '../context/ProductsContext'
 export default function CollectionSection({ c }) {
+  const { products } = useProducts()
   const [tab, setTab] = useState(c.tabs[0][0])
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 pt-8 pb-10">

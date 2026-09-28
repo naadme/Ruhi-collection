@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import Img from './Img'
-import { products } from '../data/products'
+import { useProducts } from '../context/ProductsContext'
 export default function SearchBar({ onClose }) {
+  const { products } = useProducts()
   const [q, setQ] = useState('')
   const ref = useRef(); const nav = useNavigate()
   useEffect(() => ref.current?.focus(), [])
