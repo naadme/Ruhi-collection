@@ -384,6 +384,22 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Razorpay payment functions.
+#
+# All three must be reachable without a session: guests check out with cash on
+# delivery today, so they must be able to pay online too, and Razorpay's
+# servers call the webhook with no Supabase JWT at all. `verify_jwt` therefore
+# stays off and each function authenticates (or ignores) the caller itself —
+# see README.md for the matching `--no-verify-jwt` deploy flags.
+[functions.create-razorpay-order]
+verify_jwt = false
+
+[functions.verify-razorpay-payment]
+verify_jwt = false
+
+[functions.razorpay-webhook]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

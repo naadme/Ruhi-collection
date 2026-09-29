@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 
-const DEFAULT_TITLE = "Rohi Collection — Men's & Women's Fashion"
+const DEFAULT_TITLE = "Ruhi Womens Clothing — Men's & Women's Fashion"
 const DEFAULT_DESCRIPTION =
-  'Shop everyday shirts, T-shirts and pants for men and women at Rohi Collection. Free shipping over ₹999, 30-day easy returns, cash on delivery across India.'
+  'Shop everyday shirts, T-shirts and pants for men and women at Ruhi Womens Clothing. Free shipping over ₹999, 30-day easy returns, cash on delivery across India.'
 
 function upsertMeta(attr, key, content) {
   if (!content) return
@@ -38,7 +38,7 @@ export default function usePageTitle(title, description = DEFAULT_DESCRIPTION) {
   const { pathname, search } = useLocation()
 
   useEffect(() => {
-    const full = title ? `${title} — Rohi Collection` : DEFAULT_TITLE
+    const full = title ? `${title} — Ruhi Womens Clothing` : DEFAULT_TITLE
     document.title = full
 
     // The admin surface is private; it should never be described or linked as
@@ -50,7 +50,7 @@ export default function usePageTitle(title, description = DEFAULT_DESCRIPTION) {
 
     const url = window.location.origin + pathname + search
     upsertMeta('name', 'description', description)
-    upsertMeta('property', 'og:site_name', 'Rohi Collection')
+    upsertMeta('property', 'og:site_name', 'Ruhi Womens Clothing')
     upsertMeta('property', 'og:title', full)
     upsertMeta('property', 'og:description', description)
     upsertMeta('property', 'og:type', 'website')

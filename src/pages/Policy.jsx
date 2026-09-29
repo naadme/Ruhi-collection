@@ -2,6 +2,11 @@ import usePageTitle from '../hooks/usePageTitle'
 import { useParams, Link } from 'react-router-dom'
 import { site } from '../data/site'
 
+// A legal page must not claim it was updated "today" every day it is read, so
+// this is a fixed value rather than `new Date()`. Bump it whenever the policy
+// text below is edited.
+const LAST_UPDATED = '28 September 2026'
+
 // Written against the promises already published on this site (announcement
 // bar, features and FAQ): free shipping over ₹999, delivery in 3–7 working
 // days and 30-day returns. Nothing here invents a guarantee the store has not
@@ -79,7 +84,7 @@ const POLICIES = {
         'We do not sell, rent or trade your personal information to anyone.'],
       ],
       ['Payment details', [
-        'This site does not collect or store card, UPI or net-banking credentials. Orders are placed on a cash-on-delivery basis; if online payment is switched on later, it will be handled by a certified payment provider and never by us directly.'],
+        'This site does not collect or store card, UPI or net-banking credentials. You can pay cash on delivery, or pay online at checkout through Razorpay — a certified payment provider that handles the card and bank details entirely on its own systems and never shares them with us.'],
       ],
       ['Who holds it', [
         'Your account, orders and messages are stored securely in our Supabase database, and product photography is served by our image host.',
@@ -120,7 +125,7 @@ const POLICIES = {
         'Our returns and refunds are handled under the refund policy, which forms part of these terms.'],
       ],
       ['Content and images', [
-        'The photographs, text and branding on this site belong to Rohi Collection or its licensors and may not be reproduced without permission.'],
+        'The photographs, text and branding on this site belong to Ruhi Womens Clothing or its licensors and may not be reproduced without permission.'],
       ],
       ['Liability', [
         'Nothing in these terms limits rights you have under Indian consumer law, which cannot be excluded.',
@@ -158,7 +163,7 @@ export default function Policy() {
       <p className="text-[14px] text-black/50 uppercase tracking-[.18em] font-ui">Legal</p>
       <h1 className="text-[40px] mt-3">{policy.title}</h1>
       <p className="text-[19px] text-black/70 mt-3">{policy.intro}</p>
-      <p className="text-[14px] text-black/45 mt-2">Last updated {new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })}</p>
+      <p className="text-[14px] text-black/45 mt-2">Last updated {LAST_UPDATED}</p>
 
       <div className="mt-10 space-y-9">
         {policy.sections.map(([heading, paragraphs]) => (

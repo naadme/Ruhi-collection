@@ -14,7 +14,7 @@ const countFor = (products, to) => {
 }
 
 export default function Collections() {
-  usePageTitle('Collections', 'Browse the Rohi Collection ranges — men’s shirts and pants, women’s tops and pants.')
+  usePageTitle('Collections', 'Browse the Ruhi Womens Clothing ranges — men’s shirts and pants, women’s tops and pants.')
   const { products, loading } = useProducts()
 
   return (

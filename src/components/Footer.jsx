@@ -4,6 +4,7 @@ import Newsletter from './Newsletter'
 import Logo from './Logo'
 import { site } from '../data/site'
 const Col = ({ title, links }) => (<div className="min-w-0"><h3 className="text-[22px] font-medium">{title}</h3><ul className="mt-6 space-y-4 text-[17px] text-white/85">{links.map((l) => <li key={l.label}><Link to={l.to} className="hover:underline">{l.label}</Link></li>)}</ul></div>)
+const PAYMENT_TITLES = { COD: 'Cash on delivery', UPI: 'Pay by UPI', Cards: 'Credit and debit cards' }
 export default function Footer() {
   return (
     <footer className="bg-brand-green text-white">
@@ -24,7 +25,7 @@ export default function Footer() {
         <div className="mt-16 border-t border-white/25 pt-8 flex flex-wrap gap-4 justify-between items-center">
           <p className="text-white/70 text-[15px]">© {new Date().getFullYear()} {site.name}. All rights reserved. {site.legal.map((l) => <Link key={l.to} to={l.to} className="ml-4 underline-offset-4 hover:underline">{l.label}</Link>)}</p>
           <div className="flex gap-3">{site.payments.map((b) => (
-            <span key={b} title={b === 'COD' ? 'Cash on delivery' : b}
+            <span key={b} title={PAYMENT_TITLES[b] || b}
               className="bg-white text-black text-[12px] font-ui font-extrabold px-3 py-2 rounded min-w-[52px] text-center">{b}</span>
           ))}</div>
         </div>

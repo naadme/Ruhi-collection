@@ -10,6 +10,8 @@ import { supabase } from '../lib/supabase'
 import { saveOrder } from '../lib/orderStore'
 import { SHIPPING_FEE, amountToFreeShipping, inr, shippingFor, totalFor } from '../lib/pricing'
 import { EMPTY_ADDRESS, INDIAN_STATES, validateAddress } from '../lib/checkout'
+import { onlinePaymentReady, openRazorpay } from '../lib/razorpay'
+import { createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
 
 const Section = ({ n, title, children }) => (
   <section className="border-t border-black/10 pt-7 mt-7 first:border-0 first:pt-0 first:mt-0">
@@ -40,11 +42,43 @@ function Field({ label, name, value, onChange, error, ...rest }) {
   )
 }
 
+// One payment choice in Section 3. Native radio input underneath so keyboard,
+// screen readers and form semantics all behave; the visual dot matches the
+// card styling already used elsewhere on the checkout page.
+function PayOption({ value, checked, onChange, title, body }) {
+  return (
+    <label
+      className={`flex gap-3 rounded-xl p-4 border transition cursor-pointer ${
+        checked ? 'border-brand-green/40 bg-[#f4f8f5]' : 'border-black/15 bg-white hover:border-black/30'
+      }`}
+    >
+      <input
+        type="radio"
+        name="payment-method"
+        value={value}
+        checked={checked}
+        onChange={() => onChange(value)}
+        className="sr-only peer"
+      />
+      <span
+        aria-hidden="true"
+        className={`mt-0.5 w-5 h-5 rounded-full border-[6px] bg-white shrink-0 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-green/60 peer-focus-visible:ring-offset-2 ${
+          checked ? 'border-brand-green' : 'border-black/25'
+        }`}
+      />
+      <span className="min-w-0">
+        <span className="block font-semibold text-[16px]">{title}</span>
+        <span className="block text-[14px] text-black/65 mt-1">{body}</span>
+      </span>
+    </label>
+  )
+}
+
 function Summary({ lines, subtotal, compact }) {
   const shipping = shippingFor(subtotal)
   const gap = amountToFreeShipping(subtotal)
   return (
-    <div className="border border-black/12 rounded-xl bg-white p-5">
+    <div className="border border-black/10 rounded-xl bg-white p-5">
       <h2 className="text-[17px] font-semibold">Order summary</h2>
       <ul className="mt-4 space-y-4">
         {lines.map((l) => (
@@ -96,6 +130,7 @@ export default function Checkout() {
   const [errors, setErrors] = useState({})
   const [failure, setFailure] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [pay, setPay] = useState('cod')
   const prefilled = useRef(false)
 
   // Price against the live catalogue — never against a stale cache — before
@@ -116,6 +151,56 @@ export default function Checkout() {
     setErrors((prev) => (prev[k] ? { ...prev, [k]: undefined } : prev))
   }
 
+  // Online payment: the server creates (or reuses) the order, prices it from
+  // the catalogue and mints the matching Razorpay order. Everything after that
+  // — opening Checkout, then having the signature verified — is what turns it
+  // into a paid order. The cart is only cleared once verification succeeds.
+  const payOnline = async (customer, items) => {
+    const started = await createRazorpayOrder(customer, items)
+    if (!started?.razorpay_order_id || !started?.key_id) {
+      throw new Error('We could not start your payment. You have not been charged — please try again.')
+    }
+
+    let response
+    try {
+      response = await openRazorpay({
+        key: started.key_id,
+        amount: started.amount,
+        currency: started.currency,
+        orderId: started.razorpay_order_id,
+        description: `Order ${started.reference}`,
+        prefill: {
+          name: customer.full_name,
+          email: customer.email,
+          contact: customer.phone.replace(/\D/g, ''),
+        },
+        notes: { reference: started.reference },
+      })
+    } catch (error) {
+      // Closed, declined or offline: nothing was charged, the cart stays put,
+      // and the next attempt reuses the same order instead of making another.
+      setFailure(error?.message || 'You closed the payment window. Nothing has been charged — you can try again whenever you are ready.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    const verified = await verifyRazorpayPayment({
+      reference: started.reference,
+      razorpay_order_id: response.razorpay_order_id || started.razorpay_order_id,
+      razorpay_payment_id: response.razorpay_payment_id,
+      razorpay_signature: response.razorpay_signature,
+    })
+
+    if (!verified?.order?.reference) {
+      throw new Error("We received your payment but could not confirm it yet. Please don't pay again — contact us quoting your order reference.")
+    }
+
+    const order = { ...verified.order, customer }
+    saveOrder(order)
+    clear()
+    navigate(`/order/${order.reference}`, { replace: true, state: { order } })
+  }
+
   const submit = async (e) => {
     e.preventDefault()
     setFailure('')
@@ -128,40 +213,34 @@ export default function Checkout() {
     }
     if (!lines.length) { setFailure('Your cart is empty.'); return }
 
+    const customer = {
+      full_name: f.full_name.trim(),
+      email: f.email.trim(),
+      phone: f.phone.trim(),
+      address: f.address.trim(),
+      city: f.city.trim(),
+      state: f.state.trim(),
+      pincode: f.pincode.trim(),
+      note: f.note.trim(),
+    }
+    const items = lines.map((l) => ({ product_id: l.id, size: l.size, qty: l.qty }))
+
     setSubmitting(true)
     try {
+      if (pay === 'razorpay') {
+        await payOnline(customer, items)
+        return
+      }
+
       // Only ids, sizes and quantities leave the browser — the database looks
       // up the real prices and computes the totals.
       const { data, error } = await supabase.rpc('create_order', {
-        payload: {
-          full_name: f.full_name.trim(),
-          email: f.email.trim(),
-          phone: f.phone.trim(),
-          address: f.address.trim(),
-          city: f.city.trim(),
-          state: f.state.trim(),
-          pincode: f.pincode.trim(),
-          note: f.note.trim(),
-          payment_method: 'cod',
-          items: lines.map((l) => ({ product_id: l.id, size: l.size, qty: l.qty })),
-        },
+        payload: { ...customer, payment_method: 'cod', items },
       })
       if (error) throw new Error(error.message)
       if (!data?.reference) throw new Error('The order could not be saved. Please try again.')
 
-      const order = {
-        ...data,
-        customer: {
-          full_name: f.full_name.trim(),
-          email: f.email.trim(),
-          phone: f.phone.trim(),
-          address: f.address.trim(),
-          city: f.city.trim(),
-          state: f.state.trim(),
-          pincode: f.pincode.trim(),
-          note: f.note.trim(),
-        },
-      }
+      const order = { ...data, customer }
       saveOrder(order)
       clear()
       navigate(`/order/${order.reference}`, { replace: true, state: { order } })
@@ -209,7 +288,7 @@ export default function Checkout() {
             />
             {!user && (
               <p className="text-[14px] text-black/55 mt-3">
-                Already have an account? <Link to="/account" className="underline underline-offset-2 hover:text-black">Sign in</Link> to see your orders later.
+                Already have an account? <Link to="/account?next=/checkout" className="underline underline-offset-2 hover:text-black">Sign in</Link> to see your orders later.
               </p>
             )}
           </Section>
@@ -258,16 +337,29 @@ export default function Checkout() {
           </Section>
 
           <Section n="3" title="Payment">
-            <div className="border border-brand-green/40 bg-[#f4f8f5] rounded-xl p-4 flex gap-3">
-              <span className="mt-0.5 w-5 h-5 rounded-full border-[6px] border-brand-green bg-white shrink-0" />
-              <div>
-                <p className="font-semibold text-[16px]">Cash on delivery</p>
-                <p className="text-[14px] text-black/65 mt-1">Pay when your order arrives. Please keep exact change ready if you can.</p>
-              </div>
+            <div role="radiogroup" aria-label="Payment method" className="space-y-3">
+              <PayOption
+                value="cod"
+                checked={pay === 'cod'}
+                onChange={setPay}
+                title="Cash on delivery"
+                body="Pay when your order arrives. Please keep exact change ready if you can."
+              />
+              {onlinePaymentReady && (
+                <PayOption
+                  value="razorpay"
+                  checked={pay === 'razorpay'}
+                  onChange={setPay}
+                  title="Online payment"
+                  body="UPI, cards, net banking and wallets — settled in Razorpay's secure window."
+                />
+              )}
             </div>
             <p className="text-[14px] text-black/55 mt-4 flex items-start gap-2">
               <ShieldCheck size={16} className="mt-[1px] shrink-0" />
-              Online payment (UPI, cards, net banking) is not connected yet — we will switch it on as soon as the gateway is live.
+              {onlinePaymentReady
+                ? 'Card and bank details are handled entirely by Razorpay — this site never sees or stores them.'
+                : 'Online payment (UPI, cards, net banking) is not connected yet — we will switch it on as soon as the gateway is live.'}
             </p>
           </Section>
 
@@ -277,7 +369,9 @@ export default function Checkout() {
             className="mt-8 w-full h-[56px] rounded-md bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#12572f] transition disabled:opacity-60"
           >
             {submitting && <Loader2 size={18} className="animate-spin" />}
-            {submitting ? 'Placing your order…' : `Place order · ${inr(totalFor(subtotal))}`}
+            {submitting
+              ? (pay === 'razorpay' ? 'Opening secure payment…' : 'Placing your order…')
+              : (pay === 'razorpay' ? `Pay now · ${inr(totalFor(subtotal))}` : `Place order · ${inr(totalFor(subtotal))}`)}
           </button>
           <p className="text-[13px] text-black/50 mt-3 text-center">
             By placing this order you agree to our <Link to="/policies/terms-of-service" className="underline underline-offset-2">terms</Link> and <Link to="/policies/refund-policy" className="underline underline-offset-2">refund policy</Link>.

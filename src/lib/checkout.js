@@ -4,6 +4,11 @@
 
 export const emailOk = (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.trim())
 
+// `public.order_items.qty` is `check (qty between 1 and 10)` and
+// `create_order()` rejects anything outside that range, so the cart must clamp
+// too — otherwise a shopper can build a basket the server will always refuse.
+export const MAX_QTY = 10
+
 // Accepts 9876543210, +91 98765 43210, 98765-43210 … but must contain
 // between 10 and 15 digits once formatting is stripped.
 export const phoneDigits = (v) => v.replace(/\D/g, '')

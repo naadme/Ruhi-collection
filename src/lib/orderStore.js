@@ -4,7 +4,7 @@
 // sessionStorage and dropped as soon as the next one is placed. Signed-in
 // customers additionally keep a permanent copy in `public.orders`, which they
 // can read from their account page.
-const PREFIX = 'rohi:order:'
+const PREFIX = 'ruhi:order:'
 
 export function saveOrder(order) {
   if (!order?.reference) return

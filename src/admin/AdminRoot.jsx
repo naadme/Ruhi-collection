@@ -15,9 +15,14 @@ function Splash({ text }) {
 
 function Wordmark() {
   return (
-    <Link to="/" className="flex items-baseline gap-2 shrink-0" aria-label="Rohi Collection — home">
-      <span className="font-serif font-bold text-[26px] leading-none tracking-[.14em] text-[#166a3a]">ROHI</span>
-      <span className="font-ui font-semibold text-[9px] tracking-[.4em] text-[#c9a400]">COLLECTION</span>
+    <Link to="/" className="shrink-0 block" aria-label="Ruhi Womens Clothing — home">
+      <img
+        src="/images/ruhi-logo.jpg"
+        alt="Ruhi Womens Clothing"
+        width={968}
+        height={628}
+        className="block h-10 md:h-12 w-auto object-contain"
+      />
     </Link>
   )
 }
@@ -35,7 +40,7 @@ function NotAuthorized({ email }) {
         You’re signed in as <strong className="text-black/80">{email}</strong>, but it doesn’t have admin
         access yet. Signing in alone never grants admin rights — the account must be added to the allowlist.
       </p>
-      <div className="mt-6 text-left bg-white border border-black/12 rounded-xl p-5">
+      <div className="mt-6 text-left bg-white border border-black/10 rounded-xl p-5">
         <p className="text-[13px] font-semibold uppercase tracking-wider text-black/45">For the store owner</p>
         <p className="text-[14px] text-black/65 mt-2">In Supabase → SQL Editor, run:</p>
         <code className="block mt-2 bg-[#121212] text-[#e8e8e8] rounded-lg px-4 py-3 text-[13px] overflow-x-auto">

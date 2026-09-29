@@ -9,8 +9,7 @@ import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
 import ProductCard from '../components/ProductCard'
 import { inr, amountToFreeShipping, FREE_SHIPPING_OVER } from '../lib/pricing'
-
-const MAX_QTY = 10
+import { MAX_QTY } from '../lib/checkout'
 
 function Gallery({ product }) {
   const shots = [product.image, product.hover].filter(Boolean)
@@ -51,7 +50,7 @@ export default function Product() {
   const { getProduct, products, loading } = useProducts()
   const p = getProduct(id)
   const navigate = useNavigate()
-  const { add } = useCart()
+  const { add, subtotal } = useCart()
   const { has, toggle } = useWishlist()
 
   const [size, setSize] = useState(null)
@@ -93,7 +92,9 @@ export default function Product() {
 
   const fav = has(p.id)
   const off = p.compare ? Math.round((1 - p.price / p.compare) * 100) : 0
-  const gap = amountToFreeShipping(p.price * qty)
+  // Measured against the whole basket, not just this line — otherwise a cart
+  // that already qualifies for free shipping still gets told to spend more.
+  const gap = amountToFreeShipping(subtotal + p.price * qty)
   const needsSize = p.sizes.length > 1 && !size
 
   const choose = (s) => { setSize(s); setProblem('') }
@@ -143,8 +144,13 @@ export default function Product() {
             </button>
           </div>
 
-          <p className="font-ui mt-3 text-sm text-black/70" aria-label={`Rated ${Math.min(p.rating, 5).toFixed(1)} out of 5 from ${p.reviews} reviews`}>
-            ★ {Math.min(p.rating, 5).toFixed(1)} <span className="text-black/50">({p.reviews} reviews)</span>
+          {/* aria-label lives on a <span> so screen readers hear the rating
+              instead of five separate "star" glyphs. */}
+          <p className="font-ui mt-3 text-sm text-black/70">
+            <span role="img" aria-label={`Rated ${Math.min(p.rating, 5).toFixed(1)} out of 5`}>
+              ★ {Math.min(p.rating, 5).toFixed(1)}
+            </span>{' '}
+            <span className="text-black/50">({p.reviews} reviews)</span>
           </p>
 
           <p className="font-ui font-bold text-[26px] mt-4 flex gap-4 items-baseline">

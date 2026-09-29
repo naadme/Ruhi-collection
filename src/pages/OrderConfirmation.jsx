@@ -1,16 +1,30 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { Check, Mail, PackageCheck, PhoneCall, Truck } from 'lucide-react'
+import { AlertTriangle, Check, Mail, PackageCheck, PhoneCall, ShieldCheck, Truck } from 'lucide-react'
 import usePageTitle from '../hooks/usePageTitle'
 import Img from '../components/Img'
 import { loadOrder } from '../lib/orderStore'
 import { inr, totalFor } from '../lib/pricing'
 import { site } from '../data/site'
 
-const STEPS = [
-  [PackageCheck, 'We start packing', 'Your order is checked and packed at our studio.'],
-  [Truck, 'It ships within 2–3 working days', 'Most orders arrive in 3–7 working days across India.'],
-  [PhoneCall, 'Pay on delivery', 'Our delivery partner will call you before arriving.'],
-]
+const PACKING = [PackageCheck, 'We start packing', 'Your order is checked and packed at our studio.']
+const SHIPPING = [Truck, 'It ships within 2–3 working days', 'Most orders arrive in 3–7 working days across India.']
+
+const PAYMENT_STATES = {
+  paid: 'Paid',
+  failed: 'Payment failed',
+  refunded: 'Refunded',
+}
+
+// The last step depends on how the order was paid — a COD parcel still has
+// money to collect, an online one does not.
+function stepsFor(order) {
+  if (order.payment_method !== 'razorpay') {
+    return [PACKING, SHIPPING, [PhoneCall, 'Pay on delivery', 'Our delivery partner will call you before arriving.']]
+  }
+  return order.payment_status === 'paid'
+    ? [PACKING, SHIPPING, [ShieldCheck, 'Payment confirmed', 'Paid online — there is nothing to pay when your parcel arrives.']]
+    : [PACKING, SHIPPING, [AlertTriangle, 'Payment pending', 'We are confirming your payment. You will not be asked to pay again.']]
+}
 
 export default function OrderConfirmation() {
   const { reference } = useParams()
@@ -20,9 +34,9 @@ export default function OrderConfirmation() {
   const order = location.state?.order || loadOrder(reference)
   usePageTitle(order ? `Order ${order.reference}` : 'Order')
 
-  const subject = encodeURIComponent(`Order ${reference} — Rohi Collection`)
+  const subject = encodeURIComponent(`Order ${reference} — Ruhi Womens Clothing`)
   const body = encodeURIComponent(
-    `Hello Rohi Collection,\n\nI'd like to check on order ${reference}.\n\nThank you!`
+    `Hello Ruhi Womens Clothing,\n\nI'd like to check on order ${reference}.\n\nThank you!`
   )
   const mailHref = `mailto:${site.email}?subject=${subject}&body=${body}`
 
@@ -44,6 +58,12 @@ export default function OrderConfirmation() {
 
   const items = order.items || []
   const c = order.customer || {}
+  const online = order.payment_method === 'razorpay'
+  const paid = order.payment_status === 'paid'
+  const paymentState = online
+    ? (PAYMENT_STATES[order.payment_status] || 'Pending')
+    : 'Pay on delivery'
+  const steps = stepsFor(order)
 
   return (
     <section className="max-w-[980px] mx-auto px-4 md:px-7 py-14">
@@ -60,7 +80,7 @@ export default function OrderConfirmation() {
       </div>
 
       <div className="grid sm:grid-cols-3 gap-4 mt-10">
-        {STEPS.map(([Icon, title, text]) => (
+        {steps.map(([Icon, title, text]) => (
           <div key={title} className="border border-black/10 rounded-xl p-5">
             <Icon size={24} strokeWidth={1.6} className="text-brand-green" />
             <h2 className="text-[17px] font-semibold mt-3">{title}</h2>
@@ -70,7 +90,7 @@ export default function OrderConfirmation() {
       </div>
 
       <div className="grid md:grid-cols-[1.3fr_1fr] gap-6 mt-10 items-start">
-        <div className="border border-black/12 rounded-xl bg-white p-5">
+        <div className="border border-black/10 rounded-xl bg-white p-5">
           <h2 className="text-[17px] font-semibold">What you ordered</h2>
           <ul className="mt-4 divide-y divide-black/10">
             {items.map((it, i) => (
@@ -91,13 +111,33 @@ export default function OrderConfirmation() {
             <div className="flex justify-between"><dt className="text-black/65">Shipping</dt>
               <dd className="font-ui">{order.shipping === 0 ? <span className="text-brand-green font-semibold">Free</span> : inr(order.shipping)}</dd></div>
             <div className="flex justify-between pt-3 border-t border-black/10 text-[18px] font-semibold">
-              <dt>Total (cash on delivery)</dt><dd className="font-ui">{inr(order.total ?? totalFor(order.subtotal))}</dd>
+              <dt>{paid ? 'Total (paid online)' : online ? 'Total' : 'Total (cash on delivery)'}</dt>
+              <dd className="font-ui">{inr(order.total ?? totalFor(order.subtotal))}</dd>
             </div>
           </dl>
         </div>
 
         <div className="space-y-6">
-          <div className="border border-black/12 rounded-xl bg-white p-5">
+          <div className="border border-black/10 rounded-xl bg-white p-5">
+            <h2 className="text-[17px] font-semibold">Payment</h2>
+            <p className="mt-2 text-[15px] flex items-center gap-2 flex-wrap">
+              <span className="font-medium">{online ? 'Online payment' : 'Cash on delivery'}</span>
+              <span className={`text-[13px] font-semibold border rounded-full px-2.5 py-0.5 ${
+                paid
+                  ? 'bg-green-50 text-green-800 border-green-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}>{paymentState}</span>
+            </p>
+            {order.razorpay_payment_id && (
+              <p className="text-[13px] text-black/50 mt-2 font-mono break-all">{order.razorpay_payment_id}</p>
+            )}
+            <p className="text-[14px] text-black/60 mt-2 leading-6">
+              {paid
+                ? 'Paid online — there is nothing to pay on delivery.'
+                : 'Keep the exact amount ready; our delivery partner will collect it.'}
+            </p>
+          </div>
+          <div className="border border-black/10 rounded-xl bg-white p-5">
             <h2 className="text-[17px] font-semibold">Delivering to</h2>
             <address className="not-italic text-[15px] leading-7 text-black/70 mt-3">
               <b className="text-black">{c.full_name}</b><br />
@@ -107,7 +147,7 @@ export default function OrderConfirmation() {
               {c.email}
             </address>
           </div>
-          <div className="border border-black/12 rounded-xl bg-white p-5">
+          <div className="border border-black/10 rounded-xl bg-white p-5">
             <h2 className="text-[17px] font-semibold">Need to change something?</h2>
             <p className="text-[14px] text-black/60 mt-2 leading-6">
               Message us as soon as you can and we'll do our best to amend or cancel the order before it ships.

@@ -23,7 +23,7 @@ export default function Login() {
   return (
     <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-16 font-ui">
       <Logo />
-      <div className="w-full max-w-[420px] mt-14 border border-black/12 rounded-2xl p-8 shadow-[0_2px_24px_rgba(0,0,0,.06)]">
+      <div className="w-full max-w-[420px] mt-14 border border-black/10 rounded-2xl p-8 shadow-[0_2px_24px_rgba(0,0,0,.06)]">
         <h1 className="text-[28px] font-bold tracking-tight">Admin sign in</h1>
         <p className="text-black/60 mt-1 text-[15px]">Authorised staff only. Customers don’t need this.</p>
 

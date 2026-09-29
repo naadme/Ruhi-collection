@@ -25,6 +25,41 @@ const TONE = {
 
 const STATUS_FILTERS = [['all', 'All'], ...STATUSES]
 
+// Payment is tracked separately from fulfilment: `status` is where the parcel
+// is, `payment_status` is whether Razorpay has actually been paid. Only the
+// payment server (Edge Functions) can write the latter — the database refuses
+// it for every browser session, this panel included.
+const PAY_METHOD = {
+  cod: 'Cash on delivery',
+  razorpay: 'Online payment (Razorpay)',
+}
+
+const PAY_STATUS = {
+  pending: ['Pending', 'bg-amber-50 border-amber-200 text-amber-800'],
+  paid: ['Paid', 'bg-green-50 border-green-200 text-green-800'],
+  failed: ['Failed', 'bg-red-50 border-red-200 text-red-700'],
+  refunded: ['Refunded', 'bg-indigo-50 border-indigo-200 text-indigo-800'],
+}
+
+function paymentChip(order) {
+  if (order.payment_method !== 'razorpay') {
+    return (
+      <span
+        className="text-[12px] font-semibold border rounded-full px-2 py-[2px] bg-neutral-50 border-neutral-200 text-neutral-600"
+        title="Payment collected on delivery"
+      >
+        COD
+      </span>
+    )
+  }
+  const [label, tone] = PAY_STATUS[order.payment_status] || PAY_STATUS.pending
+  return (
+    <span className={`text-[12px] font-semibold border rounded-full px-2 py-[2px] ${tone}`}>
+      Razorpay · {label}
+    </span>
+  )
+}
+
 function Row({ order, open, onToggle, onStatus, busy }) {
   const items = order.order_items || []
   return (
@@ -45,6 +80,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
             <span className="text-black/45 font-normal text-[13px] ml-2">
               {new Date(order.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
             </span>
+            <span className="ml-2 align-middle inline-block">{paymentChip(order)}</span>
           </p>
           <p className="text-[14px] text-black/60 truncate">
             {order.full_name} · {order.city}, {order.state} {order.pincode}
@@ -100,16 +136,53 @@ function Row({ order, open, onToggle, onStatus, busy }) {
             </div>
             <div>
               <h4 className="text-[13px] font-semibold uppercase tracking-wider text-black/45">Payment</h4>
-              <p className="mt-2">
-                {order.payment_method === 'cod' ? 'Cash on delivery' : order.payment_method}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-[15px] font-medium">
+                  {PAY_METHOD[order.payment_method] || order.payment_method}
+                </span>
+                <span className={`text-[12px] font-semibold border rounded-full px-2 py-0.5 ${
+                  (PAY_STATUS[order.payment_status] || PAY_STATUS.pending)[1]
+                }`}>
+                  {(PAY_STATUS[order.payment_status] || PAY_STATUS.pending)[0]}
+                </span>
+              </div>
+              <p className="mt-1.5 text-[13px] text-black/50">
+                {order.payment_method === 'cod'
+                  ? (order.status === 'delivered'
+                      ? 'Payment collected on delivery.'
+                      : order.status === 'cancelled'
+                        ? 'Order cancelled — nothing to collect.'
+                        : 'Collect payment from the customer on delivery.')
+                  : (order.payment_status === 'paid'
+                      ? 'Received through Razorpay before the order was confirmed.'
+                      : order.payment_status === 'refunded'
+                        ? 'Refunded to the customer through Razorpay.'
+                        : order.payment_status === 'failed'
+                          ? 'The payment did not go through. Nothing was charged.'
+                          : 'Waiting for the payment to complete — please do not ask the customer to pay again.')}
               </p>
-              <p className="mt-1 text-[13px] text-black/50">
-                {order.status === 'delivered'
-                  ? 'Payment collected on delivery.'
-                  : order.status === 'cancelled'
-                    ? 'Order cancelled — nothing to collect.'
-                    : 'Collect payment from the customer on delivery.'}
-              </p>
+              {(order.razorpay_order_id || order.razorpay_payment_id) && (
+                <dl className="mt-3 space-y-1 text-[13px]">
+                  {order.razorpay_order_id && (
+                    <div className="flex gap-2">
+                      <dt className="text-black/45 shrink-0">Razorpay order</dt>
+                      <dd className="font-mono break-all">{order.razorpay_order_id}</dd>
+                    </div>
+                  )}
+                  {order.razorpay_payment_id && (
+                    <div className="flex gap-2">
+                      <dt className="text-black/45 shrink-0">Payment</dt>
+                      <dd className="font-mono break-all">{order.razorpay_payment_id}</dd>
+                    </div>
+                  )}
+                  {order.paid_at && (
+                    <div className="flex gap-2">
+                      <dt className="text-black/45 shrink-0">Paid</dt>
+                      <dd>{new Date(order.paid_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</dd>
+                    </div>
+                  )}
+                </dl>
+              )}
             </div>
             {order.note && (
               <div>
@@ -166,7 +239,10 @@ export default function OrdersPanel({ notify }) {
     return state.orders.filter((o) => {
       if (filter !== 'all' && o.status !== filter) return false
       if (!t) return true
-      const hay = [o.reference, o.full_name, o.email, o.phone, o.city, o.state, o.pincode].join(' ').toLowerCase()
+      const hay = [
+        o.reference, o.full_name, o.email, o.phone, o.city, o.state, o.pincode,
+        o.razorpay_order_id, o.razorpay_payment_id,
+      ].filter(Boolean).join(' ').toLowerCase()
       return hay.includes(t)
     })
   }, [state.orders, query, filter])

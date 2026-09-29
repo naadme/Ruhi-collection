@@ -21,7 +21,7 @@ export const Hero = () => {
   return (
     <section className="grid md:grid-cols-[1.1fr_1fr_1fr] min-h-[560px] md:h-[684px] bg-[#4a4a46] text-white">
       <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#e6ded3] text-[#161616] m-3 md:m-0 md:ml-[68px] md:my-[70px]">
-        <div><p className="text-xl md:text-2xl">Rohi Collection</p>
+        <div><p className="text-xl md:text-2xl">Ruhi Womens Clothing</p>
           <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[.9] mt-8 md:mt-10">New<br /><em className="bg-[#bcb3a5] px-4">Arrival</em></h1>
           <Link to="/shop" className="inline-block bg-[#161616] text-white text-2xl md:text-[30px] px-6 py-3 mt-10">Shop new arrivals</Link>
           <p className="text-xl md:text-2xl mt-8">Free shipping over ₹999</p></div></div>
@@ -45,7 +45,7 @@ export const OurStory = () => (
     <div>
       <p className="text-brand-yellow font-ui tracking-[.12em] text-lg">OUR STORY</p>
       <h2 className="font-ui text-[42px] md:text-[62px] leading-tight mt-6 mb-8 tracking-normal">Crafting fashion with passion</h2>
-      <p className="text-[22px] leading-[39px] text-black/70">Rohi Collection is a clothing brand dedicated to creating high-quality, stylish apparel that reflects your unique personality. Our journey started with a simple vision: to make fashion accessible, sustainable, and meaningful.</p>
+      <p className="text-[22px] leading-[39px] text-black/70">Ruhi Womens Clothing is a clothing brand dedicated to creating high-quality, stylish apparel that reflects your unique personality. Our journey started with a simple vision: to make fashion accessible, sustainable, and meaningful.</p>
       <p className="text-[22px] leading-[39px] text-black/70 mt-6">Every piece in our collection is carefully designed and crafted with attention to detail, ensuring you look and feel your best every day.</p>
       <div className="flex gap-5 mt-10"><Link to="/shop" className="bg-brand-yellow px-11 h-[88px] grid place-items-center rounded-lg font-bold text-[21px]">Shop Now</Link><Link to="/about" className="border-2 border-black/10 px-11 h-[88px] grid place-items-center rounded-lg font-bold text-[21px]">Learn More</Link></div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-14 pt-14 border-t border-black/10 text-center">{site.stats.map(([n, l]) => (
@@ -66,8 +66,10 @@ export const Reviews = () => {
         const p = getProduct(r.product)
         return (
         <div key={r.name} className="border border-black/10 p-4 hover:shadow-lg transition">
-          <Img src={r.img} alt={`Customer wearing ${p ? p.title : 'Rohi Collection'}`} className="w-full aspect-[1.1] object-cover" />
-          <p className="text-[#f59e0b] text-[28px] mt-6 tracking-widest" aria-label="5 out of 5 stars">★★★★★</p>
+          <Img src={r.img} alt={`Customer wearing ${p ? p.title : 'Ruhi Womens Clothing'}`} className="w-full aspect-[1.1] object-cover" />
+          <p className="text-[#f59e0b] text-[28px] mt-6 tracking-widest">
+            <span role="img" aria-label="5 out of 5 stars">★★★★★</span>
+          </p>
           <p className="mt-2 text-[22px]"><b className="font-ui">{r.name}</b> <span className="text-black/60 text-[18px] ml-2">✓ Verified Buyer</span></p>
           <p className="text-[18px] leading-[29px] text-black/70 mt-5 pb-4 border-b border-black/10">{r.text}</p>
           {p ? (

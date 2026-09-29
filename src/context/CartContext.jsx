@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { useProducts } from './ProductsContext'
 import { totalFor } from '../lib/pricing'
+import { MAX_QTY } from '../lib/checkout'
 const Ctx = createContext(null)
 export const useCart = () => useContext(Ctx)
 export function CartProvider({ children }) {
@@ -9,10 +10,21 @@ export function CartProvider({ children }) {
   const [open, setOpen] = useState(false)
   useEffect(() => localStorage.setItem('cart', JSON.stringify(items)), [items])
   const add = (id, qty = 1, size = 'M') => {
-    setItems((c) => { const k = c.find((i) => i.id === id && i.size === size); return k ? c.map((i) => (i === k ? { ...i, qty: i.qty + qty } : i)) : [...c, { id, qty, size }] })
+    const wanted = Math.min(MAX_QTY, Math.max(1, qty))
+    setItems((c) => {
+      const k = c.find((i) => i.id === id && i.size === size)
+      // Clamp the *sum*, not just the increment: a line already at 10 must not
+      // be pushed to 11 by adding one more.
+      return k
+        ? c.map((i) => (i === k ? { ...i, qty: Math.min(MAX_QTY, i.qty + wanted) } : i))
+        : [...c, { id, qty: wanted, size }]
+    })
     setOpen(true)
   }
-  const setQty = (id, size, qty) => setItems((c) => c.map((i) => (i.id === id && i.size === size ? { ...i, qty: Math.max(1, qty) } : i)))
+  const setQty = (id, size, qty) =>
+    setItems((c) => c.map((i) => (i.id === id && i.size === size
+      ? { ...i, qty: Math.min(MAX_QTY, Math.max(1, qty)) }
+      : i)))
   const remove = (id, size) => setItems((c) => c.filter((i) => !(i.id === id && i.size === size)))
   const clear = () => setItems([])
   // Drop lines whose product no longer resolves (deleted or hidden by the

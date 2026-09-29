@@ -54,7 +54,7 @@ export default function Cart() {
           ))}
         </ul>
 
-        <aside className="border border-black/12 rounded-xl p-5 lg:sticky lg:top-[130px]">
+        <aside className="border border-black/10 rounded-xl p-5 lg:sticky lg:top-[130px]">
           <h2 className="text-[18px] font-semibold font-ui">Order summary</h2>
           <dl className="mt-4 space-y-2 text-[16px]">
             <div className="flex justify-between"><dt className="text-black/65">Subtotal</dt><dd className="font-ui">{inr(subtotal)}</dd></div>
