@@ -11,7 +11,25 @@ export const site = {
   hours: 'Mon – Sat, 10:00 – 19:00 IST',
   social: [{ label: 'Instagram', href: 'https://instagram.com' }, { label: 'Facebook', href: 'https://facebook.com' }, { label: 'WhatsApp', href: 'https://wa.me/919876543210' }, { label: 'YouTube', href: 'https://youtube.com' }],
   announcements: ['Fast delivery across India', 'Free shipping on orders over ₹999', '30-day easy returns', 'Customer support 10am – 7pm', 'Secure checkout'],
-  nav: [{ label: 'Home', to: '/' }, { label: 'Shop', to: '/shop' }, { label: 'Collections', to: '/collections' }, { label: 'About', to: '/about' }, { label: 'Contact', to: '/contact' }],
+  nav: [
+    { label: 'Home', to: '/' },
+    // The catalogue branch renders as a dropdown in the header (and as a nested
+    // list in the mobile drawer). Each child deep-links into the shop's own
+    // filters, so no extra routes or pages are needed.
+    {
+      label: 'Catalogue', to: '/collections',
+      children: [
+        { label: 'Coord sets', to: '/shop?q=co-ord' },
+        { label: 'Dresses', to: '/shop?q=dress' },
+        { label: 'Tops/shirts', to: '/shop?q=shirt' },
+        { label: 'Trousers/pants', to: '/shop?type=pant' },
+        { label: 'Night wear', to: '/shop?q=night' },
+        { label: 'Kurta sets', to: '/shop?q=kurta' },
+      ],
+    },
+    { label: 'About', to: '/about' },
+    { label: 'Contact', to: '/contact' },
+  ],
   shopLinks: [{ label: 'All products', to: '/shop' }, { label: "Men's shirts", to: '/shop?gender=men&type=shirt' }, { label: "Men's pants", to: '/shop?gender=men&type=pant' }, { label: "Women's tops", to: '/shop?gender=women&type=tshirt' }, { label: "Women's pants", to: '/shop?gender=women&type=pant' }],
   service: [
     { label: 'Contact us', to: '/contact' },
