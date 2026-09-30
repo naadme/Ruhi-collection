@@ -26,7 +26,7 @@ export default function About() {
       </section>
       <section className="max-w-[1200px] mx-auto px-4 md:px-7 py-24 grid grid-cols-2 md:grid-cols-4 gap-10 text-center">{site.stats.map(([n, l]) => (
         <div key={l}><p className="font-serif font-bold text-[56px] md:text-[72px] text-brand-green leading-none">{n}</p><p className="mt-3 text-lg text-black/70">{l}</p></div>))}</section>
-      <section className="bg-[#f4f1ea] py-20 text-center px-4"><h2 className="font-serif text-[40px] md:text-[56px]">Find your next favourite.</h2>
+      <section className="bg-[#FDF7F3] py-20 text-center px-4"><h2 className="font-serif text-[40px] md:text-[56px]">Find your next favourite.</h2>
         <Link to="/shop" className="inline-block bg-brand-yellow font-bold text-xl px-12 py-5 rounded-lg mt-8">Shop now</Link></section>
     </>
   )

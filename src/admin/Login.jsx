@@ -23,7 +23,7 @@ export default function Login() {
   return (
     <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-16 font-ui">
       <Logo />
-      <div className="w-full max-w-[420px] mt-14 border border-black/10 rounded-2xl p-8 shadow-[0_2px_24px_rgba(0,0,0,.06)]">
+      <div className="w-full max-w-[420px] mt-14 border border-black/10 rounded-2xl p-8 shadow-[0_2px_24px_rgba(74,44,35,.06)]">
         <h1 className="text-[28px] font-bold tracking-tight">Admin sign in</h1>
         <p className="text-black/60 mt-1 text-[15px]">Authorised staff only. Customers don’t need this.</p>
 
@@ -62,7 +62,7 @@ export default function Login() {
 
           <button
             type="submit" disabled={busy}
-            className="w-full h-[52px] rounded-lg bg-brand-green text-white font-semibold text-[16px] tracking-wide hover:bg-[#12572f] transition disabled:opacity-60 flex items-center justify-center gap-2"
+            className="w-full h-[52px] rounded-lg bg-brand-green text-white font-semibold text-[16px] tracking-wide hover:bg-[#A86B5C] transition disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {busy ? <><Loader2 size={18} className="animate-spin" /> Signing in…</> : <>Sign in <ArrowRight size={18} /></>}
           </button>

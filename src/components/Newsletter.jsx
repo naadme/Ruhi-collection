@@ -36,7 +36,7 @@ export default function Newsletter() {
         />
         <button
           disabled={status === 'busy'}
-          className="bg-[#1a73f5] hover:bg-blue-700 text-white px-6 font-ui font-medium rounded-sm inline-flex items-center gap-2 disabled:opacity-70"
+          className="bg-[#C08576] hover:bg-blue-700 text-white px-6 font-ui font-medium rounded-sm inline-flex items-center gap-2 disabled:opacity-70"
         >
           {status === 'busy' && <Loader2 size={16} className="animate-spin" />}
           {status === 'busy' ? 'Joining…' : 'Subscribe'}

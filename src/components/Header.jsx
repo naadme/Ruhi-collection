@@ -72,7 +72,7 @@ export default function Header() {
         <div className="flex items-center gap-2 md:gap-5">
           <button onClick={() => setSearch(true)} aria-label="Search" className="p-2"><Search strokeWidth={1.4} size={26} /></button>
           <Link to="/wishlist" aria-label={`Wishlist, ${ids.length} saved`} className="p-2 relative">
-            <Heart strokeWidth={1.4} size={26} fill={ids.length ? '#dc2626' : 'none'} stroke={ids.length ? '#dc2626' : 'currentColor'} />
+            <Heart strokeWidth={1.4} size={26} fill={ids.length ? '#C08576' : 'none'} stroke={ids.length ? '#C08576' : 'currentColor'} />
             <Badge n={ids.length} />
           </Link>
           <Link to="/account" aria-label="Account" className="p-2 hidden sm:block"><User strokeWidth={1.4} size={26} /></Link>

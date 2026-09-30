@@ -442,7 +442,7 @@ function AuthForm({ mode, setMode, onDone, busy, next }) {
         </div>
         <button
           type="submit" disabled={oauthDisabled || busy}
-          className="w-full h-[52px] rounded-lg bg-brand-green text-white text-[16px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#12572f] transition disabled:opacity-60"
+          className="w-full h-[52px] rounded-lg bg-brand-green text-white text-[16px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
         >
           {(pending === 'email' || busy) && <Loader2 size={17} className="animate-spin" />}
           {(pending === 'email' || busy) ? 'Please wait…' : isSignUp ? 'Create account' : 'Log in'}
@@ -454,7 +454,7 @@ function AuthForm({ mode, setMode, onDone, busy, next }) {
         <button
           type="button"
           onClick={() => switchMode(isSignUp ? 'signin' : 'signup')}
-          className="font-semibold text-brand-green underline underline-offset-2 hover:text-[#12572f]"
+          className="font-semibold text-brand-green underline underline-offset-2 hover:text-[#A86B5C]"
         >
           {isSignUp ? 'Login' : 'Create an account'}
         </button>
@@ -522,7 +522,7 @@ export default function Account() {
         />
       </Link>
 
-      <div className="w-full max-w-[420px] mt-8 px-4 border border-black/10 rounded-2xl p-6 sm:p-8 bg-white shadow-[0_2px_24px_rgba(0,0,0,.06)]">
+      <div className="w-full max-w-[420px] mt-8 px-4 border border-black/10 rounded-2xl p-6 sm:p-8 bg-white shadow-[0_2px_24px_rgba(74,44,35,.06)]">
         <AuthForm
           key={key} mode={mode} setMode={setMode} busy={busy} next={safeNext}
           onDone={() => setKey((k) => k + 1)}

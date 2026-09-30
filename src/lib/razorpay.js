@@ -120,7 +120,7 @@ export async function openRazorpay({
       prefill,
       notes,
       // Matches brand-green in tailwind.config.js so Checkout feels native.
-      theme: { color: '#166a3a' },
+      theme: { color: '#C08576' },
       handler: (response) => settle(resolve, response),
       modal: {
         ondismiss: () =>

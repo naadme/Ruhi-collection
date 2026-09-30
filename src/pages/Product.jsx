@@ -140,7 +140,7 @@ export default function Product() {
               aria-pressed={fav}
               className="shrink-0 w-11 h-11 rounded-full border border-black/20 grid place-items-center hover:border-black transition"
             >
-              <Heart size={19} strokeWidth={1.6} fill={fav ? '#dc2626' : 'none'} stroke={fav ? '#dc2626' : '#111'} />
+              <Heart size={19} strokeWidth={1.6} fill={fav ? '#C08576' : 'none'} stroke={fav ? '#C08576' : '#4A2C23'} />
             </button>
           </div>
 
@@ -194,7 +194,7 @@ export default function Product() {
           >
             Add to cart
           </button>
-          <button onClick={() => place(true)} className="block w-full mt-3 h-14 bg-brand-green text-white text-lg hover:bg-[#12572f] transition">
+          <button onClick={() => place(true)} className="block w-full mt-3 h-14 bg-brand-green text-white text-lg hover:bg-[#A86B5C] transition">
             Buy it now
           </button>
 

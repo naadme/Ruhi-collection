@@ -103,7 +103,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
       </div>
 
       {open && (
-        <div className="border-t border-black/10 p-4 sm:p-5 grid md:grid-cols-[1.4fr_1fr] gap-6 bg-[#fcfcfb]">
+        <div className="border-t border-black/10 p-4 sm:p-5 grid md:grid-cols-[1.4fr_1fr] gap-6 bg-[#F8EDE6]">
           <div>
             <h4 className="text-[13px] font-semibold uppercase tracking-wider text-black/45">Items</h4>
             <ul className="mt-3 space-y-2">

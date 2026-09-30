@@ -49,7 +49,7 @@ function PayOption({ value, checked, onChange, title, body }) {
   return (
     <label
       className={`flex gap-3 rounded-xl p-4 border transition cursor-pointer ${
-        checked ? 'border-brand-green/40 bg-[#f4f8f5]' : 'border-black/15 bg-white hover:border-black/30'
+        checked ? 'border-brand-green/40 bg-[#F8EDE6]' : 'border-black/15 bg-white hover:border-black/30'
       }`}
     >
       <input
@@ -110,7 +110,7 @@ function Summary({ lines, subtotal, compact }) {
       </dl>
 
       {!compact && gap > 0 && (
-        <p className="mt-4 flex items-start gap-2 text-[13px] text-black/60 bg-[#f7f5f2] rounded-lg px-3 py-2.5">
+        <p className="mt-4 flex items-start gap-2 text-[13px] text-black/60 bg-[#F8EDE6] rounded-lg px-3 py-2.5">
           <Truck size={15} className="mt-[1px] shrink-0 text-brand-green" />
           Add {inr(gap)} more to your order to get free shipping. Otherwise shipping is {inr(SHIPPING_FEE)}.
         </p>
@@ -366,7 +366,7 @@ export default function Checkout() {
           <button
             type="submit"
             disabled={submitting || !lines.length}
-            className="mt-8 w-full h-[56px] rounded-md bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#12572f] transition disabled:opacity-60"
+            className="mt-8 w-full h-[56px] rounded-md bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
           >
             {submitting && <Loader2 size={18} className="animate-spin" />}
             {submitting

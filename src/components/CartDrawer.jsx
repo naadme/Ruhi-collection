@@ -20,7 +20,7 @@ export default function CartDrawer() {
         {!lines.length ? (
           <div className="flex-1 grid place-items-center text-center p-6"><div><p className="text-3xl mb-6">Your cart is empty</p>
             {/* Close + land on the shop even when we are already on /shop, where a bare Link is a no-op. */}
-            <Link to="/shop" onClick={() => { close(); window.scrollTo(0, 0) }} className="inline-block bg-[#7a6f68] text-white px-10 py-4 rounded-md">Continue shopping</Link></div></div>
+            <Link to="/shop" onClick={() => { close(); window.scrollTo(0, 0) }} className="inline-block bg-[#8A6556] text-white px-10 py-4 rounded-md">Continue shopping</Link></div></div>
         ) : (<>
           <ul className="flex-1 overflow-auto p-6 space-y-6">{lines.map((l) => (
             <li key={l.id + l.size} className="flex gap-4"><Img src={l.product.image} alt={l.product.title} className="w-20 h-24 object-cover" />

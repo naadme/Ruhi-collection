@@ -222,7 +222,7 @@ export default function Dashboard() {
           </div>
           <button
             onClick={openNew}
-            className="inline-flex items-center gap-2 h-[48px] px-5 rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#12572f] transition"
+            className="inline-flex items-center gap-2 h-[48px] px-5 rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#A86B5C] transition"
           >
             <Plus size={18} /> Add product
           </button>
@@ -292,7 +292,7 @@ export default function Dashboard() {
             {all.length === 0 && (
               <button
                 onClick={openNew}
-                className="mt-6 inline-flex items-center gap-2 h-[46px] px-5 rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#12572f] transition"
+                className="mt-6 inline-flex items-center gap-2 h-[46px] px-5 rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#A86B5C] transition"
               >
                 <Plus size={18} /> Add product
               </button>

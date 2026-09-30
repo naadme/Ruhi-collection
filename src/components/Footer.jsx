@@ -7,7 +7,7 @@ const Col = ({ title, links }) => (<div className="min-w-0"><h3 className="text-
 const PAYMENT_TITLES = { COD: 'Cash on delivery', UPI: 'Pay by UPI', Cards: 'Credit and debit cards' }
 export default function Footer() {
   return (
-    <footer className="bg-brand-green text-white">
+    <footer className="bg-[#4A2C23] text-white">
       <div className="max-w-[1600px] mx-auto px-6 md:px-[8%] pt-20 pb-6">
         {/* Five columns only from `xl`; below that the newsletter form and the
             service links cannot be squeezed into the row without overflowing. */}

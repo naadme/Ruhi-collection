@@ -442,7 +442,7 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
             type="button"
             onClick={submit}
             disabled={saving}
-            className="flex-[2] h-[48px] rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#12572f] transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            className="flex-[2] h-[48px] rounded-lg bg-brand-green text-white text-[15px] font-semibold hover:bg-[#A86B5C] transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />}
             {saving ? 'Saving…' : isNew ? 'Add product' : 'Save changes'}

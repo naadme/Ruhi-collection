@@ -43,7 +43,7 @@ function NotAuthorized({ email }) {
       <div className="mt-6 text-left bg-white border border-black/10 rounded-xl p-5">
         <p className="text-[13px] font-semibold uppercase tracking-wider text-black/45">For the store owner</p>
         <p className="text-[14px] text-black/65 mt-2">In Supabase → SQL Editor, run:</p>
-        <code className="block mt-2 bg-[#121212] text-[#e8e8e8] rounded-lg px-4 py-3 text-[13px] overflow-x-auto">
+        <code className="block mt-2 bg-[#4A2C23] text-[#F8EDE6] rounded-lg px-4 py-3 text-[13px] overflow-x-auto">
           select public.make_admin('{email || ''}');
         </code>
       </div>
@@ -65,7 +65,7 @@ export default function AdminRoot() {
   if (!session) return <Login />
 
   return (
-    <div className="min-h-screen bg-[#fafafa] font-ui flex flex-col">
+    <div className="min-h-screen bg-[#F8EDE6] font-ui flex flex-col">
       <header className="sticky top-0 z-30 bg-white border-b border-black/10">
         <div className="max-w-[1200px] mx-auto px-4 md:px-6 h-[68px] flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">

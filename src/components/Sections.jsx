@@ -19,11 +19,11 @@ export const Hero = () => {
   ), 0)
   const promo = best >= 5 ? `UP TO ${best}% OFF!` : 'SHOP THE COLLECTION'
   return (
-    <section className="grid md:grid-cols-[1.1fr_1fr_1fr] min-h-[560px] md:h-[684px] bg-[#4a4a46] text-white">
-      <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#e6ded3] text-[#161616] m-3 md:m-0 md:ml-[68px] md:my-[70px]">
+    <section className="grid md:grid-cols-[1.1fr_1fr_1fr] min-h-[560px] md:h-[684px] bg-[#4A2C23] text-white">
+      <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#F8EDE6] text-[#4A2C23] m-3 md:m-0 md:ml-[68px] md:my-[70px]">
         <div><p className="text-xl md:text-2xl">Ruhi Womens Clothing</p>
-          <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[.9] mt-8 md:mt-10">New<br /><em className="bg-[#bcb3a5] px-4">Arrival</em></h1>
-          <Link to="/shop" className="inline-block bg-[#161616] text-white text-2xl md:text-[30px] px-6 py-3 mt-10">Shop new arrivals</Link>
+          <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[.9] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
+          <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10">Shop new arrivals</Link>
           <p className="text-xl md:text-2xl mt-8">Free shipping over ₹999</p></div></div>
       <Img src={img.heroMen} alt="Men's new arrivals" className="w-full h-[420px] md:h-[calc(100%-140px)] object-cover md:mx-[68px] md:my-0 md:self-start md:mt-0 md:w-[calc(100%-0px)]" />
       <div className="grid grid-rows-[auto_auto_1fr] md:pr-[68px] md:ml-0">
@@ -51,7 +51,7 @@ export const OurStory = () => (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-14 pt-14 border-t border-black/10 text-center">{site.stats.map(([n, l]) => (
         <div key={l}><p className="font-ui text-brand-yellow text-[46px] font-bold">{n}</p><p className="uppercase text-[18px] text-black/70 mt-4 leading-9">{l}</p></div>))}</div>
     </div>
-    <Img src={img.story} alt="Our story" className="w-full aspect-square object-cover shadow-[0_30px_60px_rgba(0,0,0,.12)]" />
+    <Img src={img.story} alt="Our story" className="w-full aspect-square object-cover shadow-[0_30px_60px_rgba(74,44,35,.12)]" />
   </section>
 )
 export const Reviews = () => {
@@ -67,7 +67,7 @@ export const Reviews = () => {
         return (
         <div key={r.name} className="border border-black/10 p-4 hover:shadow-lg transition">
           <Img src={r.img} alt={`Customer wearing ${p ? p.title : 'Ruhi Womens Clothing'}`} className="w-full aspect-[1.1] object-cover" />
-          <p className="text-[#f59e0b] text-[28px] mt-6 tracking-widest">
+          <p className="text-[#C08576] text-[28px] mt-6 tracking-widest">
             <span role="img" aria-label="5 out of 5 stars">★★★★★</span>
           </p>
           <p className="mt-2 text-[22px]"><b className="font-ui">{r.name}</b> <span className="text-black/60 text-[18px] ml-2">✓ Verified Buyer</span></p>

@@ -15,7 +15,7 @@ export default function Cart() {
   if (!lines.length) return (
     <section className="text-center py-24 px-4">
       <h1 className="text-[48px] md:text-[64px]">Your cart is empty</h1>
-      <Link to="/shop" onClick={() => { setOpen(false); window.scrollTo(0, 0) }} className="inline-block bg-[#7a6f68] text-white px-12 py-5 rounded-md mt-10 text-lg">Continue shopping</Link>
+      <Link to="/shop" onClick={() => { setOpen(false); window.scrollTo(0, 0) }} className="inline-block bg-[#8A6556] text-white px-12 py-5 rounded-md mt-10 text-lg">Continue shopping</Link>
       <h2 className="text-[38px] mt-24">Have an account?</h2>
       <p className="text-xl mt-4"><Link to="/account" className="underline text-black/60">Log in</Link> to check out faster.</p>
     </section>
@@ -76,7 +76,7 @@ export default function Cart() {
 
           <Link
             to="/checkout"
-            className="mt-5 w-full h-[54px] rounded-md bg-brand-green text-white text-[17px] font-semibold grid place-items-center hover:bg-[#12572f] transition"
+            className="mt-5 w-full h-[54px] rounded-md bg-brand-green text-white text-[17px] font-semibold grid place-items-center hover:bg-[#A86B5C] transition"
           >
             Proceed to checkout
           </Link>
