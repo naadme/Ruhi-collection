@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import Img from './Img'
 import { useProducts } from '../context/ProductsContext'
+import { typeLabel } from '../data/products'
 import { inr } from '../lib/pricing'
 
 export default function SearchBar({ onClose }) {
@@ -15,7 +16,7 @@ export default function SearchBar({ onClose }) {
   // Same matching rules as the results page: name, category, collection, id and description.
   const res = term
     ? products.filter((p) =>
-        [p.title, p.type, p.gender, p.id, p.badge || '', p.desc || '']
+        [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '']
           .join(' ').toLowerCase().includes(term)
       ).slice(0, 6)
     : []
@@ -47,7 +48,7 @@ export default function SearchBar({ onClose }) {
               <Link to={`/product/${p.id}`} onClick={onClose} className="flex items-center gap-4 py-2 hover:bg-black/5">
                 <Img src={p.image} alt={p.title} className="w-12 h-14 object-cover" />
                 <span className="flex-1">{p.title}</span>
-                <span className="font-ui font-semibold">{inr(p.price)}</span>
+                <span className="font-ui font-semibold">{p.price > 0 ? inr(p.price) : ''}</span>
               </Link>
             </li>
           ))}
@@ -56,7 +57,7 @@ export default function SearchBar({ onClose }) {
 
       {term && !res.length && !loading && (
         <p className="max-w-[1000px] mx-auto px-4 mt-4 text-black/60">
-          No results for “{q.trim()}”. Try “shirt”, “pants” or a product name.
+          No results for “{q.trim()}”. Try “shirt”, “dress” or a product name.
         </p>
       )}
 

@@ -1,7 +1,7 @@
 # Ruhi Womens Clothing
 `npm install && npm run dev` (build: `npm run build`)
 - Business details, nav, footer, FAQ: `src/data/site.js` (phone/email/address are editable placeholders — set your real ones)
-- Products, reviews, categories: `src/data/products.js`; all photography URLs: `src/data/images.js` and the `A` map in products.js
+- Products, reviews, categories: `src/data/products.js`; all photography: `src/data/images.js` (every photo is a real client image in `/public/images/products`)
 - Routes: `/`, `/shop`, `/collections`, `/product/:id`, `/about`, `/contact`, `/cart`, `/account`, `/policies/:slug`
 
 ---
@@ -60,6 +60,14 @@ Migrations live in `supabase/migrations/`. Apply them to the linked project with
 ```bash
 npx supabase db push --linked --yes
 ```
+
+**Apply `20261001090000_womens_client_catalogue.sql` too** (paste it into the SQL editor, or
+push it with the command above). It swaps the old demo rows for the client's real catalogue:
+42 women's products across the three folders in `public/images/products/` — Tops & Shirts,
+Co-ord Sets and Dresses — each row carrying its own photo gallery. Until it has run, the
+storefront ignores whatever the `products` table holds and serves that bundled catalogue
+instead, so the demo catalogue can never appear on the site; the dashboard, however, only
+lists what is actually in the table.
 
 Row Level Security is on for every table. Highlights:
 

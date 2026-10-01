@@ -4,7 +4,7 @@ import { img } from '../data/images'
 import { site } from '../data/site'
 import usePageTitle from '../hooks/usePageTitle'
 export default function About() {
-  usePageTitle('About', 'The story behind Ruhi Womens Clothing — thoughtfully made everyday fashion for men and women, checked for fabric, stitching and fit before it ships.')
+  usePageTitle('About', 'The story behind Ruhi Womens Clothing — thoughtfully made everyday fashion, checked for fabric, stitching and fit before it ships.')
   return (
     <>
       <section className="relative h-[70vh] min-h-[440px] bg-neutral-300">

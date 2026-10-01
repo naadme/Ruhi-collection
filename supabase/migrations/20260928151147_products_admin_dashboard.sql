@@ -3,10 +3,16 @@
 -- Nothing here touches newsletter_subscribers or contact_messages: their
 -- existing RLS policies are deliberately left untouched.
 --
--- Storefront contract (unchanged, mirrors the original src/data/products.js):
---   id, title, gender('men'|'women'), type('shirt'|'tshirt'|'pant'),
---   price, compare, rating, reviews, image, hover, badge, sizes, desc(->description),
---   plus is_active for visibility.
+-- Storefront contract, kept in step with
+-- 20261001090000_womens_client_catalogue.sql (the current catalogue migration):
+--   id, title, gender('women' only), type('tops'|'coord'|'dress'),
+--   price, compare, rating, reviews, image, hover, badge, sizes,
+--   desc(->description), plus is_active for visibility; gallery text[] is
+--   added by the migration named above.
+--
+-- The store is women-only and no demo catalogue is seeded here: the real
+-- products are inserted, from the client's own photos, by the migration
+-- named above.
 
 -- ---------------------------------------------------------------------------
 -- 1. Products
@@ -14,8 +20,8 @@
 create table if not exists public.products (
   id           text primary key,
   title        text not null check (length(trim(title)) > 0),
-  gender       text not null default 'men' check (gender in ('men', 'women')),
-  type         text not null default 'shirt' check (type in ('shirt', 'tshirt', 'pant')),
+  gender       text not null default 'women' check (gender = 'women'),
+  type         text not null default 'tops' check (type in ('tops', 'coord', 'dress')),
   price        integer not null check (price >= 0),
   compare      integer check (compare is null or compare >= 0),
   rating       numeric(4,1) not null default 0,
@@ -157,26 +163,14 @@ exception
   when others            then null; -- non-critical, never fail the migration
 end $$;
 
+
 -- ---------------------------------------------------------------------------
--- 6. Seed — the storefront's existing catalogue, unchanged
+-- 6. Seed
 -- ---------------------------------------------------------------------------
--- Seeded automatically from the original src/data/products.js
--- (16 products — the storefront content is unchanged).
-insert into public.products (id, title, gender, type, price, compare, rating, reviews, image, hover, badge, sizes, description, is_active) values
-  ('men-shirt-1', 'Men''s Caudray Co-Ord Set Black', 'men', 'shirt', 899, 999, 4.8, 223, 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('men-shirt-2', 'Men''s Shirt', 'men', 'shirt', 799, null, 4.9, 346, 'https://images.unsplash.com/photo-1607345366928-199ea26cfe3e?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('men-shirt-3', 'Men''s Printed Spread Collar Casual Shirt Navy Blue', 'men', 'shirt', 599, null, 5, 469, 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('men-shirt-4', 'Men''s Printed Spread Collar Casual Shirt Multicolor', 'men', 'shirt', 599, null, 5.1, 592, 'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('men-pant-1', 'Men''s Caudray Fabric Stylish Pants', 'men', 'pant', 499, null, 4.8, 223, 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1542272604-787c3835535d?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('men-pant-2', 'Men''s White Baggy Fit Pants', 'men', 'pant', 699, null, 4.9, 346, 'https://images.unsplash.com/photo-1542272604-787c3835535d?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('men-pant-3', 'Men''s Slim Fit Formal Pants', 'men', 'pant', 599, null, 5, 469, 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('men-pant-4', 'Men''s Cargo Casual Pants', 'men', 'pant', 599, null, 5.1, 592, 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('women-tshirt-1', 'Ketex Yellow Cotton Blend Polo Neck Tshirt', 'women', 'tshirt', 699, null, 4.8, 223, 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('women-tshirt-2', 'Ketex White Cotton Blend Polo Neck Tshirt', 'women', 'tshirt', 599, null, 4.9, 346, 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('women-tshirt-3', 'Ketex Sky Blue Cotton Blend Polo Neck Tshirt', 'women', 'tshirt', 499, null, 5, 469, 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('women-tshirt-4', 'Ketex Royal Blue Cotton Blend Polo Neck Tshirt', 'women', 'tshirt', 499, null, 5.1, 592, 'https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('women-pant-1', 'Women''s Classic Stylish Pant Pink', 'women', 'pant', 699, null, 4.8, 223, 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('women-pant-2', 'Women''s High Waist Wide Leg Pant White', 'women', 'pant', 699, null, 4.9, 346, 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('women-pant-3', 'Women''s Straight Fit Pant Black', 'women', 'pant', 599, null, 5, 469, 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true),
-  ('women-pant-4', 'Women''s Relaxed Fit Pant Beige', 'women', 'pant', 599, null, 5.1, 592, 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=900&q=80', 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=900&q=80', 'Bestseller', '{S,M,L,XL}', 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.', true)
-on conflict (id) do nothing;
+-- No demo catalogue is seeded here. This migration used to insert 16 stock
+-- demo rows (placeholder stock photos and sample products); that seed block
+-- has been removed so no fake product exists anywhere in this repo.
+-- The store is women-only and is seeded with the client's real photos by
+-- 20261001090000_womens_client_catalogue.sql, which deletes every existing
+-- row before inserting, so this file staying seed-free is safe both for a
+-- fresh database and for one that has already been migrated.

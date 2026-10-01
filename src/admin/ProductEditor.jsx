@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Loader2, X, Upload, Link2, Trash2, Check } from 'lucide-react'
 import useOverlay from '../hooks/useOverlay'
 import { supabase } from '../lib/supabase'
+import { TYPES } from '../data/products'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[48px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
@@ -12,17 +13,18 @@ const SIZE_OPTIONS = ['S', 'M', 'L', 'XL', 'XXL']
 export const blankProduct = () => ({
   id: '',
   title: '',
-  gender: 'men',
-  type: 'shirt',
+  type: TYPES[0].key,
   price: '',
   compare: '',
   badge: '',
-  rating: 4.5,
+  rating: 0,
   reviews: 0,
   sizes: ['S', 'M', 'L', 'XL'],
   desc: '',
   image: '',
   hover: '',
+  gallery: [],
+  galleryDirty: false,
   is_active: true,
 })
 
@@ -32,8 +34,7 @@ export const toForm = (p) =>
     ? {
         id: p.id ?? '',
         title: p.title ?? '',
-        gender: p.gender ?? 'men',
-        type: p.type ?? 'shirt',
+        type: p.type ?? TYPES[0].key,
         price: p.price ?? '',
         compare: p.compare ?? '',
         badge: p.badge ?? '',
@@ -43,15 +44,18 @@ export const toForm = (p) =>
         desc: p.desc ?? '',
         image: p.image ?? '',
         hover: p.hover ?? '',
+        gallery: Array.isArray(p.gallery) ? p.gallery : [],
+        galleryDirty: false,
         is_active: p.is_active !== false,
       }
     : blankProduct()
 
-// editor form -> DB payload (mirrors the migration's columns exactly)
+// editor form -> DB payload (mirrors the migration's columns exactly).
+// `gallery` is only written when the images themselves changed, so editing a
+// price never drops the extra photos of a product.
 export const toPayload = (f) => ({
   id: f.id.trim(),
   title: f.title.trim(),
-  gender: f.gender,
   type: f.type,
   price: Math.max(0, Math.round(Number(f.price) || 0)),
   compare: f.compare === '' || f.compare === null ? null : Math.max(0, Math.round(Number(f.compare))),
@@ -62,6 +66,7 @@ export const toPayload = (f) => ({
   description: f.desc || '',
   image: (f.image || '').trim() || null,
   hover: (f.hover || '').trim() || null,
+  ...(f.galleryDirty ? { gallery: [...new Set([f.image, f.hover].filter(Boolean))] } : {}),
   is_active: !!f.is_active,
 })
 
@@ -168,7 +173,12 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
     }
   }, [open, initial])
 
-  const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
+  const set = (k) => (v) => setForm((f) => ({
+    ...f,
+    [k]: v,
+    // Touching a photo rebuilds the product's gallery from the images on file.
+    ...(k === 'image' || k === 'hover' ? { galleryDirty: true } : {}),
+  }))
 
   const upload = async (field, file) => {
     setError('')
@@ -252,7 +262,7 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
                   set('title')(e.target.value)
                   if (isNew && !form.id) setForm((f) => ({ ...f, title: e.target.value, id: slug(e.target.value) }))
                 }}
-                placeholder="Men's Caudray Co-Ord Set Black"
+                placeholder="Acid wash coord set - Beige"
                 className={`${inputCls} mt-1.5`}
               />
             </label>
@@ -264,7 +274,7 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
                 onChange={(e) => set('id')(slug(e.target.value))}
                 readOnly={!isNew}
                 disabled={!isNew}
-                placeholder="men-shirt-1"
+                placeholder="acid-wash-coord-set-beige"
                 className={`${inputCls} mt-1.5 font-mono text-[14px] disabled:bg-neutral-100 disabled:text-black/45`}
               />
               <span className="block text-[12px] text-black/45 mt-1.5">
@@ -272,23 +282,12 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
               </span>
             </label>
 
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className={labelCls}>Collection</span>
-                <select value={form.gender} onChange={(e) => set('gender')(e.target.value)} className={`${inputCls} mt-1.5`}>
-                  <option value="men">Men</option>
-                  <option value="women">Women</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className={labelCls}>Category</span>
-                <select value={form.type} onChange={(e) => set('type')(e.target.value)} className={`${inputCls} mt-1.5`}>
-                  <option value="shirt">Shirts</option>
-                  <option value="tshirt">T-shirts</option>
-                  <option value="pant">Pants</option>
-                </select>
-              </label>
-            </div>
+            <label className="block">
+              <span className={labelCls}>Category</span>
+              <select value={form.type} onChange={(e) => set('type')(e.target.value)} className={`${inputCls} mt-1.5`}>
+                {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            </label>
           </Section>
 
           <Section title="Pricing">

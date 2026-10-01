@@ -1,6 +1,7 @@
 import { Link, useSearchParams } from 'react-router-dom'
 import ProductGrid, { ResetLink } from '../components/ProductGrid'
 import { useProducts } from '../context/ProductsContext'
+import { TYPES, typeLabel } from '../data/products'
 import usePageTitle from '../hooks/usePageTitle'
 
 const Sel = ({ label, value, onChange, opts }) => (
@@ -15,17 +16,16 @@ const Sel = ({ label, value, onChange, opts }) => (
 // Search across everything a shopper might type: product name, category,
 // collection, product id, badge and description.
 const matches = (p, query) => {
-  const haystack = [p.title, p.type, p.gender, p.id, p.badge || '', p.desc || '']
+  const haystack = [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '']
     .join(' ').toLowerCase()
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((t) => haystack.includes(t))
 }
 
 export default function Shop() {
-  usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — shirts, T-shirts and pants for men and women. Filter by category, sort by price and find your fit. Free shipping over ₹999.')
+  usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — co-ord sets, dresses, tops and shirts. Filter by category, sort by price and find your fit. Free shipping over ₹999.')
   const { products, loading, error, source } = useProducts()
   const [sp, setSp] = useSearchParams()
 
-  const g = sp.get('gender') || ''
   const t = sp.get('type') || ''
   const q = sp.get('q') || ''
   const sort = sp.get('sort') || ''
@@ -33,7 +33,7 @@ export default function Shop() {
   const clearAll = () => setSp(new URLSearchParams(q ? { q } : {}))
 
   const filtered = products.filter(
-    (p) => (!g || p.gender === g) && (!t || p.type === t) && (!q || matches(p, q))
+    (p) => (!t || p.type === t) && (!q || matches(p, q))
   )
   const items = [...filtered]
   if (sort === 'low') items.sort((a, b) => a.price - b.price)
@@ -43,13 +43,10 @@ export default function Shop() {
 
   const heading = q
     ? `Results for “${q}”`
-    : g === 'men' && t ? `${t === 'shirt' ? 'Shirts' : t === 'tshirt' ? 'T-shirts' : 'Pants'} for men`
-    : g === 'women' && t ? `${t === 'shirt' ? 'Shirts' : t === 'tshirt' ? 'T-shirts' : 'Pants'} for women`
-    : g ? (g === 'men' ? "Men's collection" : "Women's collection")
-    : t ? (t === 'shirt' ? 'Shirts' : t === 'tshirt' ? 'T-shirts' : 'Pants')
+    : t ? typeLabel(t)
     : 'Shop all'
 
-  const hasFilters = !!(g || t || q)
+  const hasFilters = !!(t || q)
 
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-12">
@@ -64,8 +61,7 @@ export default function Shop() {
 
       <div className="flex flex-wrap gap-4 justify-between my-8 border-y border-black/10 py-4">
         <div className="flex flex-wrap gap-4">
-          <Sel label="Gender" value={g} onChange={set('gender')} opts={[['', 'All'], ['men', 'Men'], ['women', 'Women']]} />
-          <Sel label="Type" value={t} onChange={set('type')} opts={[['', 'All'], ['shirt', 'Shirts'], ['tshirt', 'T-shirts'], ['pant', 'Pants']]} />
+          <Sel label="Type" value={t} onChange={set('type')} opts={[['', 'All'], ...TYPES.map((x) => [x.key, x.label])]} />
         </div>
         <div className="flex items-center gap-4">
           <Sel label="Sort" value={sort} onChange={set('sort')} opts={[
@@ -81,7 +77,7 @@ export default function Shop() {
         loading={loading && source !== 'database'}
         empty={{
           title: q ? `Nothing matches “${q}”` : 'No products in this view',
-          body: source === 'database'
+          body: !loading
             ? 'Try a different search, or clear the filters to see everything.'
             : 'The catalogue is still loading — please refresh.',
           action: hasFilters ? <ResetLink to="/shop" label="Show all products" /> : null,

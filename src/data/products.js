@@ -1,58 +1,116 @@
-// Edit products here. Images live in /public/images/products (swap .svg for .jpg/.png as needed).
-import { u, img } from './images'
-const base = { badge: 'Bestseller', sizes: ['S', 'M', 'L', 'XL'], desc: 'Soft, breathable fabric with a comfortable everyday fit. Machine washable; colour stays true after repeated washes.' }
-const A = {
-  'men-shirt-1': ['1596755094514-f87e34085b2c', '1602810318383-e386cc2a3ccf'], 'men-shirt-2': ['1607345366928-199ea26cfe3e', '1596755094514-f87e34085b2c'],
-  'men-shirt-3': ['1552374196-1ab2a1c593e8', '1489987707025-afc232f7ea0f'], 'men-shirt-4': ['1489987707025-afc232f7ea0f', '1552374196-1ab2a1c593e8'],
-  'men-pant-1': ['1473966968600-fa801b869a1a', '1542272604-787c3835535d'], 'men-pant-2': ['1542272604-787c3835535d', '1473966968600-fa801b869a1a'],
-  'men-pant-3': ['1624378439575-d8705ad7ae80', '1507679799987-c73779587ccf'], 'men-pant-4': ['1507679799987-c73779587ccf', '1624378439575-d8705ad7ae80'],
-  'women-tshirt-1': ['1503342217505-b0a15ec3261c', '1509631179647-0177331693ae'], 'women-tshirt-2': ['1583743814966-8936f5b7be1a', '1503342217505-b0a15ec3261c'],
-  'women-tshirt-3': ['1434389677669-e08b4cac3105', '1509631179647-0177331693ae'], 'women-tshirt-4': ['1509631179647-0177331693ae', '1434389677669-e08b4cac3105'],
-  'women-pant-1': ['1541099649105-f69ad21f3246', '1469334031218-e382a71b716b'], 'women-pant-2': ['1469334031218-e382a71b716b', '1541099649105-f69ad21f3246'],
-  'women-pant-3': ['1483985988355-763728e1935b', '1529139574466-a303027c1d8b'], 'women-pant-4': ['1529139574466-a303027c1d8b', '1483985988355-763728e1935b'],
+// The catalogue — every product and photo comes from the client's own
+// "Product Images" folder (Tops&Shirts, Coord sets, Dresses).
+// Images live in /public/images/products and are referenced by absolute path.
+//
+// Prices, ratings, review counts, badges and descriptions are intentionally
+// left empty: the client folder contains photos and names only, so no values
+// are invented here. Fill them in when the client supplies them.
+import { img } from './images'
+
+// The three client folders are the store's categories (and the shop's Type filter).
+export const TYPES = [
+  { key: 'tops', label: 'Tops & Shirts' },
+  { key: 'coord', label: 'Co-ord Sets' },
+  { key: 'dress', label: 'Dresses' },
+]
+export const typeLabel = (key) => TYPES.find((t) => t.key === key)?.label || key
+
+const base = {
+  price: 0,
+  compare: null,
+  rating: 0,
+  reviews: 0,
+  badge: null,
+  sizes: ['S', 'M', 'L', 'XL'],
+  desc: '',
 }
-const p = (id, gender, type, title, price, rating, reviews, compare) => ({ ...base, id, gender, type, title, price, compare, rating, reviews, image: u(A[id][0], 900), hover: u(A[id][1], 900) })
+const p = (id, type, title, gallery) => ({
+  ...base,
+  id,
+  type,
+  title,
+  gallery,
+  image: gallery[0],
+  hover: gallery[1] || gallery[0],
+})
+
 export const products = [
-  p('men-shirt-1', 'men', 'shirt', "Men's Caudray Co-Ord Set Black", 899, 4.8, 223, 999),
-  p('men-shirt-2', 'men', 'shirt', "Men's Shirt", 799, 4.9, 346),
-  p('men-shirt-3', 'men', 'shirt', "Men's Printed Spread Collar Casual Shirt Navy Blue", 599, 5.0, 469),
-  p('men-shirt-4', 'men', 'shirt', "Men's Printed Spread Collar Casual Shirt Multicolor", 599, 5.1, 592),
-  p('men-pant-1', 'men', 'pant', "Men's Caudray Fabric Stylish Pants", 499, 4.8, 223),
-  p('men-pant-2', 'men', 'pant', "Men's White Baggy Fit Pants", 699, 4.9, 346),
-  p('men-pant-3', 'men', 'pant', "Men's Slim Fit Formal Pants", 599, 5.0, 469),
-  p('men-pant-4', 'men', 'pant', "Men's Cargo Casual Pants", 599, 5.1, 592),
-  p('women-tshirt-1', 'women', 'tshirt', 'Ketex Yellow Cotton Blend Polo Neck Tshirt', 699, 4.8, 223),
-  p('women-tshirt-2', 'women', 'tshirt', 'Ketex White Cotton Blend Polo Neck Tshirt', 599, 4.9, 346),
-  p('women-tshirt-3', 'women', 'tshirt', 'Ketex Sky Blue Cotton Blend Polo Neck Tshirt', 499, 5.0, 469),
-  p('women-tshirt-4', 'women', 'tshirt', 'Ketex Royal Blue Cotton Blend Polo Neck Tshirt', 499, 5.1, 592),
-  p('women-pant-1', 'women', 'pant', "Women's Classic Stylish Pant Pink", 699, 4.8, 223),
-  p('women-pant-2', 'women', 'pant', "Women's High Waist Wide Leg Pant White", 699, 4.9, 346),
-  p('women-pant-3', 'women', 'pant', "Women's Straight Fit Pant Black", 599, 5.0, 469),
-  p('women-pant-4', 'women', 'pant', "Women's Relaxed Fit Pant Beige", 599, 5.1, 592),
+  p('denim-shirt-black', 'tops', 'Denim Shirt - Black', ['/images/products/denim-shirt-black.jpg', '/images/products/denim-shirts.jpg']),
+  p('denim-shirt-blue', 'tops', 'Denim Shirt - Blue', ['/images/products/denim-shirt-blue.jpg']),
+  p('panda-tshirt-black', 'tops', 'Panda Tshirt - Black', ['/images/products/panda-tshirt-black.jpg', '/images/products/panda-tshirts.jpg']),
+  p('panda-tshirt-white', 'tops', 'Panda Tshirt - White', ['/images/products/panda-tshirt-white.jpg']),
+  p('acid-wash-coord-set-beige', 'coord', 'Acid wash coord set - Beige', ['/images/products/acid-wash-coord-set-beige.jpg']),
+  p('acid-wash-coord-set-brown', 'coord', 'Acid wash coord set - Brown', ['/images/products/acid-wash-coord-set-brown.jpg']),
+  p('acid-wash-coord-set-grey', 'coord', 'Acid wash coord set - Grey', ['/images/products/acid-wash-coord-set-grey.jpg']),
+  p('acid-wash-coord-set-maroon', 'coord', 'Acid wash coord set - Maroon', ['/images/products/acid-wash-coord-set-maroon.jpg']),
+  p('acid-wash-coord-set-olive-green', 'coord', 'Acid wash coord set - Olive Green', ['/images/products/acid-wash-coord-set-olive-green.jpg']),
+  p('denim-pant-coord-set-black', 'coord', 'Denim pant coord set - Black', ['/images/products/denim-pant-coord-set-black.jpg']),
+  p('denim-pant-coord-set-brown', 'coord', 'Denim pant coord set - Brown', ['/images/products/denim-pant-coord-set-brown.jpg']),
+  p('denim-pant-coord-set-orange', 'coord', 'Denim pant coord set - Orange', ['/images/products/denim-pant-coord-set-orange.jpg']),
+  p('denim-pant-coord-set-pink', 'coord', 'Denim pant coord set - Pink', ['/images/products/denim-pant-coord-set-pink.jpg']),
+  p('denim-pant-coord-set-purple', 'coord', 'Denim pant coord set - Purple', ['/images/products/denim-pant-coord-set-purple.jpg']),
+  p('denim-pant-coord-set-yellow', 'coord', 'Denim pant coord set - Yellow', ['/images/products/denim-pant-coord-set-yellow.jpg']),
+  p('embroidery-coord-set-beige', 'coord', 'Embroidery coord set - Beige', ['/images/products/embroidery-coord-set-beige.jpg', '/images/products/embroidery-coord-set-beige2.jpg', '/images/products/embroidery-coord-set-beige3.jpg']),
+  p('embroidery-coord-set-black', 'coord', 'Embroidery coord set - Black', ['/images/products/embroidery-coord-set-black.jpg', '/images/products/embroidery-coord-set-black2.jpg']),
+  p('embroidery-coord-set-blue', 'coord', 'Embroidery coord set - Blue', ['/images/products/embroidery-coord-set-blue.jpg', '/images/products/embroidery-coord-set-blue2.jpg']),
+  p('embroidery-coord-set-orange', 'coord', 'Embroidery coord set - Orange', ['/images/products/embroidery-coord-set-orange.jpg', '/images/products/embroidery-coord-set-orange2.jpg', '/images/products/embroidery-coord-set-orange3.jpg']),
+  p('pulkadot-coord-set-pink', 'coord', 'Pulkadot coord set - Pink', ['/images/products/pulkadot-coord-set-pink.jpg']),
+  p('pulkadot-coord-set-purple', 'coord', 'Pulkadot coord set - Purple', ['/images/products/pulkadot-coord-set-purple.jpg']),
+  p('shirt-pant-coord-set-black', 'coord', 'Shirt pant coord set - Black', ['/images/products/shirt-pant-coord-set-black.jpg', '/images/products/shirt-pant-coord-set-black2.jpg']),
+  p('shirt-pant-coord-set-brown', 'coord', 'Shirt pant coord set - Brown', ['/images/products/shirt-pant-coord-set-brown.jpg', '/images/products/shirt-pant-coord-set-brown2.jpg']),
+  p('shirt-pant-coord-set-neon-green', 'coord', 'Shirt pant coord set - Neon Green', ['/images/products/shirt-pant-coord-set-neon-green.jpg']),
+  p('shirt-pant-coord-set-purple', 'coord', 'Shirt pant coord set - Purple', ['/images/products/shirt-pant-coord-set-purple.jpg']),
+  p('shirt-pant-coord-set-red', 'coord', 'Shirt pant coord set - Red', ['/images/products/shirt-pant-coord-set-red.jpg']),
+  p('shirt-pant-coord-set-sky-blue', 'coord', 'Shirt pant coord set - Sky Blue', ['/images/products/shirt-pant-coord-set-sky-blue.jpg']),
+  p('shirt-pant-coord-set-yellow', 'coord', 'Shirt pant coord set - Yellow', ['/images/products/shirt-pant-coord-set-yellow.jpg']),
+  p('shorts-and-shirt-babypink', 'coord', 'Shorts and Shirt - Babypink', ['/images/products/shorts-and-shirt-babypink.jpg']),
+  p('shorts-and-shirt-blue', 'coord', 'Shorts and Shirt - Blue', ['/images/products/shorts-and-shirt-blue.jpg']),
+  p('shorts-and-shirt-maroon', 'coord', 'Shorts and Shirt - Maroon', ['/images/products/shorts-and-shirt-maroon.jpg']),
+  p('shorts-and-shirt-olive-green', 'coord', 'Shorts and Shirt - Olive Green', ['/images/products/shorts-and-shirt-olive-green.jpg']),
+  p('shorts-and-shirt-orange', 'coord', 'Shorts and Shirt - Orange', ['/images/products/shorts-and-shirt-orange.jpg']),
+  p('shorts-and-shirt-royalblue', 'coord', 'Shorts and Shirt - Royalblue', ['/images/products/shorts-and-shirt-royalblue.jpg']),
+  p('solid-coord-set-red', 'coord', 'Solid Coord set - Red', ['/images/products/solid-coord-set-red.jpg']),
+  p('solid-shirtpant-set-orange', 'coord', 'Solid Shirtpant set - Orange', ['/images/products/solid-shirtpant-set-orange.jpg']),
+  p('solid-shirtpant-set-royalblue', 'coord', 'Solid Shirtpant set - Royalblue', ['/images/products/solid-shirtpant-set-royalblue.jpg']),
+  p('denim-dress', 'dress', 'Denim Dress', ['/images/products/denim-dress1.jpg']),
+  p('stripes-dress-blue', 'dress', 'Stripes Dress - Blue', ['/images/products/stripes-dress-blue.jpg']),
+  p('stripes-dress-brown', 'dress', 'Stripes Dress - Brown', ['/images/products/stripes-dress-brown.jpg']),
+  p('stripes-dress-pink', 'dress', 'Stripes Dress - Pink', ['/images/products/stripes-dress-pink.jpg']),
+  p('stripes-dress-yellow', 'dress', 'Stripes Dress - Yellow', ['/images/products/stripes-dress-yellow.jpg']),
 ]
 export const getProduct = (id) => products.find((x) => x.id === id)
+
+// The store is women-only: a single collection whose tabs are the three
+// catalogue types above.
 export const collections = [
-  { key: 'men', title: "Men's Collection", subtitle: 'Elevate Your Look with Men’s Wear', tabs: [['shirt', 'Shirt'], ['pant', 'Pant']] },
-  { key: 'women', title: "Women's Collection", subtitle: 'Unfold Your Style — Women’s Wear', tabs: [['tshirt', 'T shirt'], ['pant', 'Pant']] },
+  {
+    key: 'women',
+    title: "Women's Collection",
+    subtitle: 'Unfold Your Style — Women’s Wear',
+    tabs: TYPES.map((t) => [t.key, t.label]),
+  },
 ]
-export const categories = [
-  { label: "Women's pants", image: img.catWomenPant, to: '/shop?gender=women&type=pant' },
-  { label: "Men's pants", image: img.catMenPant, to: '/shop?gender=men&type=pant' },
-  { label: 'Shirts', image: img.catShirt, to: '/shop?type=shirt' },
-  { label: 'T-shirts', image: img.catTshirt, to: '/shop?type=tshirt' },
-]
+
+export const categories = TYPES.map((t) => ({
+  label: t.label,
+  image: img[{ tops: 'catTops', coord: 'catCoord', dress: 'catDress' }[t.key]],
+  to: `/shop?type=${t.key}`,
+}))
+
+// Testimonials are existing site copy; the linked product and photo always
+// point at the real client catalogue.
 export const reviews = [
-  { name: 'Rohit', img: img.r1, product: 'men-shirt-3', title: "Men's Printed Half Sleeves Regular Collar Casual Shirt", price: 599, text: "The shirt quality is amazing, fabric feels soft and the fitting is just perfect. Even after 2 washes, the color didn't fade. Perfect for daily wear" },
-  { name: 'Amit', img: img.r2, product: 'men-pant-1', title: "Men's Caudray Fabric Stylish Pants", price: 499, text: 'The fabric is stretchable and very comfortable. I use it for both office and casual wear. Stitching is strong and the size was accurate. Worth the money' },
-  { name: 'Neha', img: img.r3, product: 'women-pant-1', title: "Women's Classic Stylish Pant Pink", price: 699, text: 'These pants are super comfortable, skin-friendly material, and stylish fitting. Looks great with both jeans and tops. Definitely recommend!' },
-  { name: 'Priya', img: img.r4, product: 'women-tshirt-1', title: 'Ketex Maroon Cotton Blend Polo Neck Tshirt', price: 499, text: 'The T-shirt design is trendy and the cotton fabric is really soft. Feels light and comfortable even in summer. Loved the colors as well' },
+  { name: 'Rohit', img: img.r1, product: 'embroidery-coord-set-beige', text: "The shirt quality is amazing, fabric feels soft and the fitting is just perfect. Even after 2 washes, the color didn't fade. Perfect for daily wear" },
+  { name: 'Amit', img: img.r2, product: 'shorts-and-shirt-blue', text: 'The fabric is stretchable and very comfortable. I use it for both office and casual wear. Stitching is strong and the size was accurate. Worth the money' },
+  { name: 'Neha', img: img.r3, product: 'embroidery-coord-set-black', text: 'These pants are super comfortable, skin-friendly material, and stylish fitting. Looks great with both jeans and tops. Definitely recommend!' },
+  { name: 'Priya', img: img.r4, product: 'panda-tshirt-black', text: 'The T-shirt design is trendy and the cotton fabric is really soft. Feels light and comfortable even in summer. Loved the colors as well' },
 ]
+
 // Tiles reference products by id so reordering or adding products cannot
 // silently repoint them at the wrong image.
 const tileImg = (id) => getProduct(id).image
 export const collectionTiles = [
-  { title: "Men's Shirts", text: 'Printed, casual and co-ord sets', image: tileImg('men-shirt-1'), to: '/shop?gender=men&type=shirt' },
-  { title: "Men's Pants", text: 'Relaxed and tailored fits', image: tileImg('men-pant-1'), to: '/shop?gender=men&type=pant' },
-  { title: "Women's Tops", text: 'Polo tees in every colour', image: tileImg('women-tshirt-1'), to: '/shop?gender=women&type=tshirt' },
-  { title: "Women's Pants", text: 'Wide-leg and straight cuts', image: tileImg('women-pant-1'), to: '/shop?gender=women&type=pant' },
+  { title: 'Tops & Shirts', text: 'Denim shirts and panda tees', image: tileImg('denim-shirt-blue'), to: '/shop?type=tops' },
+  { title: 'Co-ord Sets', text: 'Shirt and pant sets in every colour', image: tileImg('shirt-pant-coord-set-neon-green'), to: '/shop?type=coord' },
+  { title: 'Dresses', text: 'Denim and striped dresses', image: tileImg('stripes-dress-yellow'), to: '/shop?type=dress' },
 ]

@@ -8,20 +8,19 @@ import usePageTitle from '../hooks/usePageTitle'
 // the live catalogue so a tile never promises products the store doesn't have.
 const countFor = (products, to) => {
   const params = new URLSearchParams(to.split('?')[1] || '')
-  const g = params.get('gender')
   const t = params.get('type')
-  return products.filter((p) => (!g || p.gender === g) && (!t || p.type === t)).length
+  return products.filter((p) => (!t || p.type === t)).length
 }
 
 export default function Collections() {
-  usePageTitle('Collections', 'Browse the Ruhi Womens Clothing ranges — men’s shirts and pants, women’s tops and pants.')
+  usePageTitle('Collections', 'Browse the Ruhi Womens Clothing ranges — tops and shirts, co-ord sets and dresses.')
   const { products, loading } = useProducts()
 
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-14">
       <h1 className="text-[36px] md:text-[44px] text-center">Collections</h1>
       <p className="text-center text-xl text-black/60 mt-3">Pick a collection to start browsing</p>
-      <div className="grid sm:grid-cols-2 gap-4 mt-12">
+      <div className="grid sm:grid-cols-3 gap-4 mt-12">
         {collectionTiles.map((c) => {
           const n = countFor(products, c.to)
           return (

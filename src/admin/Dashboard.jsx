@@ -5,6 +5,7 @@ import {
   CheckCircle2, ArrowUpRight, Inbox,
 } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
+import { typeLabel } from '../data/products'
 import { supabase } from '../lib/supabase'
 import ProductEditor from './ProductEditor'
 import OrdersPanel from './OrdersPanel'
@@ -326,7 +327,7 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1 basis-[calc(100%-4.5rem)] sm:basis-auto">
                   <p className="font-semibold text-[16px] leading-snug truncate">{p.title}</p>
                   <p className="text-[13px] text-black/50 mt-0.5 capitalize">
-                    {p.gender} · {p.type.replace('tshirt', 't-shirt')} · <span className="font-mono normal-case">{p.id}</span>
+                    {typeLabel(p.type)} · <span className="font-mono normal-case">{p.id}</span>
                   </p>
                   <p className="text-[15px] mt-1 font-medium">
                     <span className="text-red-600 font-bold">₹{p.price}</span>

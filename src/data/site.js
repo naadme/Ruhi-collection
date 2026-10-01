@@ -1,12 +1,19 @@
 // Business details — edit these constants; they feed the footer, contact page and announcement bar.
 // Shipping charges live in src/lib/pricing.js and must match the database rule
 // in supabase/migrations/20260928181500_orders_and_checkout.sql.
+import { TYPES } from './products'
+
+// Every category link (header dropdown, footer shop list) is generated from the
+// catalogue's own TYPES, so the navigation, the footer and the shop's Type
+// filter can never disagree about what a category is called.
+const typeLink = (t) => ({ label: t.label, to: `/shop?type=${t.key}` })
+
 export const site = {
   name: 'Ruhi Womens Clothing',
   short: 'RUHI',
-  tagline: 'Everyday fashion for men and women — thoughtfully made, honestly priced.',
+  tagline: 'Everyday fashion for women — thoughtfully made, honestly priced.',
   address: 'Ruhi Womens Clothing Studio, Mumbai, Maharashtra, India',
-  phone: '+91 98765 43210',
+  phone: '9046651272',
   email: 'care@example.com',
   hours: 'Mon – Sat, 10:00 – 19:00 IST',
   social: [{ label: 'Instagram', href: 'https://instagram.com' }, { label: 'Facebook', href: 'https://facebook.com' }, { label: 'WhatsApp', href: 'https://wa.me/919876543210' }, { label: 'YouTube', href: 'https://youtube.com' }],
@@ -18,19 +25,12 @@ export const site = {
     // filters, so no extra routes or pages are needed.
     {
       label: 'Catalogue', to: '/collections',
-      children: [
-        { label: 'Coord sets', to: '/shop?q=co-ord' },
-        { label: 'Dresses', to: '/shop?q=dress' },
-        { label: 'Tops/shirts', to: '/shop?q=shirt' },
-        { label: 'Trousers/pants', to: '/shop?type=pant' },
-        { label: 'Night wear', to: '/shop?q=night' },
-        { label: 'Kurta sets', to: '/shop?q=kurta' },
-      ],
+      children: TYPES.map(typeLink),
     },
     { label: 'About', to: '/about' },
     { label: 'Contact', to: '/contact' },
   ],
-  shopLinks: [{ label: 'All products', to: '/shop' }, { label: "Men's shirts", to: '/shop?gender=men&type=shirt' }, { label: "Men's pants", to: '/shop?gender=men&type=pant' }, { label: "Women's tops", to: '/shop?gender=women&type=tshirt' }, { label: "Women's pants", to: '/shop?gender=women&type=pant' }],
+  shopLinks: [{ label: 'All products', to: '/shop' }, ...TYPES.map(typeLink)],
   service: [
     { label: 'Contact us', to: '/contact' },
     { label: 'Shipping policy', to: '/policies/shipping-policy' },

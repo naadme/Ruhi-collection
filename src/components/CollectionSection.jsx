@@ -5,7 +5,7 @@ import { useProducts } from '../context/ProductsContext'
 export default function CollectionSection({ c }) {
   const { products, loading, source } = useProducts()
   const [tab, setTab] = useState(c.tabs[0][0])
-  const visible = products.filter((p) => p.gender === c.key && p.type === tab).slice(0, 4)
+  const visible = products.filter((p) => p.type === tab).slice(0, 4)
   // Several of these sections share a page, so the tab/panel ids must be unique.
   const uid = useId()
   const panelId = `${uid}-panel`
@@ -33,7 +33,7 @@ export default function CollectionSection({ c }) {
           }}
         />
       </div>
-      <div className="text-center mt-14"><Link to={`/shop?gender=${c.key}&type=${tab}`} className="btn-outline">View All Products</Link></div>
+      <div className="text-center mt-14"><Link to={`/shop?type=${tab}`} className="btn-outline">View All Products</Link></div>
     </section>
   )
 }

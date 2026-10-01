@@ -25,9 +25,9 @@ export const Hero = () => {
           <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[.9] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
           <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10">Shop new arrivals</Link>
           <p className="text-xl md:text-2xl mt-8">Free shipping over ₹999</p></div></div>
-      <Img src={img.heroMen} alt="Men's new arrivals" className="w-full h-[420px] md:h-[calc(100%-140px)] object-cover md:mx-[68px] md:my-0 md:self-start md:mt-0 md:w-[calc(100%-0px)]" />
+      <Img src={img.heroMain} alt="New arrivals" className="w-full h-[420px] md:h-[calc(100%-140px)] object-cover md:mx-[68px] md:my-0 md:self-start md:mt-0 md:w-[calc(100%-0px)]" />
       <div className="grid grid-rows-[auto_auto_1fr] md:pr-[68px] md:ml-0">
-        <Img src={img.heroWomenTop} alt="Women's tops" className="w-full h-[300px] object-cover" />
+        <Img src={img.heroTop} alt="Women's coord set" className="w-full h-[300px] object-cover" />
         <Link to="/shop" className="font-ui italic font-bold text-[40px] md:text-[44px] text-center py-4">{promo}</Link>
         <Img src={img.heroStore} alt="Shop the collection" className="w-full h-[280px] md:h-full object-cover" /></div>
     </section>
@@ -36,7 +36,7 @@ export const Hero = () => {
 export const Categories = () => (
   <section className="max-w-[1300px] mx-auto px-4 pt-16 pb-10">
     <h2 className="text-center text-[34px] tracking-wide">Shop by Category</h2>
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-8">{categories.map((c, i) => (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mt-8">{categories.map((c, i) => (
       <Link key={i} to={c.to} className="text-center"><Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover" /><p className="mt-4 text-[17px]">{c.label}</p></Link>))}</div>
   </section>
 )
@@ -75,7 +75,7 @@ export const Reviews = () => {
           {p ? (
             <Link to={`/product/${p.id}`} className="flex gap-4 mt-4 items-center">
               <Img src={p.image} alt={p.title} className="w-[68px] h-[68px] object-cover rounded" />
-              <div><p className="text-[17px] leading-6">{p.title}</p><p className="font-ui font-semibold text-black/60 mt-2">{inr(p.price)}</p></div>
+              <div><p className="text-[17px] leading-6">{p.title}</p>{p.price > 0 && <p className="font-ui font-semibold text-black/60 mt-2">{inr(p.price)}</p>}</div>
             </Link>
           ) : null}
         </div>

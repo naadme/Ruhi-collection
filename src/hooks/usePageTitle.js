@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 
-const DEFAULT_TITLE = "Ruhi Womens Clothing — Men's & Women's Fashion"
+const DEFAULT_TITLE = "Ruhi Womens Clothing — Co-ord Sets, Dresses & Tops"
 const DEFAULT_DESCRIPTION =
-  'Shop everyday shirts, T-shirts and pants for men and women at Ruhi Womens Clothing. Free shipping over ₹999, 30-day easy returns, cash on delivery across India.'
+  'Shop co-ord sets, dresses, tops and shirts at Ruhi Womens Clothing. Free shipping over ₹999, 30-day easy returns, cash on delivery across India.'
 
 function upsertMeta(attr, key, content) {
   if (!content) return

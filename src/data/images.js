@@ -1,10 +1,26 @@
-// All photography is centralised here. Replace any URL with your own hosted photo or a file in /public/images.
-const u = (id, w = 900) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=80`
+// All photography is the client's own product folder, copied verbatim into
+// /public/images/products (nothing is loaded from the internet).
+// Category/review/hero slots reuse those same real photos.
+const p = (file) => `/images/products/${file}`
+
 export const img = {
-  heroMen: u('1602810318383-e386cc2a3ccf', 1100), heroWomenTop: u('1509631179647-0177331693ae', 900), heroStore: u('1441984904996-e0b6ba687e04', 900),
-  story: u('1490481651871-ab68de25d43d', 1200), aboutHero: u('1445205170230-053b83016050', 1600), aboutA: u('1558769132-cb1aea458c5e', 900), aboutB: u('1523381210434-271e8be1f52b', 900),
-  contact: u('1441984904996-e0b6ba687e04', 2000),
-  catWomenPant: u('1541099649105-f69ad21f3246', 500), catMenPant: u('1542272604-787c3835535d', 500), catShirt: u('1596755094514-f87e34085b2c', 500), catTshirt: u('1503342217505-b0a15ec3261c', 500),
-  r1: u('1607345366928-199ea26cfe3e', 700), r2: u('1473966968600-fa801b869a1a', 700), r3: u('1469334031218-e382a71b716b', 700), r4: u('1434389677669-e08b4cac3105', 700),
+  // Homepage hero
+  heroMain: p('shorts-and-shirt-royalblue.jpg'),
+  heroTop: p('embroidery-coord-set-beige3.jpg'),
+  heroStore: p('denim-dress1.jpg'),
+  // Editorial sections
+  story: p('embroidery-coord-set-blue.jpg'),
+  aboutHero: p('shorts-and-shirt-maroon.jpg'),
+  aboutA: p('stripes-dress-pink.jpg'),
+  aboutB: p('acid-wash-coord-set-olive-green.jpg'),
+  contact: p('shorts-and-shirt-babypink.jpg'),
+  // "Shop by category" tiles — one real photo per catalogue type
+  catTops: p('denim-shirt-blue.jpg'),
+  catCoord: p('acid-wash-coord-set-beige.jpg'),
+  catDress: p('stripes-dress-blue.jpg'),
+  // Customer review photos (each matches the product it is linked to)
+  r1: p('embroidery-coord-set-beige2.jpg'),
+  r2: p('shorts-and-shirt-blue.jpg'),
+  r3: p('embroidery-coord-set-black2.jpg'),
+  r4: p('panda-tshirt-black.jpg'),
 }
-export { u }

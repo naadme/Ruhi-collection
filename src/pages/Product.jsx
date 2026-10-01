@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, ChevronLeft, Heart, Truck } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
+import { typeLabel } from '../data/products'
 import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import Img from '../components/Img'
@@ -12,7 +13,9 @@ import { inr, amountToFreeShipping, FREE_SHIPPING_OVER } from '../lib/pricing'
 import { MAX_QTY } from '../lib/checkout'
 
 function Gallery({ product }) {
-  const shots = [product.image, product.hover].filter(Boolean)
+  const shots = [...new Set(
+    (product.gallery?.length ? product.gallery : [product.image, product.hover]).filter(Boolean)
+  )]
   const [active, setActive] = useState(0)
   if (!shots.length) {
     return <div className="w-full aspect-[3/4] bg-neutral-100 rounded-sm" role="img" aria-label={product.title} />
@@ -113,7 +116,7 @@ export default function Product() {
     if (goToCheckout) navigate('/checkout')
   }
 
-  const rel = products.filter((x) => x.gender === p.gender && x.id !== p.id).slice(0, 4)
+  const rel = products.filter((x) => x.type === p.type && x.id !== p.id).slice(0, 4)
   const fallback = products.filter((x) => x.id !== p.id).slice(0, 4)
   const related = rel.length ? rel : fallback
 
@@ -122,7 +125,7 @@ export default function Product() {
       <nav aria-label="Breadcrumb" className="mb-6 text-[14px] text-black/55">
         <Link to="/" className="hover:text-black">Home</Link>
         <span aria-hidden="true" className="mx-2">/</span>
-        <Link to={`/shop?gender=${p.gender}`} className="hover:text-black capitalize">{p.gender}</Link>
+        <Link to={`/shop?type=${p.type}`} className="hover:text-black">{typeLabel(p.type)}</Link>
         <span aria-hidden="true" className="mx-2">/</span>
         <span className="text-black/80">{p.title}</span>
       </nav>
@@ -131,7 +134,7 @@ export default function Product() {
         <Gallery key={p.id} product={p} />
 
         <div>
-          <p className="text-sm text-black/60 uppercase tracking-widest">{p.gender}'s {p.type.replace('tshirt', 't-shirt')}</p>
+          <p className="text-sm text-black/60 uppercase tracking-widest">{typeLabel(p.type)}</p>
           <div className="flex items-start justify-between gap-4 mt-2">
             <h1 className="text-[32px] md:text-[42px] leading-tight">{p.title}</h1>
             <button
@@ -145,22 +148,30 @@ export default function Product() {
           </div>
 
           {/* aria-label lives on a <span> so screen readers hear the rating
-              instead of five separate "star" glyphs. */}
-          <p className="font-ui mt-3 text-sm text-black/70">
-            <span role="img" aria-label={`Rated ${Math.min(p.rating, 5).toFixed(1)} out of 5`}>
-              ★ {Math.min(p.rating, 5).toFixed(1)}
-            </span>{' '}
-            <span className="text-black/50">({p.reviews} reviews)</span>
-          </p>
+              instead of five separate "star" glyphs. Ratings and prices the
+              client has not supplied yet are not rendered at all: "0.0 (0
+              reviews)" and "₹0" would read as broken rather than unfinished. */}
+          {p.reviews > 0 && (
+            <p className="font-ui mt-3 text-sm text-black/70">
+              <span role="img" aria-label={`Rated ${Math.min(p.rating, 5).toFixed(1)} out of 5`}>
+                ★ {Math.min(p.rating, 5).toFixed(1)}
+              </span>{' '}
+              <span className="text-black/50">({p.reviews} reviews)</span>
+            </p>
+          )}
 
-          <p className="font-ui font-bold text-[26px] mt-4 flex gap-4 items-baseline">
-            <span className="text-red-600">{inr(p.price)}</span>
-            {p.compare && <>
-              <s className="text-gray-400 font-normal text-lg">{inr(p.compare)}</s>
-              <span className="text-green-700 text-[17px]">{off}% off</span>
-            </>}
-          </p>
-          <p className="text-black/60 text-sm mt-1">Taxes included. {gap > 0 ? `Add ${inr(gap)} for free shipping.` : 'Free shipping on this item.'}</p>
+          {p.price > 0 && (
+            <>
+              <p className="font-ui font-bold text-[26px] mt-4 flex gap-4 items-baseline">
+                <span className="text-red-600">{inr(p.price)}</span>
+                {p.compare && <>
+                  <s className="text-gray-400 font-normal text-lg">{inr(p.compare)}</s>
+                  <span className="text-green-700 text-[17px]">{off}% off</span>
+                </>}
+              </p>
+              <p className="text-black/60 text-sm mt-1">Taxes included. {gap > 0 ? `Add ${inr(gap)} for free shipping.` : 'Free shipping on this item.'}</p>
+            </>
+          )}
 
           <fieldset className="mt-7" id="size-options" tabIndex={-1}>
             <legend className="text-sm mb-2">Size {needsSize && <span className="text-red-600">*</span>}</legend>
@@ -216,8 +227,8 @@ export default function Product() {
         </>
       )}
 
-      <Link to={`/shop?gender=${p.gender}`} className="inline-flex items-center gap-1.5 mt-12 text-[15px] text-black/60 hover:text-black">
-        <ChevronLeft size={16} /> Back to {p.gender}'s collection
+      <Link to={`/shop?type=${p.type}`} className="inline-flex items-center gap-1.5 mt-12 text-[15px] text-black/60 hover:text-black">
+        <ChevronLeft size={16} /> Back to {typeLabel(p.type)}
       </Link>
     </section>
   )
