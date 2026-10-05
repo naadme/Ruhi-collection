@@ -14,7 +14,7 @@ export const site = {
   tagline: 'Everyday fashion for women — thoughtfully made, honestly priced.',
   address: 'Ruhi Womens Clothing Studio, Mumbai, Maharashtra, India',
   phone: '9046651272',
-  email: 'care@example.com',
+  email: 'himabindu.nalli123@gmail.com',
   hours: 'Mon – Sat, 10:00 – 19:00 IST',
   social: [{ label: 'Instagram', href: 'https://instagram.com' }, { label: 'Facebook', href: 'https://facebook.com' }, { label: 'WhatsApp', href: 'https://wa.me/919876543210' }, { label: 'YouTube', href: 'https://youtube.com' }],
   announcements: ['Fast delivery across India', 'Free shipping on orders over ₹999', '30-day easy returns', 'Customer support 10am – 7pm', 'Secure checkout'],
