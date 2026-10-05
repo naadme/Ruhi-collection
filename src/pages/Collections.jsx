@@ -25,7 +25,7 @@ export default function Collections() {
           const n = countFor(products, c.to)
           return (
             <Link key={c.title} to={c.to} className="group relative block aspect-[4/3] overflow-hidden bg-neutral-200">
-              <Img src={c.image} alt={c.title} className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" />
+              <Img src={c.image} alt={c.title} loading="eager" className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               <div className="absolute bottom-0 p-6 md:p-8 text-white">
                 <h2 className="text-[30px] md:text-[38px]">{c.title}</h2>

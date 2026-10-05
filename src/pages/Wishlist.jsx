@@ -1,4 +1,5 @@
 import usePageTitle from '../hooks/usePageTitle'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Heart } from 'lucide-react'
 import ProductCard from '../components/ProductCard'
@@ -11,7 +12,12 @@ export default function Wishlist() {
   const { ids } = useWishlist()
   // Wishlist ids that no longer resolve are hidden products or deleted ones —
   // they are simply dropped from this view, never shown as broken cards.
-  const items = products.filter((p) => ids.includes(p.id))
+  // Re-resolved only when the catalogue or the saved ids actually change, so a
+  // heart tap does not re-scan the whole table for every other reason.
+  const items = useMemo(
+    () => products.filter((p) => ids.includes(p.id)),
+    [products, ids],
+  )
 
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-12">

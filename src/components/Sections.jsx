@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useMemo } from 'react'
 import { Truck, Headset, RefreshCcw, ShieldCheck } from 'lucide-react'
 import { categories, reviews } from '../data/products'
 import { site } from '../data/site'
@@ -12,11 +13,11 @@ export const Hero = () => {
   // The headline discount is read from the live catalogue, so the banner can
   // never promise more than the store is actually offering.
   const { products } = useProducts()
-  const best = products.reduce((max, p) => (
+  const best = useMemo(() => products.reduce((max, p) => (
     p.compare && p.compare > p.price
       ? Math.max(max, Math.round((1 - p.price / p.compare) * 100))
       : max
-  ), 0)
+  ), 0), [products])
   const promo = best >= 5 ? `UP TO ${best}% OFF!` : 'SHOP THE COLLECTION'
   return (
     <section className="grid md:grid-cols-[1.1fr_1fr_1fr] min-h-[560px] md:h-[684px] bg-[#4A2C23] text-white">
@@ -25,11 +26,11 @@ export const Hero = () => {
           <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[.9] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
           <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10">Shop new arrivals</Link>
           <p className="text-xl md:text-2xl mt-8">Free shipping over ₹999</p></div></div>
-      <Img src={img.heroMain} alt="New arrivals" className="w-full h-[420px] md:h-[calc(100%-140px)] object-cover md:mx-[68px] md:my-0 md:self-start md:mt-0 md:w-[calc(100%-0px)]" />
+      <Img src={img.heroMain} alt="New arrivals" loading="eager" className="w-full h-[420px] md:h-[calc(100%-140px)] object-cover md:mx-[68px] md:my-0 md:self-start md:mt-0 md:w-[calc(100%-0px)]" />
       <div className="grid grid-rows-[auto_auto_1fr] md:pr-[68px] md:ml-0">
-        <Img src={img.heroTop} alt="Women's coord set" className="w-full h-[300px] object-cover" />
+        <Img src={img.heroTop} alt="Women's coord set" loading="eager" className="w-full h-[300px] object-cover" />
         <Link to="/shop" className="font-ui italic font-bold text-[40px] md:text-[44px] text-center py-4">{promo}</Link>
-        <Img src={img.heroStore} alt="Shop the collection" className="w-full h-[280px] md:h-full object-cover" /></div>
+        <Img src={img.heroStore} alt="Shop the collection" loading="eager" className="w-full h-[280px] md:h-full object-cover" /></div>
     </section>
   )
 }

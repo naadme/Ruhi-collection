@@ -34,29 +34,35 @@ function loadScript() {
   const el = existing || document.createElement('script')
 
   return new Promise((resolve, reject) => {
+    const UNREACHABLE = 'We could not open the payment window. Please check your connection and try again.'
     let done = false
+    let timer
+    // Named so `finish` can detach them: the element is reused across retries
+    // and can outlive the promise (already loaded, or a timeout that rejected
+    // while the script was still in flight), which otherwise leaves handlers
+    // attached to it for the rest of the page's life.
+    const onLoad = () => finish(resolve)
+    const onError = () => {
+      scriptPromise = null
+      finish(reject, new CheckoutUnavailable(UNREACHABLE))
+    }
     const finish = (fn, value) => {
       if (done) return
       done = true
       clearTimeout(timer)
+      el.removeEventListener('load', onLoad)
+      el.removeEventListener('error', onError)
       fn(value)
     }
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       if (!window.Razorpay) {
         scriptPromise = null
-        finish(reject, new CheckoutUnavailable('We could not open the payment window. Please check your connection and try again.'))
+        finish(reject, new CheckoutUnavailable(UNREACHABLE))
       }
     }, SCRIPT_TIMEOUT_MS)
 
-    el.addEventListener('load', () => finish(resolve), { once: true })
-    el.addEventListener(
-      'error',
-      () => {
-        scriptPromise = null
-        finish(reject, new CheckoutUnavailable('We could not open the payment window. Please check your connection and try again.'))
-      },
-      { once: true },
-    )
+    el.addEventListener('load', onLoad, { once: true })
+    el.addEventListener('error', onError, { once: true })
 
     if (window.Razorpay) {
       finish(resolve)

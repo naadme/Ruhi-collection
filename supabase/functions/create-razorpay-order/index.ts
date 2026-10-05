@@ -27,6 +27,12 @@ const UNREACHABLE =
   'We could not reach the payment provider. You have not been charged — please try again.'
 const GENERIC =
   'We could not start your payment. You have not been charged — please try again.'
+const TOO_SMALL =
+  'Online payment starts at ₹1. Please choose cash on delivery for this order.'
+
+// Razorpay refuses any order below 100 paise (₹1) with a 400 of its own;
+// refusing it here keeps that gateway error out of the shopper's view.
+const MIN_AMOUNT_PAISE = 100
 
 /** Cart lines as the checkout sends them: ids, sizes and quantities only. */
 function readItems(value: unknown): Json[] | null {
@@ -132,6 +138,9 @@ export async function handle(req: Request): Promise<Response> {
     if (!reference || !orderId || !Number.isFinite(amountPaise) || amountPaise <= 0) {
       return fail(500, GENERIC)
     }
+    if (amountPaise < MIN_AMOUNT_PAISE) {
+      return fail(400, TOO_SMALL)
+    }
 
     const razorpayOrderId = await resolveRazorpayOrder(
       orderId,
@@ -157,7 +166,13 @@ export async function handle(req: Request): Promise<Response> {
     })
   } catch (error) {
     if (error instanceof MissingConfigError) return fail(503, NOT_CONFIGURED)
-    if (error instanceof RazorpayApiError) return fail(502, UNREACHABLE)
+    if (error instanceof RazorpayApiError) {
+      // 401 means Razorpay rejected *our* credentials — a configuration fault
+      // on this server, not a gateway outage, and never something the shopper
+      // can fix or should see raw.
+      if (error.status === 401) return fail(503, NOT_CONFIGURED)
+      return fail(502, UNREACHABLE)
+    }
     return fail(500, GENERIC)
   }
 }

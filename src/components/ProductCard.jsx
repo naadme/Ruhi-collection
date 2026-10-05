@@ -1,9 +1,13 @@
+import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import { Star, Heart } from 'lucide-react'
 import Img from './Img'
 import { inr } from '../lib/pricing'
 import { useWishlist } from '../context/WishlistContext'
-export default function ProductCard({ product: p }) {
+// Grids rebuild their `items` array on every render, so without this each card
+// would re-render whenever any sibling's parent re-rendered. Wishlist changes
+// still reach every card — a context update is never blocked by memo().
+function ProductCard({ product: p }) {
   const { has, toggle } = useWishlist(); const fav = has(p.id)
   const off = p.compare ? Math.round((1 - p.price / p.compare) * 100) : 0
   const rating = Math.min(p.rating, 5)
@@ -30,3 +34,4 @@ export default function ProductCard({ product: p }) {
     </div>
   )
 }
+export default memo(ProductCard)

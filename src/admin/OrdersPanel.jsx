@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, ChevronDown, Inbox, Loader2, MapPin, Phone, RefreshCw, User,
+  AlertTriangle, ChevronDown, Inbox, MapPin, Phone, RefreshCw, User,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { inr } from '../lib/pricing'

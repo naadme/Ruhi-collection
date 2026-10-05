@@ -21,7 +21,11 @@ export const fail = (status: number, error: string): Response => json(status, { 
 /** Answer a CORS preflight, or `null` when the request is a real one. */
 export function preflight(req: Request): Response | null {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { status: 204, headers: CORS })
+    // A 204 is a null-body status: constructing one *with* a body throws a
+    // TypeError ("Invalid response status code 204"), which the runtime turns
+    // into a 500 with no CORS headers — and the browser then refuses to send
+    // the POST at all. The body must stay `null`.
+    return new Response(null, { status: 204, headers: CORS })
   }
   return null
 }

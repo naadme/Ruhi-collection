@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import ProductGrid, { ResetLink } from '../components/ProductGrid'
 import { useProducts } from '../context/ProductsContext'
@@ -32,14 +33,20 @@ export default function Shop() {
   const set = (k) => (v) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n) }
   const clearAll = () => setSp(new URLSearchParams(q ? { q } : {}))
 
-  const filtered = products.filter(
-    (p) => (!t || p.type === t) && (!q || matches(p, q))
+  // Filter + sort only when the catalogue or the filter/sort inputs change —
+  // not on every unrelated render of this page.
+  const filtered = useMemo(
+    () => products.filter((p) => (!t || p.type === t) && (!q || matches(p, q))),
+    [products, t, q],
   )
-  const items = [...filtered]
-  if (sort === 'low') items.sort((a, b) => a.price - b.price)
-  if (sort === 'high') items.sort((a, b) => b.price - a.price)
-  if (sort === 'rating') items.sort((a, b) => b.rating - a.rating)
-  if (sort === 'name') items.sort((a, b) => a.title.localeCompare(b.title))
+  const items = useMemo(() => {
+    const sorted = [...filtered]
+    if (sort === 'low') sorted.sort((a, b) => a.price - b.price)
+    if (sort === 'high') sorted.sort((a, b) => b.price - a.price)
+    if (sort === 'rating') sorted.sort((a, b) => b.rating - a.rating)
+    if (sort === 'name') sorted.sort((a, b) => a.title.localeCompare(b.title))
+    return sorted
+  }, [filtered, sort])
 
   const heading = q
     ? `Results for “${q}”`

@@ -122,6 +122,11 @@ export function AuthProvider({ children }) {
 
   // Re-check the allowlist whenever the signed-in identity changes.
   //
+  // Keyed on the *id*, not the user object: getSession() and onAuthStateChange
+  // both hand back a fresh object for the same account (initial session, token
+  // refresh), and re-running the identical lookup on each of those was a
+  // duplicate request on every page load for a signed-in admin.
+  //
   // There is deliberately no `profiles` row to create on sign-in (nothing in
   // this app depends on one), so this lookup is the only "did the account land
   // in the database" check that runs after an OAuth round-trip. TEMP logging.
@@ -138,7 +143,7 @@ export function AuthProvider({ children }) {
       })
       .catch((e) => { if (alive) oauthLog('profile lookup threw', e?.message || '') })
     return () => { alive = false }
-  }, [user])
+  }, [user?.id])
 
   // Restores the session on a hard refresh, then keeps it in sync. Supabase
   // persists the tokens itself; this is only the React-side reflection.

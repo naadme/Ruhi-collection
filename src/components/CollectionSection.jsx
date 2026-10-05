@@ -1,11 +1,14 @@
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ProductGrid from './ProductGrid'
 import { useProducts } from '../context/ProductsContext'
 export default function CollectionSection({ c }) {
   const { products, loading, source } = useProducts()
   const [tab, setTab] = useState(c.tabs[0][0])
-  const visible = products.filter((p) => p.type === tab).slice(0, 4)
+  const visible = useMemo(
+    () => products.filter((p) => p.type === tab).slice(0, 4),
+    [products, tab],
+  )
   // Several of these sections share a page, so the tab/panel ids must be unique.
   const uid = useId()
   const panelId = `${uid}-panel`

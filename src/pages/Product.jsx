@@ -24,7 +24,7 @@ function Gallery({ product }) {
   return (
     <div>
       <div className="relative w-full aspect-[3/4] bg-neutral-100 overflow-hidden">
-        <Img src={src} alt={`${product.title} — view ${active + 1}`} className="w-full h-full object-cover" />
+        <Img src={src} alt={`${product.title} — view ${active + 1}`} loading="eager" className="w-full h-full object-cover" />
         {product.badge && (
           <span className="absolute top-3 left-3 bg-brand-badge text-white text-[11px] font-bold px-2 py-1 rounded-sm font-ui">{product.badge}</span>
         )}

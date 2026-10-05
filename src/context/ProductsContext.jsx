@@ -144,10 +144,26 @@ export function ProductsProvider({ children }) {
   const products = useMemo(() => all.filter((p) => p.is_active), [all])
   // The storefront only ever resolves *visible* products, regardless of who is
   // signed in — hidden items live exclusively in the dashboard.
-  const getProduct = useCallback((id) => all.find((p) => p.id === id && p.is_active) || null, [all])
+  //
+  // Resolved through a Map rebuilt only when the catalogue changes: the same
+  // lookup runs once per cart line, per related-products list and per review on
+  // every render, so a linear scan would grow with the table. `first wins`
+  // preserves the previous `Array.find` answer if an id were ever repeated.
+  const activeById = useMemo(() => {
+    const index = new Map()
+    for (const p of all) if (p.is_active && !index.has(p.id)) index.set(p.id, p)
+    return index
+  }, [all])
+  const getProduct = useCallback((id) => activeById.get(id) || null, [activeById])
+
+  // Memoised so a consumer only re-renders when one of these actually changes.
+  const value = useMemo(
+    () => ({ products, all, getProduct, reload, loading, error, source }),
+    [products, all, getProduct, reload, loading, error, source],
+  )
 
   return (
-    <Ctx.Provider value={{ products, all, getProduct, reload, loading, error, source }}>
+    <Ctx.Provider value={value}>
       {children}
     </Ctx.Provider>
   )
