@@ -19,7 +19,7 @@ export const site = {
   email: 'himabindu.nalli123@gmail.com',
   hours: 'Mon – Sat, 10:00 – 19:00 IST',
   social: [{ label: 'Instagram', href: 'https://www.instagram.com/ruhi_fashions_/' }, { label: 'WhatsApp', href: 'https://wa.me/919876543210' }],
-  announcements: ['Fast delivery across India', 'Free shipping on orders over ₹999', '30-day easy returns', 'Customer support 10am – 7pm', 'Secure checkout'],
+  announcements: ['Fast delivery across India', 'Free shipping on orders over ₹999', 'Customer support 10am – 7pm', 'Secure checkout'],
   nav: [
     { label: 'Home', to: '/' },
     // The catalogue branch renders as a dropdown in the header (and as a nested
@@ -42,20 +42,16 @@ export const site = {
     { label: 'Your account', to: '/account' },
   ],
   legal: [{ label: 'Privacy policy', to: '/policies/privacy-policy' }, { label: 'Terms of service', to: '/policies/terms-of-service' }],
-  // Payment badges shown in the footer. Only list methods the store actually
-  // accepts — see README.md: these assume the Razorpay account is connected,
-  // while 'COD' is always available.
-  payments: ['COD', 'UPI', 'Cards'],
+  // Three benefits only — every order is paid online at checkout, so there is
+  // no delivery-time payment card and the strip renders as one even row.
   features: [
     { icon: 'Truck', title: 'Free shipping', text: 'Free shipping on orders over ₹999' },
     { icon: 'Headset', title: 'Friendly support', text: 'We reply within one working day' },
-    { icon: 'RefreshCcw', title: 'Easy returns', text: '30-day returns, no questions asked' },
-    { icon: 'ShieldCheck', title: 'Pay on delivery', text: 'Cash on delivery across India' },
+    { icon: 'Zap', title: 'Fast delivery', text: 'Fast delivery across India' },
   ],
-  stats: [['30', 'Day easy returns'], ['₹999', 'Free shipping over'], ['3–7', 'Working day delivery'], ['COD', 'Pay on delivery']],
+  stats: [['Fast', 'Delivery across India'], ['₹999', 'Free shipping over'], ['7-10', 'Working day delivery']],
   faq: [
-    ['How long does delivery take?', 'Most orders arrive in 3–7 working days across India.'],
-    ['Can I return or exchange an item?', 'Yes — unworn items can be returned or exchanged within 30 days.'],
-    ['Which payment methods do you accept?', 'Cash on delivery across India, or pay securely online at checkout with UPI, cards, net banking or wallets.'],
+    ['How long does delivery take?', 'Most orders arrive in 7-10S working days across India.'],
+    ['Which payment methods do you accept?', 'Pay securely online at checkout with UPI, cards, net banking or wallets.'],
   ],
 }

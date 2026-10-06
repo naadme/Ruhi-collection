@@ -29,9 +29,11 @@ const STATUS_FILTERS = [['all', 'All'], ...STATUSES]
 // is, `payment_status` is whether Razorpay has actually been paid. Only the
 // payment server (Edge Functions) can write the latter — the database refuses
 // it for every browser session, this panel included.
+// Orders paid through the gateway carry their own method label; anything else
+// predates online checkout and is recorded as an offline payment instead.
 const PAY_METHOD = {
-  cod: 'Cash on delivery',
   razorpay: 'Online payment (Razorpay)',
+  offline: 'Offline payment',
 }
 
 const PAY_STATUS = {
@@ -43,12 +45,13 @@ const PAY_STATUS = {
 
 function paymentChip(order) {
   if (order.payment_method !== 'razorpay') {
+    const [label] = PAY_STATUS[order.payment_status] || PAY_STATUS.pending
     return (
       <span
         className="text-[12px] font-semibold border rounded-full px-2 py-[2px] bg-neutral-50 border-neutral-200 text-neutral-600"
-        title="Payment collected on delivery"
+        title="Paid outside the payment gateway"
       >
-        COD
+        Offline · {label}
       </span>
     )
   }
@@ -138,7 +141,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
               <h4 className="text-[13px] font-semibold uppercase tracking-wider text-black/45">Payment</h4>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-[15px] font-medium">
-                  {PAY_METHOD[order.payment_method] || order.payment_method}
+                  {PAY_METHOD[order.payment_method] || PAY_METHOD.offline}
                 </span>
                 <span className={`text-[12px] font-semibold border rounded-full px-2 py-0.5 ${
                   (PAY_STATUS[order.payment_status] || PAY_STATUS.pending)[1]
@@ -147,19 +150,15 @@ function Row({ order, open, onToggle, onStatus, busy }) {
                 </span>
               </div>
               <p className="mt-1.5 text-[13px] text-black/50">
-                {order.payment_method === 'cod'
-                  ? (order.status === 'delivered'
-                      ? 'Payment collected on delivery.'
-                      : order.status === 'cancelled'
-                        ? 'Order cancelled — nothing to collect.'
-                        : 'Collect payment from the customer on delivery.')
-                  : (order.payment_status === 'paid'
+                {order.payment_method === 'razorpay'
+                  ? (order.payment_status === 'paid'
                       ? 'Received through Razorpay before the order was confirmed.'
                       : order.payment_status === 'refunded'
                         ? 'Refunded to the customer through Razorpay.'
                         : order.payment_status === 'failed'
                           ? 'The payment did not go through. Nothing was charged.'
-                          : 'Waiting for the payment to complete — please do not ask the customer to pay again.')}
+                          : 'Waiting for the payment to complete — please do not ask the customer to pay again.')
+                  : 'Payment was settled outside Razorpay — no online payment is attached to this order.'}
               </p>
               {(order.razorpay_order_id || order.razorpay_payment_id) && (
                 <dl className="mt-3 space-y-1 text-[13px]">

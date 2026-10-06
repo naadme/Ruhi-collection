@@ -386,11 +386,10 @@ deno_version = 2
 
 # Razorpay payment functions.
 #
-# All three must be reachable without a session: guests check out with cash on
-# delivery today, so they must be able to pay online too, and Razorpay's
-# servers call the webhook with no Supabase JWT at all. `verify_jwt` therefore
-# stays off and each function authenticates (or ignores) the caller itself —
-# see README.md for the matching `--no-verify-jwt` deploy flags.
+# All three must be reachable without a session: guests check out without an
+# account, and Razorpay's servers call the webhook with no Supabase JWT at all.
+# `verify_jwt` therefore stays off and each function authenticates (or ignores)
+# the caller itself — see README.md for the matching `--no-verify-jwt` deploy flags.
 [functions.create-razorpay-order]
 verify_jwt = false
 

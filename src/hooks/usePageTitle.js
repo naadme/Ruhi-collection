@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 
 const DEFAULT_TITLE = "Ruhi Womens Clothing — Co-ord Sets, Dresses & Tops"
 const DEFAULT_DESCRIPTION =
-  'Shop co-ord sets, dresses, tops and shirts at Ruhi Womens Clothing. Free shipping over ₹999, 30-day easy returns, cash on delivery across India.'
+  'Shop co-ord sets, dresses, tops and shirts at Ruhi Womens Clothing. Free shipping over ₹999, fast delivery across India.'
 
 function upsertMeta(attr, key, content) {
   if (!content) return

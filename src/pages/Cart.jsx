@@ -81,7 +81,7 @@ export default function Cart() {
             Proceed to checkout
           </Link>
           <p className="text-[13px] text-black/50 mt-3 flex items-center justify-center gap-1.5">
-            <Lock size={13} /> Secure checkout · Cash on delivery
+            <Lock size={13} /> Secure checkout
           </p>
           <button onClick={clear} className="w-full mt-3 text-[14px] text-black/50 hover:text-black underline underline-offset-2">Empty the cart</button>
         </aside>

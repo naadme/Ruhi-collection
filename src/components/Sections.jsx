@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom'
 import { useMemo } from 'react'
-import { Truck, Headset, RefreshCcw, ShieldCheck } from 'lucide-react'
+import { Truck, Headset, Zap } from 'lucide-react'
 import { categories, reviews } from '../data/products'
 import { site } from '../data/site'
 import { img } from '../data/images'
 import { useProducts } from '../context/ProductsContext'
 import { inr } from '../lib/pricing'
 import Img from './Img'
-const icons = { Truck, Headset, RefreshCcw, ShieldCheck }
+const icons = { Truck, Headset, Zap }
 
 export const Hero = () => {
   // The headline discount is read from the live catalogue, so the banner can
@@ -62,7 +62,8 @@ export const OurStory = () => (
       <p className="text-[22px] leading-[39px] text-black/70">Ruhi Womens Clothing is a clothing brand dedicated to creating high-quality, stylish apparel that reflects your unique personality. Our journey started with a simple vision: to make fashion accessible, sustainable, and meaningful.</p>
       <p className="text-[22px] leading-[39px] text-black/70 mt-6">Every piece in our collection is carefully designed and crafted with attention to detail, ensuring you look and feel your best every day.</p>
       <div className="flex gap-5 mt-10"><Link to="/shop" className="bg-brand-yellow px-11 h-[88px] grid place-items-center rounded-lg font-bold text-[21px]">Shop Now</Link><Link to="/about" className="border-2 border-black/10 px-11 h-[88px] grid place-items-center rounded-lg font-bold text-[21px]">Learn More</Link></div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-14 pt-14 border-t border-black/10 text-center">{site.stats.map(([n, l]) => (
+      {/* Three stats, so three tracks — a four-up grid would strand the last one. */}
+      <div className="grid grid-cols-3 gap-4 mt-14 pt-14 border-t border-black/10 text-center">{site.stats.map(([n, l]) => (
         <div key={l}><p className="font-ui text-brand-yellow text-[46px] font-bold">{n}</p><p className="uppercase text-[18px] text-black/70 mt-4 leading-9">{l}</p></div>))}</div>
     </div>
     <Img src={img.story} alt="Our story" className="w-full aspect-square object-cover shadow-[0_30px_60px_rgba(74,44,35,.12)]" />
@@ -98,6 +99,8 @@ export const Reviews = () => {
   )
 }
 export const Features = () => (
-  <section className="max-w-page mx-auto px-4 md:px-7 py-20 grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">{site.features.map((f) => { const I = icons[f.icon]; return (
+  // Three benefits only, so the row is three equal tracks from `md` up and a
+  // single stack below it — a four-up grid would leave one cell empty.
+  <section className="max-w-page mx-auto px-4 md:px-7 py-20 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">{site.features.map((f) => { const I = icons[f.icon]; return (
     <div key={f.title}><I size={64} strokeWidth={1.6} className="mx-auto text-black/60" /><h3 className="text-[28px] font-medium mt-5">{f.title}</h3><p className="text-[19px] text-black/70 mt-3">{f.text}</p></div>) })}</section>
 )

@@ -211,7 +211,7 @@ export default function Product() {
 
           <p className="mt-6 flex items-start gap-2 text-[14px] text-black/60">
             <Truck size={16} className="mt-[1px] shrink-0 text-brand-green" />
-            Free shipping on orders over {inr(FREE_SHIPPING_OVER)} · Delivery in 3–7 working days · 30-day returns
+            Free shipping on orders over {inr(FREE_SHIPPING_OVER)} · Delivery in 7-10 working days
           </p>
 
           {p.desc && <p className="mt-7 text-[18px] leading-8 text-black/70 border-t border-black/10 pt-6">{p.desc}</p>}

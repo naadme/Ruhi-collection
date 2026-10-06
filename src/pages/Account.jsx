@@ -82,11 +82,11 @@ function OrderHistory() {
               ))}
             </ul>
             <p className="mt-3 text-[13px] text-black/55">
-              {o.payment_method === 'razorpay' ? 'Online payment' : 'Cash on delivery'}
+              {o.payment_method === 'razorpay' ? 'Online payment' : 'Offline payment'}
               {' · '}
               {o.payment_method === 'razorpay'
                 ? ({ paid: 'Paid', failed: 'Payment failed', refunded: 'Refunded' }[o.payment_status] || 'Payment pending')
-                : 'Pay on delivery'}
+                : 'Payment pending'}
               {' · Delivered to '}{o.city}, {o.state} {o.pincode}
             </p>
           </li>

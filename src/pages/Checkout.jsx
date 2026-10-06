@@ -6,7 +6,6 @@ import { useCart } from '../context/CartContext'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import Img from '../components/Img'
-import { supabase } from '../lib/supabase'
 import { saveOrder } from '../lib/orderStore'
 import { SHIPPING_FEE, amountToFreeShipping, inr, shippingFor, totalFor } from '../lib/pricing'
 import { EMPTY_ADDRESS, INDIAN_STATES, validateAddress } from '../lib/checkout'
@@ -130,7 +129,7 @@ export default function Checkout() {
   const [errors, setErrors] = useState({})
   const [failure, setFailure] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [pay, setPay] = useState('cod')
+  const [pay, setPay] = useState('razorpay')
   const prefilled = useRef(false)
 
   // Price against the live catalogue — never against a stale cache — before
@@ -227,23 +226,9 @@ export default function Checkout() {
 
     setSubmitting(true)
     try {
-      if (pay === 'razorpay') {
-        await payOnline(customer, items)
-        return
-      }
-
-      // Only ids, sizes and quantities leave the browser — the database looks
-      // up the real prices and computes the totals.
-      const { data, error } = await supabase.rpc('create_order', {
-        payload: { ...customer, payment_method: 'cod', items },
-      })
-      if (error) throw new Error(error.message)
-      if (!data?.reference) throw new Error('The order could not be saved. Please try again.')
-
-      const order = { ...data, customer }
-      saveOrder(order)
-      clear()
-      navigate(`/order/${order.reference}`, { replace: true, state: { order } })
+      // Every order is paid online — `payOnline` creates (or reuses) the
+      // order, opens Razorpay and clears the cart once verification succeeds.
+      await payOnline(customer, items)
     } catch (err) {
       setFailure(err?.message || 'We could not place your order. Please try again.')
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -341,13 +326,6 @@ export default function Checkout() {
 
           <Section n="3" title="Payment">
             <div role="radiogroup" aria-label="Payment method" className="space-y-3">
-              <PayOption
-                value="cod"
-                checked={pay === 'cod'}
-                onChange={setPay}
-                title="Cash on delivery"
-                body="Pay when your order arrives. Please keep exact change ready if you can."
-              />
               {onlinePaymentReady && (
                 <PayOption
                   value="razorpay"
@@ -368,13 +346,11 @@ export default function Checkout() {
 
           <button
             type="submit"
-            disabled={submitting || !lines.length}
+            disabled={submitting || !lines.length || !onlinePaymentReady}
             className="mt-8 w-full h-[56px] rounded-lg bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
           >
             {submitting && <Loader2 size={18} className="animate-spin" />}
-            {submitting
-              ? (pay === 'razorpay' ? 'Opening secure payment…' : 'Placing your order…')
-              : (pay === 'razorpay' ? `Pay now · ${inr(totalFor(subtotal))}` : `Place order · ${inr(totalFor(subtotal))}`)}
+            {submitting ? 'Opening secure payment…' : `Pay now · ${inr(totalFor(subtotal))}`}
           </button>
           <p className="text-[13px] text-black/50 mt-3 text-center">
             By placing this order you agree to our <Link to="/policies/terms-of-service" className="underline underline-offset-2">terms</Link> and <Link to="/policies/refund-policy" className="underline underline-offset-2">refund policy</Link>.

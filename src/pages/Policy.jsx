@@ -8,8 +8,8 @@ import { site } from '../data/site'
 const LAST_UPDATED = '28 September 2026'
 
 // Written against the promises already published on this site (announcement
-// bar, features and FAQ): free shipping over ₹999, delivery in 3–7 working
-// days and 30-day returns. Nothing here invents a guarantee the store has not
+// bar, features and FAQ): free shipping over ₹999 and delivery in 7-10
+// working days. Nothing here invents a guarantee the store has not
 // already made. Keep this in sync with src/data/site.js.
 const POLICIES = {
   'shipping-policy': {
@@ -26,7 +26,7 @@ const POLICIES = {
       ],
       ['When your order arrives', [
         'We usually pack and dispatch an order within 2–3 working days of it being placed.',
-        'Most orders arrive within 3–7 working days from dispatch. Remote PIN codes can take a little longer.',
+        'Most orders arrive within 7-10 working days from dispatch. Remote PIN codes can take a little longer.',
         'Working days are Monday to Saturday, excluding public holidays.'],
       ],
       ['Tracking your order', [
@@ -42,8 +42,7 @@ const POLICIES = {
     title: 'Refund policy',
     intro: 'Returns, exchanges and how money comes back to you.',
     sections: [
-      ['30-day returns', [
-        'You can return most unworn items within 30 days of delivery.',
+      ['Returns', [
         'Items must be in their original condition with tags attached and no signs of washing, wear, stains or perfume.'],
       ],
       ['How to start a return', [
@@ -56,7 +55,6 @@ const POLICIES = {
       ],
       ['How refunds are paid', [
         'Once we receive and inspect the returned item, we refund the item price to the original payment method.',
-        'For cash-on-delivery orders there is no card to refund against, so we transfer the money back by bank transfer or UPI using the details you give us.',
         'Shipping charges are refunded only when the whole order is returned or when we sent the wrong item.'],
       ],
       ['Items we cannot take back', [
@@ -84,7 +82,7 @@ const POLICIES = {
         'We do not sell, rent or trade your personal information to anyone.'],
       ],
       ['Payment details', [
-        'This site does not collect or store card, UPI or net-banking credentials. You can pay cash on delivery, or pay online at checkout through Razorpay — a certified payment provider that handles the card and bank details entirely on its own systems and never shares them with us.'],
+        'This site does not collect or store card, UPI or net-banking credentials. Payment is made at checkout through Razorpay — a certified payment provider that handles the card and bank details entirely on its own systems and never shares them with us.'],
       ],
       ['Who holds it', [
         'Your account, orders and messages are stored securely in our Supabase database, and product photography is served by our image host.',

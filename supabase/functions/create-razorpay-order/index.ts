@@ -22,13 +22,13 @@ import {
 import { rpcCreateOrder, serviceFetch } from '../_shared/supabase.ts'
 
 const NOT_CONFIGURED =
-  'Online payment is not switched on yet. Please choose cash on delivery.'
+  'Online payment is not switched on yet. Please contact us to place your order.'
 const UNREACHABLE =
   'We could not reach the payment provider. You have not been charged — please try again.'
 const GENERIC =
   'We could not start your payment. You have not been charged — please try again.'
 const TOO_SMALL =
-  'Online payment starts at ₹1. Please choose cash on delivery for this order.'
+  'Online payment starts at ₹1. Please contact us to place this order.'
 
 // Razorpay refuses any order below 100 paise (₹1) with a 400 of its own;
 // refusing it here keeps that gateway error out of the shopper's view.

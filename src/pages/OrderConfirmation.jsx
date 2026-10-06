@@ -7,7 +7,7 @@ import { inr, totalFor } from '../lib/pricing'
 import { site } from '../data/site'
 
 const PACKING = [PackageCheck, 'We start packing', 'Your order is checked and packed at our studio.']
-const SHIPPING = [Truck, 'It ships within 2–3 working days', 'Most orders arrive in 3–7 working days across India.']
+const SHIPPING = [Truck, 'It ships within 2–3 working days', 'Most orders arrive in 7-10 working days across India.']
 
 const PAYMENT_STATES = {
   paid: 'Paid',
@@ -15,11 +15,12 @@ const PAYMENT_STATES = {
   refunded: 'Refunded',
 }
 
-// The last step depends on how the order was paid — a COD parcel still has
-// money to collect, an online one does not.
+// The last step depends on how the order was paid. An order that did not go
+// through the payment gateway only needs the delivery call; a gateway order
+// shows where the money actually stands.
 function stepsFor(order) {
   if (order.payment_method !== 'razorpay') {
-    return [PACKING, SHIPPING, [PhoneCall, 'Pay on delivery', 'Our delivery partner will call you before arriving.']]
+    return [PACKING, SHIPPING, [PhoneCall, 'Delivery partner calls ahead', 'Our delivery partner will call you before arriving.']]
   }
   return order.payment_status === 'paid'
     ? [PACKING, SHIPPING, [ShieldCheck, 'Payment confirmed', 'Paid online — there is nothing to pay when your parcel arrives.']]
@@ -60,9 +61,7 @@ export default function OrderConfirmation() {
   const c = order.customer || {}
   const online = order.payment_method === 'razorpay'
   const paid = order.payment_status === 'paid'
-  const paymentState = online
-    ? (PAYMENT_STATES[order.payment_status] || 'Pending')
-    : 'Pay on delivery'
+  const paymentState = PAYMENT_STATES[order.payment_status] || 'Pending'
   const steps = stepsFor(order)
 
   return (
@@ -111,7 +110,7 @@ export default function OrderConfirmation() {
             <div className="flex justify-between"><dt className="text-black/65">Shipping</dt>
               <dd className="font-ui">{order.shipping === 0 ? <span className="text-brand-green font-semibold">Free</span> : inr(order.shipping)}</dd></div>
             <div className="flex justify-between pt-3 border-t border-black/10 text-[18px] font-semibold">
-              <dt>{paid ? 'Total (paid online)' : online ? 'Total' : 'Total (cash on delivery)'}</dt>
+              <dt>{paid ? 'Total (paid online)' : 'Total'}</dt>
               <dd className="font-ui">{inr(order.total ?? totalFor(order.subtotal))}</dd>
             </div>
           </dl>
@@ -121,7 +120,7 @@ export default function OrderConfirmation() {
           <div className="border border-black/10 rounded-xl bg-white p-5">
             <h2 className="text-[17px] font-semibold">Payment</h2>
             <p className="mt-2 text-[15px] flex items-center gap-2 flex-wrap">
-              <span className="font-medium">{online ? 'Online payment' : 'Cash on delivery'}</span>
+              <span className="font-medium">{online ? 'Online payment' : 'Offline payment'}</span>
               <span className={`text-[13px] font-semibold border rounded-full px-2.5 py-0.5 ${
                 paid
                   ? 'bg-green-50 text-green-800 border-green-200'
@@ -133,8 +132,8 @@ export default function OrderConfirmation() {
             )}
             <p className="text-[14px] text-black/60 mt-2 leading-6">
               {paid
-                ? 'Paid online — there is nothing to pay on delivery.'
-                : 'Keep the exact amount ready; our delivery partner will collect it.'}
+                ? 'Paid online — there is nothing left to pay when your parcel arrives.'
+                : 'We are confirming your payment. You will not be asked to pay again.'}
             </p>
           </div>
           <div className="border border-black/10 rounded-xl bg-white p-5">
