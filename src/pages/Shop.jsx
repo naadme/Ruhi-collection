@@ -8,7 +8,9 @@ import usePageTitle from '../hooks/usePageTitle'
 const Sel = ({ label, value, onChange, opts }) => (
   <label className="flex items-center gap-2 font-ui text-sm">
     <span className="sr-only sm:not-sr-only">{label}</span>
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="border border-black/40 rounded px-3 h-10 bg-white">
+    {/* `pr-4` gives the native arrow a slot of its own so it sits centred
+        in that slot and can never run into the option text. */}
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="border border-black/40 rounded-lg pl-3 pr-4 h-10 bg-white">
       {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
     </select>
   </label>
@@ -54,6 +56,9 @@ export default function Shop() {
     : 'Shop all'
 
   const hasFilters = !!(t || q)
+  // "Clear" has to be on screen whenever anything at all is filtered *or*
+  // sorted — a sort on its own used to hide it even though Clear resets it.
+  const showClear = !!(t || q || sort)
 
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-12">
@@ -66,17 +71,20 @@ export default function Shop() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-4 justify-between my-8 border-y border-black/10 py-4">
-        <div className="flex flex-wrap gap-4">
-          <Sel label="Type" value={t} onChange={set('type')} opts={[['', 'All'], ...TYPES.map((x) => [x.key, x.label])]} />
-        </div>
-        <div className="flex items-center gap-4">
-          <Sel label="Sort" value={sort} onChange={set('sort')} opts={[
-            ['', 'Featured'], ['low', 'Price, low to high'], ['high', 'Price, high to low'],
-            ['rating', 'Top rated'], ['name', 'Name, A–Z'],
-          ]} />
-          {hasFilters && <button onClick={clearAll} className="text-sm underline underline-offset-2 hover:text-black">Clear</button>}
-        </div>
+      {/* Type, Sort and Clear form one filter group on the left of the bar.
+          `flex-wrap` means the group wraps as a unit on narrow screens
+          instead of ever being pushed out of view. */}
+      <div className="flex flex-wrap items-center gap-4 my-8 border-y border-black/10 py-4">
+        <Sel label="Type" value={t} onChange={set('type')} opts={[['', 'All'], ...TYPES.map((x) => [x.key, x.label])]} />
+        <Sel label="Sort" value={sort} onChange={set('sort')} opts={[
+          ['', 'Featured'], ['low', 'Price, low to high'], ['high', 'Price, high to low'],
+          ['rating', 'Top rated'], ['name', 'Name, A–Z'],
+        ]} />
+        {showClear && (
+          <button onClick={clearAll} className="text-sm underline underline-offset-2 hover:text-black">
+            Clear
+          </button>
+        )}
       </div>
 
       <ProductGrid

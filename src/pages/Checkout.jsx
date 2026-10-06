@@ -257,7 +257,7 @@ export default function Checkout() {
       <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
         <h1 className="text-[38px]">Your cart is empty</h1>
         <p className="text-black/60 mt-3 text-[17px]">Add something you love before checking out.</p>
-        <Link to="/shop" className="inline-block bg-brand-green text-white px-10 py-4 rounded-md mt-8 text-[17px]">Continue shopping</Link>
+        <Link to="/shop" className="inline-block bg-brand-green text-white px-10 py-4 rounded-lg mt-8 text-[17px]">Continue shopping</Link>
       </section>
     )
   }
@@ -366,7 +366,7 @@ export default function Checkout() {
           <button
             type="submit"
             disabled={submitting || !lines.length}
-            className="mt-8 w-full h-[56px] rounded-md bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
+            className="mt-8 w-full h-[56px] rounded-lg bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
           >
             {submitting && <Loader2 size={18} className="animate-spin" />}
             {submitting

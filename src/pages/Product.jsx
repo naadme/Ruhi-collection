@@ -37,7 +37,7 @@ function Gallery({ product }) {
               onClick={() => setActive(i)}
               aria-label={`Show image ${i + 1} of ${shots.length}`}
               aria-current={active === i}
-              className={`w-20 h-24 overflow-hidden border-2 transition ${active === i ? 'border-black' : 'border-transparent opacity-60 hover:opacity-100'}`}
+              className={`w-20 h-24 overflow-hidden border-2 rounded-lg transition ${active === i ? 'border-black' : 'border-transparent opacity-60 hover:opacity-100'}`}
             >
               <Img src={s} alt="" className="w-full h-full object-cover" />
             </button>
@@ -201,11 +201,11 @@ export default function Product() {
 
           <button
             onClick={() => place(false)}
-            className="block w-full mt-7 h-14 border-2 border-black text-lg hover:bg-black hover:text-white transition"
+            className="block w-full mt-7 h-14 border-2 border-black text-lg rounded-lg hover:bg-black hover:text-white transition"
           >
             Add to cart
           </button>
-          <button onClick={() => place(true)} className="block w-full mt-3 h-14 bg-brand-green text-white text-lg hover:bg-[#A86B5C] transition">
+          <button onClick={() => place(true)} className="block w-full mt-3 h-14 bg-brand-green text-white text-lg rounded-lg hover:bg-[#A86B5C] transition">
             Buy it now
           </button>
 

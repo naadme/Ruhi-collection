@@ -24,7 +24,7 @@ export const Hero = () => {
       <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#F8EDE6] text-[#4A2C23] m-3 md:m-0 md:ml-[68px] md:my-[70px]">
         <div><p className="text-xl md:text-2xl">Ruhi Womens Clothing</p>
           <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[.9] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
-          <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10">Shop new arrivals</Link>
+          <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10 rounded-lg">Shop new arrivals</Link>
           <p className="text-xl md:text-2xl mt-8">Free shipping over ₹999</p></div></div>
       <Img src={img.heroMain} alt="New arrivals" loading="eager" className="w-full h-[420px] md:h-[calc(100%-140px)] object-cover md:mx-[68px] md:my-0 md:self-start md:mt-0 md:w-[calc(100%-0px)]" />
       <div className="grid grid-rows-[auto_auto_1fr] md:pr-[68px] md:ml-0">

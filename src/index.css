@@ -11,6 +11,14 @@ textarea.cfield{@apply h-auto py-3.5 min-h-[92px]}
 .cfield[aria-invalid="true"]{@apply border-red-500 focus:border-red-500 focus:ring-red-100}
 .clabel{@apply block text-[14px] font-medium text-black/70 mb-1.5}
 .cerror{@apply block text-[13px] text-red-600 mt-1.5}
-/* Keyboard users should always see where they are; mouse users should not. */
-:where(a,button,input,select,textarea,summary,[tabindex]):focus-visible{@apply outline-none ring-2 ring-black/60 ring-offset-2 ring-offset-white rounded-sm}
+/* Button corners: one softly rounded treatment for every button on the site.
+   Elements that already carry a Tailwind radius utility keep it — so circles
+   and intentional pills (rounded-full) stay exactly as designed — while the
+   buttons that had square corners pick up the site's 8px radius. */
+button, select, [role="button"]{border-radius:.5rem}
+:where(.btn-outline){border-radius:.5rem}
+/* Keyboard users should always see where they are; mouse users should not.
+   No radius here: a focused control keeps its own corners (otherwise every
+   button would snap to 2px while focused) and the ring follows them. */
+:where(a,button,input,select,textarea,summary,[tabindex]):focus-visible{@apply outline-none ring-2 ring-black/60 ring-offset-2 ring-offset-white}
 @media (prefers-reduced-motion: reduce){.marquee{animation:none}}

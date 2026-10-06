@@ -390,7 +390,7 @@ function AuthForm({ mode, setMode, onDone, busy, next }) {
             key={k} type="button"
             aria-pressed={mode === k}
             onClick={() => switchMode(k)}
-            className={`flex-1 h-10 rounded-md text-[15px] font-medium transition ${mode === k ? 'bg-white shadow-sm' : 'text-black/60 hover:text-black'}`}
+            className={`flex-1 h-10 rounded-lg text-[15px] font-medium transition ${mode === k ? 'bg-white shadow-sm' : 'text-black/60 hover:text-black'}`}
           >
             {label}
           </button>

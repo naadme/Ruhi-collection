@@ -107,7 +107,7 @@ function SectionSwitch({ value, onChange }) {
           aria-selected={value === k}
           aria-controls={`panel-${k}`}
           onClick={() => onChange(k)}
-          className={`px-4 h-10 rounded-md text-[15px] font-medium transition ${
+          className={`px-4 h-10 rounded-lg text-[15px] font-medium transition ${
             value === k ? 'bg-black text-white' : 'text-black/60 hover:text-black'
           }`}
         >
@@ -245,7 +245,7 @@ export default function Dashboard() {
               <button
                 key={k}
                 onClick={() => setFilter(k)}
-                className={`px-3.5 h-9 rounded-md text-[14px] font-medium transition ${
+                className={`px-3.5 h-9 rounded-lg text-[14px] font-medium transition ${
                   filter === k ? 'bg-black text-white' : 'text-black/60 hover:text-black'
                 }`}
               >

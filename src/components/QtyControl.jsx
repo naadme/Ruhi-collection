@@ -8,7 +8,7 @@ export default function QtyControl({ qty, onChange, small }) {
   // Both ends are blocked here so the buttons advertise the limit the database
   // enforces; CartContext clamps again in case a value arrives some other way.
   return (
-    <div className="inline-flex items-center border border-black/50 rounded-md font-ui">
+    <div className="inline-flex items-center border border-black/50 rounded-lg font-ui">
       <button
         type="button" className={`${h} grid place-items-center disabled:opacity-40`}
         onClick={() => onChange(Math.max(1, qty - 1))} disabled={atMin} aria-label="Decrease"
