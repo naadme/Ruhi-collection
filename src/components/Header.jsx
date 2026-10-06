@@ -23,7 +23,11 @@ export default function Header() {
   useOverlay(menu, closeMenu, panel)
   const menuLinks = [...site.nav, { label: 'Wishlist', to: '/wishlist' }, { label: 'Account', to: '/account' }, { label: 'Cart', to: '/cart' }]
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-black/10">
+    /* `#FAF0E7` is sampled straight from public/images/ruhi-logo.jpg so the
+       logo's own cream plate disappears into the bar instead of reading as a
+       rectangle. Every surface the header owns (dropdown, search panel, mobile
+       drawer) uses the same value for a seamless match on desktop and mobile. */
+    <header className="sticky top-0 z-40 bg-[#FAF0E7] border-b border-black/10">
       <div className="max-w-page mx-auto flex items-center justify-between px-4 md:px-12 h-[84px] md:h-[104px]">
         {/* The full nav only appears at `lg`; between 640px and 1024px the four
             links plus the four action icons do not fit side by side. */}
@@ -55,7 +59,7 @@ export default function Header() {
                 /* The padded wrapper bridges the gap between the label and the
                    panel so the pointer never leaves the branch in between. */
                 <div className="absolute left-0 top-full pt-3 z-50">
-                  <ul className="min-w-[230px] bg-white border border-black/10 rounded-lg shadow py-2">
+                  <ul className="min-w-[230px] bg-[#FAF0E7] border border-black/10 rounded-lg shadow py-2">
                     {n.children.map((c) => (
                       <li key={c.to}>
                         <Link to={c.to} onClick={() => setCatalogue(false)} className="block px-5 py-2.5 text-[16px] tracking-wide text-black/70 hover:text-black hover:bg-black/5 transition-colors">{c.label}</Link>
@@ -84,7 +88,7 @@ export default function Header() {
       {search && <SearchBar onClose={() => setSearch(false)} />}
       {menu && (
         <div className="fixed inset-0 z-50 bg-black/40" onClick={closeMenu}>
-          <aside ref={panel} role="dialog" aria-modal="true" aria-label="Menu" tabIndex={-1} className="bg-white w-[85%] max-w-sm h-full p-6 outline-none" onClick={(e) => e.stopPropagation()}>
+          <aside ref={panel} role="dialog" aria-modal="true" aria-label="Menu" tabIndex={-1} className="bg-[#FAF0E7] w-[85%] max-w-sm h-full p-6 outline-none" onClick={(e) => e.stopPropagation()}>
             <button onClick={closeMenu} className="mb-6" aria-label="Close menu"><X /></button>
             {menuLinks.map((n) => (n.children ? (
               <div key={n.to} className="border-b border-black/10">

@@ -49,7 +49,7 @@ function PayOption({ value, checked, onChange, title, body }) {
   return (
     <label
       className={`flex gap-3 rounded-xl p-4 border transition cursor-pointer ${
-        checked ? 'border-brand-green/40 bg-[#F8EDE6]' : 'border-black/15 bg-white hover:border-black/30'
+        checked ? 'border-brand-green/40 bg-white' : 'border-black/15 bg-white/40 hover:border-black/30'
       }`}
     >
       <input
@@ -78,7 +78,7 @@ function Summary({ lines, subtotal, compact }) {
   const shipping = shippingFor(subtotal)
   const gap = amountToFreeShipping(subtotal)
   return (
-    <div className="border border-black/10 rounded-xl bg-white p-5">
+    <div className="border border-black/10 rounded-xl bg-transparent p-5 shadow-[0_1px_2px_rgba(74,44,35,.04)]">
       <h2 className="text-[17px] font-semibold">Order summary</h2>
       <ul className="mt-4 space-y-4">
         {lines.map((l) => (
@@ -110,7 +110,7 @@ function Summary({ lines, subtotal, compact }) {
       </dl>
 
       {!compact && gap > 0 && (
-        <p className="mt-4 flex items-start gap-2 text-[13px] text-black/60 bg-[#F8EDE6] rounded-lg px-3 py-2.5">
+        <p className="mt-4 flex items-start gap-2 text-[13px] text-black/60 bg-white/70 rounded-lg px-3 py-2.5">
           <Truck size={15} className="mt-[1px] shrink-0 text-brand-green" />
           Add {inr(gap)} more to your order to get free shipping. Otherwise shipping is {inr(SHIPPING_FEE)}.
         </p>
@@ -280,7 +280,10 @@ export default function Checkout() {
       )}
 
       <div className="mt-8 grid lg:grid-cols-[1.35fr_1fr] gap-8 lg:gap-12 items-start">
-        <form onSubmit={submit} noValidate className="bg-white">
+        {/* No card background: the form sits directly on the page canvas so the
+            whole checkout reads as one continuous surface. Section dividers
+            (in `Section`) are what separate Contact / Delivery / Payment. */}
+        <form onSubmit={submit} noValidate>
           <Section n="1" title="Contact">
             <Field
               label="Email" name="email" type="email" autoComplete="email"

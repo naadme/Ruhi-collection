@@ -29,10 +29,11 @@ export const Hero = () => {
     <section className="grid min-h-[560px] xl:grid-cols-[1.1fr_1fr_1fr] xl:grid-rows-[684px] xl:h-[684px] bg-[#4A2C23] text-white">
       <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#F8EDE6] text-[#4A2C23] m-3 xl:m-0 xl:ml-[68px] xl:my-[70px] xl:min-h-0">
         <div><p className="text-xl md:text-2xl">Ruhi Womens Clothing</p>
-          {/* `leading-[1.05]` (not the original .9) keeps a visible gap between
-              the two lines — the terracotta highlight on "Arrival" is taller
-              than the line box, so .9 let it butt straight into "New". */}
-          <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[1.05] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
+          {/* The terracotta highlight on "Arrival" is taller than its line box,
+              so the original `leading-[.9]` butted it straight into "New".
+              `1.12` on small screens / `1.05` from `md` up keeps ~13px of clear
+              space under "New" at both sizes. */}
+          <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[1.12] md:leading-[1.05] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
           <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10 rounded-lg">Shop new arrivals</Link>
           <p className="text-xl md:text-2xl mt-8">Free shipping over ₹999</p></div></div>
       {/* `w-full` + `mx` (100% + 136px of margins) made the photo 68px too

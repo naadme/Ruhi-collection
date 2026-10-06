@@ -24,7 +24,7 @@ export default function SearchBar({ onClose }) {
   const go = (e) => { e.preventDefault(); nav(`/shop?q=${encodeURIComponent(term)}`); onClose() }
 
   return (
-    <div className="absolute inset-x-0 top-full bg-white border-b border-black/10 pb-4 shadow">
+    <div className="absolute inset-x-0 top-full bg-[#FAF0E7] border-b border-black/10 pb-4 shadow">
       <form onSubmit={go} role="search" className="flex items-center gap-6 max-w-[1000px] mx-auto px-4 pt-6">
         <div className="relative flex-1 border-2 border-black/70 rounded-md h-[64px]">
           <label htmlFor="site-search" className="absolute left-4 top-1 text-xs text-black/70">Search</label>
