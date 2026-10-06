@@ -12,7 +12,9 @@ export const site = {
   name: 'Ruhi Womens Clothing',
   short: 'RUHI',
   tagline: 'Everyday fashion for women — thoughtfully made, honestly priced.',
-  address: 'Ruhi Womens Clothing Studio, Mumbai, Maharashtra, India',
+  // No physical outlet — Ruhi Collection sells online only, so the site
+  // publishes contact channels (phone, email, socials) and never a street
+  // address.
   phone: '9046651272',
   email: 'himabindu.nalli123@gmail.com',
   hours: 'Mon – Sat, 10:00 – 19:00 IST',

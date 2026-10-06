@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, Clock, Loader2, Mail, MapPin, Phone } from 'lucide-react'
+import { AlertTriangle, Clock, Loader2, Mail, Phone } from 'lucide-react'
 import Img from '../components/Img'
 import { img } from '../data/images'
 import { site } from '../data/site'
@@ -63,7 +63,7 @@ export default function Contact() {
     setSent(true); setF(EMPTY)
   }
 
-  const info = [[MapPin, site.address], [Phone, site.phone], [Mail, site.email], [Clock, site.hours]]
+  const info = [[Phone, site.phone], [Mail, site.email], [Clock, site.hours]]
   return (
     <>
       <div className="relative h-[160px] md:h-[220px] bg-neutral-300"><Img src={img.contact} alt="" loading="eager" className="absolute inset-0 w-full h-full object-cover" /><div className="absolute inset-0 bg-black/30" />

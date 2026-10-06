@@ -20,17 +20,29 @@ export const Hero = () => {
   ), 0), [products])
   const promo = best >= 5 ? `UP TO ${best}% OFF!` : 'SHOP THE COLLECTION'
   return (
-    <section className="grid md:grid-cols-[1.1fr_1fr_1fr] min-h-[560px] md:h-[684px] bg-[#4A2C23] text-white">
-      <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#F8EDE6] text-[#4A2C23] m-3 md:m-0 md:ml-[68px] md:my-[70px]">
+    // The 3-column composition needs ~1280px before the headline, the promo
+    // line and the centre photo all fit side by side without colliding, so
+    // below `xl` the hero stacks exactly like the mobile layout. At `xl`+ the
+    // row is locked to the hero's own height (and the columns get `min-h-0`),
+    // which stops the panel and the two photos from spilling over the
+    // "Shop by Category" section underneath.
+    <section className="grid min-h-[560px] xl:grid-cols-[1.1fr_1fr_1fr] xl:grid-rows-[684px] xl:h-[684px] bg-[#4A2C23] text-white">
+      <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#F8EDE6] text-[#4A2C23] m-3 xl:m-0 xl:ml-[68px] xl:my-[70px] xl:min-h-0">
         <div><p className="text-xl md:text-2xl">Ruhi Womens Clothing</p>
-          <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[.9] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
+          {/* `leading-[1.05]` (not the original .9) keeps a visible gap between
+              the two lines — the terracotta highlight on "Arrival" is taller
+              than the line box, so .9 let it butt straight into "New". */}
+          <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[1.05] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
           <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10 rounded-lg">Shop new arrivals</Link>
           <p className="text-xl md:text-2xl mt-8">Free shipping over ₹999</p></div></div>
-      <Img src={img.heroMain} alt="New arrivals" loading="eager" className="w-full h-[420px] md:h-[calc(100%-140px)] object-cover md:mx-[68px] md:my-0 md:self-start md:mt-0 md:w-[calc(100%-0px)]" />
-      <div className="grid grid-rows-[auto_auto_1fr] md:pr-[68px] md:ml-0">
+      {/* `w-full` + `mx` (100% + 136px of margins) made the photo 68px too
+          wide, pushing it into the promo column; size it to the space the
+          two side margins leave. */}
+      <Img src={img.heroMain} alt="New arrivals" loading="eager" className="w-full h-[420px] object-cover xl:h-[calc(100%-140px)] xl:mx-[68px] xl:w-[calc(100%-136px)] xl:self-start" />
+      <div className="grid grid-rows-[auto_auto_minmax(0,1fr)] xl:pr-[68px] xl:min-h-0">
         <Img src={img.heroTop} alt="Women's coord set" loading="eager" className="w-full h-[300px] object-cover" />
         <Link to="/shop" className="font-ui italic font-bold text-[40px] md:text-[44px] text-center py-4">{promo}</Link>
-        <Img src={img.heroStore} alt="Shop the collection" loading="eager" className="w-full h-[280px] md:h-full object-cover" /></div>
+        <Img src={img.heroStore} alt="Shop the collection" loading="eager" className="w-full h-[280px] object-cover xl:h-full xl:min-h-0" /></div>
     </section>
   )
 }

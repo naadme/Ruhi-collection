@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { MapPin, Phone, Mail } from 'lucide-react'
+import { Phone, Mail } from 'lucide-react'
 import Newsletter from './Newsletter'
 import Logo from './Logo'
 import { site } from '../data/site'
@@ -17,7 +17,6 @@ export default function Footer() {
           <Col title="Shop" links={site.shopLinks} /><Col title="Customer service" links={site.service} />
           <div className="min-w-0"><h3 className="text-[22px] font-medium">Contact us</h3>
             <ul className="mt-6 space-y-4 text-[17px]">
-              <li className="flex gap-3"><MapPin className="shrink-0 mt-1" size={20} />{site.address}</li>
               <li className="flex gap-3 items-center"><Phone size={20} />{site.phone}</li>
               <li className="flex gap-3 items-center"><Mail size={20} />{site.email}</li></ul></div>
           <div className="min-w-0"><h3 className="text-[22px] font-medium">Stay updated</h3><p className="mt-6 text-[17px] leading-7 max-w-[300px]">Subscribe to get updates on new arrivals and offers.</p><Newsletter /></div>
