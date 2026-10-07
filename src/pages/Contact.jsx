@@ -3,7 +3,7 @@ import { AlertTriangle, Clock, Loader2, Mail, Phone } from 'lucide-react'
 import Img from '../components/Img'
 import { img } from '../data/images'
 import { site } from '../data/site'
-import { supabase } from '../lib/supabase'
+import { sendContactMessage } from '../lib/contact'
 import { emailOk } from '../lib/checkout'
 import usePageTitle from '../hooks/usePageTitle'
 
@@ -15,6 +15,11 @@ function validate(values) {
   const errors = {}
   if (values.name.trim().length < 2) errors.name = 'Please enter your name.'
   if (!emailOk(values.email)) errors.email = 'Enter a valid email address.'
+  // Phone is optional, but if it is given it must still look like a number —
+  // otherwise the round trip fails after the shopper has typed everything.
+  if (values.phone.trim() && !/^[0-9+()\-\s]{1,30}$/.test(values.phone.trim())) {
+    errors.phone = 'Enter a valid phone number.'
+  }
   if (values.comment.trim().length < 5) errors.comment = 'Please tell us how we can help.'
   return errors
 }
@@ -23,7 +28,9 @@ export default function Contact() {
   usePageTitle('Contact', 'Questions about an order, a size or a return? Get in touch with the Ruhi Womens Clothing team — we reply within one working day.')
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState(false)
+  // Holds the failure sentence itself, not a flag, so the shopper is told what
+  // actually went wrong instead of a bare "something failed".
+  const [failed, setFailed] = useState('')
   const [f, setF] = useState(EMPTY)
   const [errors, setErrors] = useState({})
   const on = (k) => (e) => {
@@ -45,19 +52,21 @@ export default function Contact() {
     setErrors(found)
     if (Object.keys(found).length) {
       // Put focus back on the first field that needs attention.
-      const order = ['name', 'email', 'comment']
+      const order = ['name', 'email', 'phone', 'comment']
       const first = order.find((k) => found[k])
       if (first) document.getElementById(`ct-${first === 'comment' ? 'comment' : first}`)?.focus()
       return
     }
-    setBusy(true); setFailed(false)
-    const { error } = await supabase
-      .from('contact_messages')
-      .insert({ name: f.name.trim(), email: f.email.trim(), phone: f.phone.trim(), comment: f.comment.trim() })
+    // `busy` doubles as the duplicate-submission lock: the button is disabled
+    // while a request is in flight and a second submit event is ignored.
+    setBusy(true); setFailed('')
+    const result = await sendContactMessage(f)
     setBusy(false)
-    if (error) {
-      console.warn('[Supabase] contact message not saved:', error.message)
-      setFailed(true)
+    if (!result.ok) {
+      console.warn('[contact] message not sent:', result.message)
+      // The fields are deliberately left exactly as typed so the shopper can
+      // edit them and press Send again.
+      setFailed(result.message)
       return
     }
     setSent(true); setF(EMPTY)
@@ -74,16 +83,19 @@ export default function Contact() {
           {sent ? (
             <div className="py-6" role="status">
               <p className="text-2xl text-brand-green">Thanks for contacting us. We'll get back to you within one working day.</p>
-              <button onClick={() => { setSent(false); setFailed(false) }} className="btn-outline mt-6">Send another message</button>
+              <button onClick={() => { setSent(false); setFailed('') }} className="btn-outline mt-6">Send another message</button>
             </div>
           ) : (
             <form onSubmit={submit} noValidate className="space-y-5">
               {failed && (
-                <p role="alert" className="flex items-start gap-2 border border-red-200 bg-red-50 text-red-800 rounded-lg px-4 py-3 text-[15px]">
+                <div role="alert" className="flex items-start gap-2 border border-red-200 bg-red-50 text-red-800 rounded-lg px-4 py-3 text-[15px]">
                   <AlertTriangle size={17} className="mt-0.5 shrink-0" />
-                  <span>Your message couldn't be saved. Please email us directly at{' '}
-                    <a href={`mailto:${site.email}`} className="underline underline-offset-2">{site.email}</a>.</span>
-                </p>
+                  <div>
+                    <p>{failed}</p>
+                    <p className="mt-1">You can edit your message and try again, or email us directly at{' '}
+                      <a href={`mailto:${site.email}`} className="underline underline-offset-2">{site.email}</a>.</p>
+                  </div>
+                </div>
               )}
               <div className="grid md:grid-cols-2 gap-5">
                 <div>
@@ -99,14 +111,15 @@ export default function Contact() {
               </div>
               <div>
                 <label className="sr-only" htmlFor="ct-phone">Phone number</label>
-                <input id="ct-phone" className="field" placeholder="Phone number" type="tel" value={f.phone} onChange={on('phone')} />
+                <input id="ct-phone" className="field" placeholder="Phone number" type="tel" value={f.phone} onChange={on('phone')} aria-invalid={!!errors.phone} />
+                {errors.phone && <p className="text-red-700 text-[14px] mt-1.5">{errors.phone}</p>}
               </div>
               <div>
                 <label className="sr-only" htmlFor="ct-comment">Comment</label>
                 <textarea id="ct-comment" className="field !h-[140px] py-6" placeholder="Comment *" required maxLength={2000} value={f.comment} onChange={on('comment')} aria-invalid={!!errors.comment} />
                 {errors.comment && <p className="text-red-700 text-[14px] mt-1.5">{errors.comment}</p>}
               </div>
-              <button disabled={busy} className="bg-brand-gold h-[60px] px-14 rounded-lg text-[19px] hover:brightness-95 inline-flex items-center gap-2.5 disabled:opacity-70">
+              <button disabled={busy} aria-busy={busy} className="bg-brand-gold h-[60px] px-14 rounded-lg text-[19px] hover:brightness-95 inline-flex items-center gap-2.5 disabled:opacity-70">
                 {busy && <Loader2 size={18} className="animate-spin" />}
                 {busy ? 'Sending…' : 'Send'}
               </button>
@@ -114,7 +127,12 @@ export default function Contact() {
           )}
         </div>
         <aside className="space-y-10">
-          <ul className="space-y-5 text-[19px]">{info.map(([I, t], i) => <li key={i} className="flex gap-4"><I className="shrink-0 mt-1 text-brand-green" size={22} aria-hidden="true" />{t}</li>)}</ul>
+          <div>
+            {/* The brand sits above the channels so the panel reads as Ruhi's
+                own contact block — same `site` source as the footer. */}
+            <h3 className="text-2xl">{site.name}</h3>
+            <ul className="mt-5 space-y-5 text-[19px]">{info.map(([I, t], i) => <li key={i} className="flex gap-4"><I className="shrink-0 mt-1 text-brand-green" size={22} aria-hidden="true" />{t}</li>)}</ul>
+          </div>
           <div className="flex flex-wrap gap-3">{site.social.map((s) => <a key={s.label} href={s.href} target="_blank" rel="noreferrer" className="border border-black/30 rounded-full px-5 py-2 hover:bg-black hover:text-white transition">{s.label}</a>)}</div>
           <div><h3 className="text-2xl mb-4">FAQ</h3>{site.faq.map(([q, a]) => <details key={q} className="border-b border-black/10 py-3"><summary className="cursor-pointer text-[18px]">{q}</summary><p className="text-black/65 mt-2">{a}</p></details>)}</div>
         </aside>

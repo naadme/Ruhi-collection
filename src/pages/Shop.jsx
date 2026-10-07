@@ -25,7 +25,7 @@ const matches = (p, query) => {
 }
 
 export default function Shop() {
-  usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — co-ord sets, dresses, tops and shirts. Filter by category, sort by price and find your fit. Free shipping over ₹999.')
+  usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — co-ord sets, dresses, tops and shirts. Filter by category, sort by price and find your fit. Free shipping for all products.')
   const { products, loading, error, source } = useProducts()
   const [sp, setSp] = useSearchParams()
 

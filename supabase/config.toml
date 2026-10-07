@@ -399,6 +399,13 @@ verify_jwt = false
 [functions.razorpay-webhook]
 verify_jwt = false
 
+# Contact form → email. Guests send it with no session, so JWT verification is
+# off (the same reason as the three above). The function validates the payload
+# itself and decides the recipient, subject and body — none of them come from
+# the browser.
+[functions.send-contact-email]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

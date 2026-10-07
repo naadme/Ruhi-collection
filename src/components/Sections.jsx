@@ -1,12 +1,13 @@
 import { Link } from 'react-router-dom'
 import { useMemo } from 'react'
-import { Truck, Headset, Zap } from 'lucide-react'
-import { categories, reviews } from '../data/products'
+import { Truck, Headset, Zap, Instagram, MessageCircle, Mail, Phone } from 'lucide-react'
+import { categories, reviews, TYPES } from '../data/products'
 import { site } from '../data/site'
 import { img } from '../data/images'
 import { useProducts } from '../context/ProductsContext'
 import { inr } from '../lib/pricing'
 import Img from './Img'
+import ProductGrid from './ProductGrid'
 const icons = { Truck, Headset, Zap }
 
 export const Hero = () => {
@@ -35,7 +36,7 @@ export const Hero = () => {
               space under "New" at both sizes. */}
           <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[1.12] md:leading-[1.05] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
           <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10 rounded-lg">Shop new arrivals</Link>
-          <p className="text-xl md:text-2xl mt-8">Free shipping over ₹999</p></div></div>
+          <p className="text-xl md:text-2xl mt-8">Free shipping for all products</p></div></div>
       {/* `w-full` + `mx` (100% + 136px of margins) made the photo 68px too
           wide, pushing it into the promo column; size it to the space the
           two side margins leave. */}
@@ -54,6 +55,62 @@ export const Categories = () => (
       <Link key={i} to={c.to} className="text-center"><Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover" /><p className="mt-4 text-[17px]">{c.label}</p></Link>))}</div>
   </section>
 )
+
+// Four real catalogue styles, never two colourways of the same garment.
+// `styleKey` drops the trailing " - Colour", so "Denim Shirt - Black" and
+// "Denim Shirt - Blue" are one style and only the first colourway is a
+// candidate. Selection runs purely over the live catalogue, so the row can
+// never advertise a product the store does not have.
+const styleKey = (title) => (title.includes(' - ') ? title.slice(0, title.lastIndexOf(' - ')) : title)
+
+const bestSellers = (list, n = 4) => {
+  // One entry per style, grouped by category.
+  const styleBuckets = TYPES.map((t) => {
+    const first = new Map()
+    for (const p of list) {
+      if (p.type !== t.key) continue
+      const key = styleKey(p.title)
+      if (!first.has(key)) first.set(key, p)
+    }
+    return [...first.values()]
+  })
+
+  const out = []
+  const seen = new Set()
+  // Round-robin: every category gets one style before any category gets a
+  // second, so the row always reads as Tops + Co-ord Sets + Dresses + one more.
+  for (let round = 0; out.length < n && round < n; round++) {
+    for (const bucket of styleBuckets) {
+      const cand = bucket[round]
+      if (!cand || seen.has(styleKey(cand.title))) continue
+      seen.add(styleKey(cand.title))
+      out.push(cand)
+      if (out.length >= n) break
+    }
+  }
+  return out
+}
+
+export const BestSellers = () => {
+  const { products, loading, source } = useProducts()
+  const items = useMemo(() => bestSellers(products), [products])
+  return (
+    <section className="max-w-page mx-auto px-4 md:px-7 pt-14 pb-10">
+      <h2 className="text-center text-[30px] md:text-[34px] font-normal tracking-wide">Best Sellers</h2>
+      <div className="mt-10">
+        <ProductGrid
+          items={items}
+          loading={loading && source !== 'database'}
+          empty={{
+            title: 'Nothing here yet',
+            body: 'The catalogue is still loading — please refresh.',
+          }}
+        />
+      </div>
+      <div className="text-center mt-14"><Link to="/shop" className="btn-outline">Shop all products</Link></div>
+    </section>
+  )
+}
 export const OurStory = () => (
   <section className="max-w-page mx-auto px-4 md:px-7 py-16 grid lg:grid-cols-[1fr_1fr] gap-10 lg:gap-20 items-center">
     <div>
@@ -62,9 +119,6 @@ export const OurStory = () => (
       <p className="text-[22px] leading-[39px] text-black/70">Ruhi Womens Clothing is a clothing brand dedicated to creating high-quality, stylish apparel that reflects your unique personality. Our journey started with a simple vision: to make fashion accessible, sustainable, and meaningful.</p>
       <p className="text-[22px] leading-[39px] text-black/70 mt-6">Every piece in our collection is carefully designed and crafted with attention to detail, ensuring you look and feel your best every day.</p>
       <div className="flex gap-5 mt-10"><Link to="/shop" className="bg-brand-yellow px-11 h-[88px] grid place-items-center rounded-lg font-bold text-[21px]">Shop Now</Link><Link to="/about" className="border-2 border-black/10 px-11 h-[88px] grid place-items-center rounded-lg font-bold text-[21px]">Learn More</Link></div>
-      {/* Three stats, so three tracks — a four-up grid would strand the last one. */}
-      <div className="grid grid-cols-3 gap-4 mt-14 pt-14 border-t border-black/10 text-center">{site.stats.map(([n, l]) => (
-        <div key={l}><p className="font-ui text-brand-yellow text-[46px] font-bold">{n}</p><p className="uppercase text-[18px] text-black/70 mt-4 leading-9">{l}</p></div>))}</div>
     </div>
     <Img src={img.story} alt="Our story" className="w-full aspect-square object-cover shadow-[0_30px_60px_rgba(74,44,35,.12)]" />
   </section>
@@ -95,6 +149,51 @@ export const Reviews = () => {
           ) : null}
         </div>
       )})}</div>
+    </section>
+  )
+}
+
+// One consolidated "Instagram / WhatsApp / email / phone" strip for the
+// homepage. Every value comes from src/data/site.js — the same source the
+// footer and contact page read — so a number or social URL is written once.
+export const ContactStrip = () => {
+  const fromSocial = (label) => site.social.find((s) => s.label === label)
+  const instagram = fromSocial('Instagram')
+  const whatsapp = fromSocial('WhatsApp')
+  const channels = [
+    instagram && { label: 'Instagram', href: instagram.href, Icon: Instagram },
+    whatsapp && { label: 'WhatsApp', href: whatsapp.href, Icon: MessageCircle },
+    { label: site.email, href: `mailto:${site.email}`, Icon: Mail },
+    { label: site.phone, href: `tel:${site.phone}`, Icon: Phone },
+  ].filter(Boolean)
+  return (
+    <section className="max-w-page mx-auto px-4 md:px-7 pb-20">
+      <div className="border-t border-black/10 pt-14 text-center">
+        <p className="text-brand-yellow font-ui tracking-[.12em] text-lg">GET IN TOUCH</p>
+        <h2 className="font-ui text-[34px] md:text-[42px] mt-4 tracking-normal">Follow Ruhi, or just say hello</h2>
+        <p className="text-[19px] text-black/70 mt-4 max-w-[760px] mx-auto">
+          Message us on Instagram or WhatsApp, email or call — we reply within one working day.
+        </p>
+        <div className="flex flex-wrap justify-center gap-3 md:gap-4 mt-8">
+          {channels.map(({ label, href, Icon }) => {
+            const external = /^https?:/.test(href)
+            return (
+              <a
+                key={label}
+                href={href}
+                {...(external ? { target: '_blank', rel: 'noreferrer' } : {})}
+                className="inline-flex items-center gap-2.5 border border-black/30 rounded-full px-5 md:px-6 py-3 text-[17px] hover:bg-black hover:text-white transition"
+              >
+                <Icon size={20} strokeWidth={1.6} aria-hidden="true" />
+                {/* `break-all` lets the long e-mail address wrap inside its
+                    pill on a 320px screen instead of widening the row past
+                    the viewport; short labels never actually break. */}
+                <span className="break-all">{label}</span>
+              </a>
+            )
+          })}
+        </div>
+      </div>
     </section>
   )
 }

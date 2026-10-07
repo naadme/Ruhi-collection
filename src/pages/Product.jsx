@@ -9,7 +9,7 @@ import { useWishlist } from '../context/WishlistContext'
 import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
 import ProductCard from '../components/ProductCard'
-import { inr, amountToFreeShipping, FREE_SHIPPING_OVER } from '../lib/pricing'
+import { inr } from '../lib/pricing'
 import { MAX_QTY } from '../lib/checkout'
 
 function Gallery({ product }) {
@@ -53,7 +53,7 @@ export default function Product() {
   const { getProduct, products, loading } = useProducts()
   const p = getProduct(id)
   const navigate = useNavigate()
-  const { add, subtotal } = useCart()
+  const { add } = useCart()
   const { has, toggle } = useWishlist()
 
   const [size, setSize] = useState(null)
@@ -95,10 +95,18 @@ export default function Product() {
 
   const fav = has(p.id)
   const off = p.compare ? Math.round((1 - p.price / p.compare) * 100) : 0
-  // Measured against the whole basket, not just this line — otherwise a cart
-  // that already qualifies for free shipping still gets told to spend more.
-  const gap = amountToFreeShipping(subtotal + p.price * qty)
   const needsSize = p.sizes.length > 1 && !size
+
+  // Colourways are modelled as one catalogue row per colour ("Denim Shirt -
+  // Black", "Denim Shirt - Blue"), so a colour selector can only move between
+  // the listings that already exist. It never adds a row of its own, and the
+  // product's own photography, price and sizes follow the colour chosen.
+  const styleKey = (t) => (t.includes(' - ') ? t.slice(0, t.lastIndexOf(' - ')) : t)
+  const colourOf = (t) => (t.includes(' - ') ? t.slice(t.lastIndexOf(' - ') + 3) : '')
+  const colour = colourOf(p.title)
+  const variants = colour
+    ? products.filter((x) => x.id !== p.id && styleKey(x.title) === styleKey(p.title))
+    : []
 
   const choose = (s) => { setSize(s); setProblem('') }
 
@@ -169,8 +177,28 @@ export default function Product() {
                   <span className="text-green-700 text-[17px]">{off}% off</span>
                 </>}
               </p>
-              <p className="text-black/60 text-sm mt-1">Taxes included. {gap > 0 ? `Add ${inr(gap)} for free shipping.` : 'Free shipping on this item.'}</p>
+              <p className="text-black/60 text-sm mt-1">Taxes included.</p>
             </>
+          )}
+
+          {variants.length > 0 && (
+            <fieldset className="mt-7">
+              <legend className="text-sm mb-2">Colour <span className="text-black/55">— {colour}</span></legend>
+              <div className="flex flex-wrap gap-3">
+                <span aria-current="true" className="h-11 min-w-[52px] px-4 rounded-full font-ui inline-flex items-center justify-center bg-black text-white border border-black">{colour}</span>
+                {variants.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => navigate(`/product/${v.id}`)}
+                    aria-label={`View ${v.title}`}
+                    className="h-11 min-w-[52px] px-4 rounded-full font-ui border border-black/40 hover:border-black transition"
+                  >
+                    {colourOf(v.title)}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
           )}
 
           <fieldset className="mt-7" id="size-options" tabIndex={-1}>
@@ -211,7 +239,7 @@ export default function Product() {
 
           <p className="mt-6 flex items-start gap-2 text-[14px] text-black/60">
             <Truck size={16} className="mt-[1px] shrink-0 text-brand-green" />
-            Free shipping on orders over {inr(FREE_SHIPPING_OVER)} · Delivery in 7-10 working days
+            Free shipping for all products · Delivery in 7-10 working days
           </p>
 
           {p.desc && <p className="mt-7 text-[18px] leading-8 text-black/70 border-t border-black/10 pt-6">{p.desc}</p>}

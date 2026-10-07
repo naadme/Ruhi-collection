@@ -1,16 +1,15 @@
 import usePageTitle from '../hooks/usePageTitle'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Lock, Truck } from 'lucide-react'
+import { AlertTriangle, Lock } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
-import { amountToFreeShipping, inr, shippingFor, totalFor, FREE_SHIPPING_OVER } from '../lib/pricing'
+import { inr, shippingFor, totalFor } from '../lib/pricing'
 
 export default function Cart() {
   usePageTitle('Cart')
   const { lines, unavailable, prune, subtotal, setQty, remove, setOpen, clear } = useCart()
-  const shipping = shippingFor(subtotal)
-  const gap = amountToFreeShipping(subtotal)
+  const shipping = shippingFor()
 
   if (!lines.length) return (
     <section className="text-center py-24 px-4">
@@ -66,13 +65,6 @@ export default function Cart() {
               <dt>Total</dt><dd className="font-ui">{inr(totalFor(subtotal))}</dd>
             </div>
           </dl>
-
-          <p className="text-[14px] text-black/60 mt-4 flex items-start gap-2">
-            <Truck size={16} className="mt-[1px] shrink-0 text-brand-green" />
-            {gap > 0
-              ? <>Add {inr(gap)} more for free shipping. Free over {inr(FREE_SHIPPING_OVER)}.</>
-              : <>Your order qualifies for free shipping.</>}
-          </p>
 
           <Link
             to="/checkout"

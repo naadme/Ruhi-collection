@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import Img from '../components/Img'
 import { img } from '../data/images'
-import { site } from '../data/site'
 import usePageTitle from '../hooks/usePageTitle'
 export default function About() {
   usePageTitle('About', 'The story behind Ruhi Womens Clothing — thoughtfully made everyday fashion, checked for fabric, stitching and fit before it ships.')
@@ -24,9 +23,6 @@ export default function About() {
         <Img src={img.aboutA} alt="" className="md:col-span-7 w-full aspect-[4/3] object-cover" />
         <Img src={img.aboutB} alt="" className="md:col-span-5 w-full aspect-[4/5] object-cover md:mt-24" />
       </section>
-      {/* Three stats → three tracks at every width (four would strand one). */}
-      <section className="max-w-[1200px] mx-auto px-4 md:px-7 py-24 grid grid-cols-3 gap-10 text-center">{site.stats.map(([n, l]) => (
-        <div key={l}><p className="font-serif font-bold text-[56px] md:text-[72px] text-brand-green leading-none">{n}</p><p className="mt-3 text-lg text-black/70">{l}</p></div>))}</section>
       <section className="bg-[#FDF7F3] py-20 text-center px-4"><h2 className="font-serif text-[40px] md:text-[56px]">Find your next favourite.</h2>
         <Link to="/shop" className="inline-block bg-brand-yellow font-bold text-xl px-12 py-5 rounded-lg mt-8">Shop now</Link></section>
     </>

@@ -39,12 +39,14 @@ as long as you never add a `VITE_` prefix to it.
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | `.env` | Supabase project URL (Project Settings → API) |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | `.env` | Supabase publishable/anon key (safe to ship) |
-| `VITE_RAZORPAY_KEY_ID` | `.env` | Razorpay **Key Id** (`rzp_test_…`). Identifies the account; cannot authorise anything on its own. **Empty ⇒ the "Online payment" option is hidden and checkout behaves exactly as a COD-only store.** |
+| `VITE_RAZORPAY_KEY_ID` | `.env` | Razorpay **Key Id** (`rzp_test_…`). Identifies the account; cannot authorise anything on its own. **Empty ⇒ the "Online payment" option is hidden and checkout cannot accept an order.** |
 | `RAZORPAY_KEY_ID` | Supabase secret | Same Key Id, read server-side by the Edge Functions |
 | `RAZORPAY_KEY_SECRET` | Supabase secret | The Razorpay **Key Secret**. Never in `.env`, never `VITE_*`, never in this repo |
 | `RAZORPAY_WEBHOOK_SECRET` | Supabase secret | Signing secret from Razorpay Dashboard → Settings → Webhooks |
+| `RESEND_API_KEY` | Supabase secret | Resend API key, read by `send-contact-email`. Never in `.env`, never `VITE_*`, never in this repo |
+| `RESEND_FROM` | Supabase secret (optional) | Resend **From** address, e.g. `Ruhi Collection <hello@yourdomain.com>`. Defaults to `onboarding@resend.dev` |
 
-The first three are the only ones the frontend can ever see. The last three are
+The first three are the only ones the frontend can ever see. The rest are
 read inside Edge Functions through `supabase secrets set`.
 
 ---
@@ -78,6 +80,32 @@ Row Level Security is on for every table. Highlights:
 - `admins` — the allowlist. `is_admin()` is a `SECURITY DEFINER` helper; admin rights are decided
   by the database, not by anything the browser sends.
 - `razorpay_webhook_events` — RLS enabled with **no** policies, granted to `service_role` only.
+
+### Contact form → email
+
+`/contact` posts to the `send-contact-email` Edge Function, which stores the row in
+`contact_messages` **and** emails it to **`ruhicollections2026@gmail.com`** with the subject
+`New Contact Form Submission — Ruhi Collection`.
+
+```bash
+# 1. Server secret (Resend → https://resend.com)
+npx supabase secrets set RESEND_API_KEY=re_... --project-ref <your-project-ref>
+
+# 2. The function
+npx supabase functions deploy send-contact-email \
+  --project-ref <your-project-ref> --no-verify-jwt
+```
+
+The browser sends four plain strings — `name`, `email`, `phone`, `comment`. The recipient,
+subject and body are fixed inside the function, so a tampered client cannot use it as a mail
+relay; `RESEND_API_KEY` is only ever read in the Edge Function runtime. The `From` address
+defaults to `onboarding@resend.dev` (Resend's own onboarding address, which only reaches the
+account's own inbox) — once you have verified a domain, add
+`RESEND_FROM=Ruhi Collection <hello@yourdomain.com>` to the same `secrets set` command.
+
+Also useful: the submitted address is set as `reply_to`, so replying from Gmail answers the
+customer directly. Set `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` as usual — no
+`VITE_` variable is added for this.
 
 ### Google sign-in
 
@@ -123,9 +151,9 @@ While you are there:
 
 ## Payments — Razorpay (TEST mode first)
 
-Cash on delivery always works and is unchanged. Online payment is an extra option
-built on three Supabase Edge Functions that keep the Razorpay **Key Secret** on the
-server — it never reaches React, the bundle, `localStorage`, or git.
+Online payment is the only payment method the storefront offers. It is built on three Supabase
+Edge Functions that keep the Razorpay **Key Secret** on the server — it never reaches React, the
+bundle, `localStorage`, or git.
 
 > **Nothing below has been run for you.** The database migration *is* applied; the
 > Edge Functions and secrets are **not deployed** (verify with
@@ -173,7 +201,7 @@ npx supabase db push --linked --yes
 ```
 
 `supabase/migrations/20260928213000_razorpay_online_payments.sql` is **additive** — it never
-recreates or drops `orders`, and COD rows are untouched. It adds:
+recreates or drops `orders`, and existing rows are untouched. It adds:
 
 | Object | Purpose |
 | --- | --- |
@@ -193,11 +221,15 @@ No table is dropped, truncated or re-created; RLS is never disabled.
 
 ### 5. Deploy the Edge Functions
 
-Three functions, all in `supabase/functions/`, all declared `verify_jwt = false`
-in `supabase/config.toml` so that guest checkout and Razorpay's webhook can call them:
+Four functions, all in `supabase/functions/`, all declared `verify_jwt = false`
+in `supabase/config.toml` so that guest checkout, the contact page and Razorpay's webhook
+can call them:
 
 ```bash
 npx supabase functions deploy create-razorpay-order verify-razorpay-payment razorpay-webhook \
+  --project-ref <your-project-ref> --no-verify-jwt
+
+npx supabase functions deploy send-contact-email \
   --project-ref <your-project-ref> --no-verify-jwt
 ```
 
@@ -208,6 +240,7 @@ They have **no** npm/Deno dependencies — plain Web APIs and `fetch` only.
 | `create-razorpay-order` | Browser | Validates the cart, runs `create_order()` (prices come from the catalogue), creates the Razorpay order for the **server-computed** total, returns only `{key_id, amount, currency, razorpay_order_id, reference, …}` |
 | `verify-razorpay-payment` | Browser | Recomputes `HMAC_SHA256(order_id \| payment_id)` with the Key Secret, checks it against Razorpay's signature, re-fetches the order from Razorpay to confirm amount + currency, **then** sets `payment_status='paid'` |
 | `razorpay-webhook` | Razorpay | Verifies `x-razorpay-signature` against the raw body, records the event id once, then reconciles `payment.captured` / `payment.failed` / `refund.processed` from the trusted database row |
+| `send-contact-email` | Browser (Contact page) | Validates the four form fields, stores the message in `contact_messages`, emails it to `ruhicollections2026@gmail.com` via Resend with the submitted address as `reply_to` |
 
 ### 6. Create the webhook
 
@@ -238,7 +271,7 @@ With TEST keys and the functions deployed, in the Razorpay **test mode**:
 Also worth checking: refresh the confirmation page (no second order appears), an
 empty cart, a wrong PIN code, and both mobile and desktop widths.
 
-Cash on delivery must keep working throughout — it never touches Razorpay.
+Online payment must be the only method shown at checkout — it never touches anything but Razorpay.
 
 ### TEST → LIVE switch
 
@@ -262,10 +295,10 @@ values back in.
 
 1. Shopper picks **Online payment** and submits.
 2. `create-razorpay-order` runs `create_order()` in Postgres. The **database** looks up the
-   products, validates sizes and quantities, and computes subtotal + shipping + total using the
-   same rules as COD (`₹79` shipping, free over `₹999`). The browser sends ids, sizes and
-   quantities — never a price.
-3. The function creates a Razorpay order for exactly that amount (in **paise**: ₹999 → `99900`)
+   products, validates sizes and quantities, and computes subtotal + shipping + total —
+   shipping is always `0` (free for all products), so the total equals the subtotal. The browser
+   sends ids, sizes and quantities — never a price.
+3. The function creates a Razorpay order for exactly that amount (in **paise**: ₹499 → `49900`)
    and stores `razorpay_order_id` against our order.
 4. Razorpay Checkout opens **inside the existing checkout page**, in Razorpay's own secure frame,
    offering whatever methods your Razorpay account has enabled.
@@ -308,21 +341,23 @@ Nothing in the browser decides price, discount, shipping, total, or whether an o
 ## Behaviour worth knowing
 
 - **Duplicate protection.** `create_order()` refuses a second order for the same email within
-  5 minutes (COD), and at most one *unfinished* online order may exist per email. A retry reuses
+  5 minutes, and at most one *unfinished* online order may exist per email. A retry reuses
   the existing order and its reference instead of creating another — so a failed or abandoned
   Razorpay attempt never leaves duplicates behind.
 - **Abandoned checkouts.** If the shopper closes Razorpay, loses the network, or the tab dies:
   nothing is charged, the cart is **not** cleared, they stay on the checkout page, and the next
   attempt reuses the same order. Verification is idempotent, so retrying after a network error
   cannot double-charge.
-- **Cart is only cleared after a confirmed payment or a confirmed COD order.** Refreshing the
+- **Cart is only cleared after a confirmed payment.** Refreshing the
   confirmation page does not create a second order.
-- **`VITE_RAZORPAY_KEY_ID` empty** ⇒ no online option, no Razorpay script loaded, store behaves
-  exactly as it did before this feature.
-- Footer payment badges and FAQ mention UPI/cards only because Razorpay is expected to be
-  connected. If you ship COD-only, adjust `src/data/site.js` and `src/components/Footer.jsx`.
-- `site.phone`, `site.email` and the testimonial quotes are still owner placeholders — replace
-  them with your real details before launch.
+- **`VITE_RAZORPAY_KEY_ID` empty** ⇒ no online option, no Razorpay script loaded, and checkout
+  cannot accept an order.
+- The FAQ mentions UPI/cards only because Razorpay is expected to be connected. Online payment is
+  the only method offered — do not add a delivery-time payment option in `src/data/site.js` or
+  `src/components/Footer.jsx`.
+- `site.phone` and the testimonial quotes are still owner placeholders — replace them with your
+  real details before launch. `site.email` is `ruhicollections2026@gmail.com`, the same mailbox
+  the contact form is delivered to.
 
 ---
 
@@ -343,8 +378,8 @@ What has been verified against this codebase:
 - Edge Function unit tests run under Node against the real sources (HMAC/signature vectors, amount
   authority, forged signatures, idempotent verification, webhook replay, secret-missing paths).
 - Checkout UI with `VITE_RAZORPAY_KEY_ID` set *and* empty — online option appears/disappears, the
-  button swaps between `Place order` and `Pay now`, a failed online attempt keeps the cart and still
-  allows a successful COD order.
+  button swaps between `Place order` and `Pay now`, and a failed online attempt keeps the cart so
+  the shopper can retry successfully.
 - Bundle scan — `checkout.razorpay.com` present, `RAZORPAY_KEY_SECRET`/`VITE_RAZORPAY` absent.
 
 Manual steps only you can do: create the Razorpay TEST keys, deploy the functions, set the

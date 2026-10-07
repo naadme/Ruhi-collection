@@ -8,7 +8,7 @@ import { site } from '../data/site'
 const LAST_UPDATED = '28 September 2026'
 
 // Written against the promises already published on this site (announcement
-// bar, features and FAQ): free shipping over ₹999 and delivery in 7-10
+// bar, features and FAQ): free shipping for all products and delivery in 7-10
 // working days. Nothing here invents a guarantee the store has not
 // already made. Keep this in sync with src/data/site.js.
 const POLICIES = {
@@ -21,8 +21,8 @@ const POLICIES = {
         'At the moment we do not ship outside India.'],
       ],
       ['How much shipping costs', [
-        'Shipping is free on every order of ₹999 and above.',
-        'Orders below ₹999 carry a flat ₹79 shipping charge. The amount is shown in your cart and again on the checkout page before you place the order.'],
+        'Shipping is free on every order, whatever the order value — there is no minimum spend and nothing extra to pay for delivery.',
+        'The cart and the checkout page both show what you will pay before you place the order, so there are no surprises at payment.'],
       ],
       ['When your order arrives', [
         'We usually pack and dispatch an order within 2–3 working days of it being placed.',

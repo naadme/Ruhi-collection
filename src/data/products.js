@@ -9,7 +9,7 @@ import { img } from './images'
 
 // The three client folders are the store's categories (and the shop's Type filter).
 export const TYPES = [
-  { key: 'tops', label: 'Tops & Shirts' },
+  { key: 'tops', label: 'Tops & T-shirts' },
   { key: 'coord', label: 'Co-ord Sets' },
   { key: 'dress', label: 'Dresses' },
 ]
@@ -80,17 +80,8 @@ export const products = [
 ]
 export const getProduct = (id) => products.find((x) => x.id === id)
 
-// The store is women-only: a single collection whose tabs are the three
-// catalogue types above.
-export const collections = [
-  {
-    key: 'women',
-    title: "Women's Collection",
-    subtitle: 'Unfold Your Style — Women’s Wear',
-    tabs: TYPES.map((t) => [t.key, t.label]),
-  },
-]
-
+// One tile per catalogue type — the homepage "Shop by Category" row and the
+// shop's Type filter both read these, so they can never disagree.
 export const categories = TYPES.map((t) => ({
   label: t.label,
   image: img[{ tops: 'catTops', coord: 'catCoord', dress: 'catDress' }[t.key]],

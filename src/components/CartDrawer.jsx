@@ -3,12 +3,11 @@ import { Link } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import useOverlay from '../hooks/useOverlay'
-import { amountToFreeShipping, inr, totalFor } from '../lib/pricing'
+import { inr, totalFor } from '../lib/pricing'
 import Img from './Img'
 import QtyControl from './QtyControl'
 export default function CartDrawer() {
   const { open, setOpen, lines, subtotal, setQty, remove } = useCart()
-  const gap = amountToFreeShipping(subtotal)
   const panel = useRef(null)
   const close = useCallback(() => setOpen(false), [setOpen])
   useOverlay(open, close, panel)
@@ -27,7 +26,6 @@ export default function CartDrawer() {
               <div className="flex-1"><p className="leading-tight">{l.product.title}</p><p className="text-sm text-black/60">Size: {l.size}</p><p className="font-ui font-semibold text-red-600">{inr(l.product.price)}</p>
                 <div className="flex items-center gap-4 mt-2"><QtyControl qty={l.qty} onChange={(q) => setQty(l.id, l.size, q)} small /><button onClick={() => remove(l.id, l.size)} className="text-sm underline">Remove</button></div></div></li>))}</ul>
           <div className="p-6 border-t">
-            {gap > 0 && <p className="text-[13px] text-black/60 mb-3">Add {inr(gap)} more for free shipping.</p>}
             <div className="flex justify-between text-xl mb-4"><span>Total</span><span className="font-ui font-semibold">{inr(totalFor(subtotal))}</span></div>
             <Link to="/cart" onClick={close} className="block text-center border border-black/60 py-3.5 rounded-lg hover:bg-black hover:text-white transition">View cart</Link>
             <Link to="/checkout" onClick={close} className="block text-center bg-brand-green text-white py-4 rounded-lg mt-3">Check out</Link>

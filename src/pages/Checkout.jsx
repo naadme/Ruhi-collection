@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2, Lock, ShieldCheck, AlertTriangle, Truck } from 'lucide-react'
+import { ArrowLeft, Loader2, Lock, ShieldCheck, AlertTriangle } from 'lucide-react'
 import usePageTitle from '../hooks/usePageTitle'
 import { useCart } from '../context/CartContext'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import Img from '../components/Img'
 import { saveOrder } from '../lib/orderStore'
-import { SHIPPING_FEE, amountToFreeShipping, inr, shippingFor, totalFor } from '../lib/pricing'
+import { inr, shippingFor, totalFor } from '../lib/pricing'
 import { EMPTY_ADDRESS, INDIAN_STATES, validateAddress } from '../lib/checkout'
 import { onlinePaymentReady, openRazorpay } from '../lib/razorpay'
 import { createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
@@ -73,9 +73,8 @@ function PayOption({ value, checked, onChange, title, body }) {
   )
 }
 
-function Summary({ lines, subtotal, compact }) {
-  const shipping = shippingFor(subtotal)
-  const gap = amountToFreeShipping(subtotal)
+function Summary({ lines, subtotal }) {
+  const shipping = shippingFor()
   return (
     <div className="border border-black/10 rounded-xl bg-transparent p-5 shadow-[0_1px_2px_rgba(74,44,35,.04)]">
       <h2 className="text-[17px] font-semibold">Order summary</h2>
@@ -107,13 +106,6 @@ function Summary({ lines, subtotal, compact }) {
           <dt>Total</dt><dd className="font-ui">{inr(totalFor(subtotal))}</dd>
         </div>
       </dl>
-
-      {!compact && gap > 0 && (
-        <p className="mt-4 flex items-start gap-2 text-[13px] text-black/60 bg-white/70 rounded-lg px-3 py-2.5">
-          <Truck size={15} className="mt-[1px] shrink-0 text-brand-green" />
-          Add {inr(gap)} more to your order to get free shipping. Otherwise shipping is {inr(SHIPPING_FEE)}.
-        </p>
-      )}
     </div>
   )
 }

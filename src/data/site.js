@@ -16,10 +16,13 @@ export const site = {
   // publishes contact channels (phone, email, socials) and never a street
   // address.
   phone: '9046651272',
-  email: 'himabindu.nalli123@gmail.com',
+  email: 'ruhicollections2026@gmail.com',
   hours: 'Mon – Sat, 10:00 – 19:00 IST',
-  social: [{ label: 'Instagram', href: 'https://www.instagram.com/ruhi_fashions_/' }, { label: 'WhatsApp', href: 'https://wa.me/919876543210' }],
-  announcements: ['Fast delivery across India', 'Free shipping on orders over ₹999', 'Customer support 10am – 7pm', 'Secure checkout'],
+  // The single source for every WhatsApp link on the site: the footer, the
+  // contact page and the homepage contact strip all render this `href`.
+  // +91 90466 51272 → 919046651272 (country code, no spaces or '+').
+  social: [{ label: 'Instagram', href: 'https://www.instagram.com/ruhi_fashions_/' }, { label: 'WhatsApp', href: 'https://wa.me/919046651272' }],
+  announcements: ['Fast delivery across India', 'Free shipping for all products', 'Customer support 10am – 7pm', 'Secure checkout'],
   nav: [
     { label: 'Home', to: '/' },
     // The catalogue branch renders as a dropdown in the header (and as a nested
@@ -42,16 +45,15 @@ export const site = {
     { label: 'Your account', to: '/account' },
   ],
   legal: [{ label: 'Privacy policy', to: '/policies/privacy-policy' }, { label: 'Terms of service', to: '/policies/terms-of-service' }],
-  // Three benefits only — every order is paid online at checkout, so there is
-  // no delivery-time payment card and the strip renders as one even row.
+  // Three benefits only, so the strip renders as one even row. Every order is
+  // paid online at checkout, so there is no delivery-time payment card.
   features: [
-    { icon: 'Truck', title: 'Free shipping', text: 'Free shipping on orders over ₹999' },
-    { icon: 'Headset', title: 'Friendly support', text: 'We reply within one working day' },
+    { icon: 'Truck', title: 'Free shipping', text: 'Free shipping for all products' },
+    { icon: 'Headset', title: 'Friendly customer support', text: 'Friendly, helpful support — we reply within one working day' },
     { icon: 'Zap', title: 'Fast delivery', text: 'Fast delivery across India' },
   ],
-  stats: [['Fast', 'Delivery across India'], ['₹999', 'Free shipping over'], ['7-10', 'Working day delivery']],
   faq: [
-    ['How long does delivery take?', 'Most orders arrive in 7-10S working days across India.'],
+    ['How long does delivery take?', 'Most orders arrive in 7-10 working days across India.'],
     ['Which payment methods do you accept?', 'Pay securely online at checkout with UPI, cards, net banking or wallets.'],
   ],
 }
