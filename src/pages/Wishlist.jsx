@@ -15,7 +15,9 @@ export default function Wishlist() {
   // Re-resolved only when the catalogue or the saved ids actually change, so a
   // heart tap does not re-scan the whole table for every other reason.
   const items = useMemo(
-    () => products.filter((p) => ids.includes(p.id)),
+    () => products.filter(
+      (p) => ids.includes(p.id) || (p.colors || []).some((c) => ids.includes(c.id)),
+    ),
     [products, ids],
   )
 

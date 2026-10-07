@@ -17,9 +17,11 @@ const Sel = ({ label, value, onChange, opts }) => (
 )
 
 // Search across everything a shopper might type: product name, category,
-// collection, product id, badge and description.
+// collection, product id, badge, description and — for a grouped design —
+// any of the colours it comes in.
 const matches = (p, query) => {
-  const haystack = [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '']
+  const haystack = [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '',
+    ...(p.colors || []).map((c) => c.color)]
     .join(' ').toLowerCase()
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((t) => haystack.includes(t))
 }

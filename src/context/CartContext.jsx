@@ -9,7 +9,10 @@ export function CartProvider({ children }) {
   const [items, setItems] = useState(() => { try { return JSON.parse(localStorage.getItem('cart')) || [] } catch { return [] } })
   const [open, setOpen] = useState(false)
   useEffect(() => localStorage.setItem('cart', JSON.stringify(items)), [items])
-  const add = useCallback((id, qty = 1, size = 'M') => {
+  // `color` is the colour chosen on the product page. Lines stay keyed by
+  // id + size: a grouped design's colour rows keep their own ids, so two
+  // colours are already two distinct lines.
+  const add = useCallback((id, qty = 1, size = 'M', color) => {
     const wanted = Math.min(MAX_QTY, Math.max(1, qty))
     setItems((c) => {
       const k = c.find((i) => i.id === id && i.size === size)
@@ -17,7 +20,7 @@ export function CartProvider({ children }) {
       // be pushed to 11 by adding one more.
       return k
         ? c.map((i) => (i === k ? { ...i, qty: Math.min(MAX_QTY, i.qty + wanted) } : i))
-        : [...c, { id, qty: wanted, size }]
+        : [...c, { id, qty: wanted, size, ...(color ? { color } : {}) }]
     })
     setOpen(true)
   }, [])
@@ -41,7 +44,13 @@ export function CartProvider({ children }) {
     for (const i of items) {
       const product = getProduct(i.id)
       if (!product) { missing += 1; continue }
-      built.push({ ...i, product })
+      // The line can name a colour row of a grouped design. Resolve it so the
+      // basket, drawer and checkout all show that colour's name and photo —
+      // `color` covers lines saved before this existed, the lookup covers any
+      // line saved without it.
+      const variant = (product.colors || []).find((c) => c.id === i.id)
+      const color = i.color || (variant ? variant.color : undefined)
+      built.push({ ...i, color, image: (variant && variant.image) || product.image, product })
       qty += i.qty
       sub += i.qty * product.price
     }

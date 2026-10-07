@@ -38,10 +38,11 @@ export default function Cart() {
         <ul className="divide-y border-t border-black/10">
           {lines.map((l) => (
             <li key={l.id + l.size} className="py-6 flex gap-5 items-center flex-wrap">
-              <Img src={l.product.image} alt={l.product.title} className="w-24 h-32 object-cover" />
+              <Img src={l.image} alt={l.product.title} className="w-24 h-32 object-cover" />
               <div className="flex-1 min-w-[180px]">
                 <Link to={`/product/${l.id}`} className="text-xl hover:underline">{l.product.title}</Link>
                 <p className="text-black/60">Size: {l.size}</p>
+                {l.color && <p className="text-black/60">Colour: {l.color}</p>}
                 <p className="font-ui text-red-600 font-semibold">{inr(l.product.price)}</p>
                 <button onClick={() => remove(l.id, l.size)} className="underline text-sm mt-3 hover:text-black">Remove</button>
               </div>

@@ -93,20 +93,26 @@ export default function Product() {
     )
   }
 
-  const fav = has(p.id)
+  // Colourways are one catalogue row per colour, already collected onto the
+  // product by ProductsContext — nothing is invented here, the selector can
+  // only offer colours the catalogue actually shoots. The route id may be the
+  // card's id or any of those rows, so a shared link or an old bookmark opens
+  // on the colour it names.
+  const colors = p.colors && p.colors.length > 1 ? p.colors : []
+  const chosen = colors.find((c) => c.id === id) || colors[0] || null
+  // Everything the shopper looks at follows the chosen colour: its photo set,
+  // and its own row id — so the cart and the order keep the colour, while the
+  // title stays the base product name.
+  const shown = chosen
+    ? { ...p, id: chosen.id, image: chosen.image, hover: chosen.hover, gallery: chosen.gallery }
+    : p
+  // A heart saved before the catalogue was grouped still names its own colour
+  // row, so follow whichever id actually holds the save.
+  const savedId = [p.id, ...colors.map((c) => c.id)].find((x) => has(x)) || p.id
+
+  const fav = has(savedId)
   const off = p.compare ? Math.round((1 - p.price / p.compare) * 100) : 0
   const needsSize = p.sizes.length > 1 && !size
-
-  // Colourways are modelled as one catalogue row per colour ("Denim Shirt -
-  // Black", "Denim Shirt - Blue"), so a colour selector can only move between
-  // the listings that already exist. It never adds a row of its own, and the
-  // product's own photography, price and sizes follow the colour chosen.
-  const styleKey = (t) => (t.includes(' - ') ? t.slice(0, t.lastIndexOf(' - ')) : t)
-  const colourOf = (t) => (t.includes(' - ') ? t.slice(t.lastIndexOf(' - ') + 3) : '')
-  const colour = colourOf(p.title)
-  const variants = colour
-    ? products.filter((x) => x.id !== p.id && styleKey(x.title) === styleKey(p.title))
-    : []
 
   const choose = (s) => { setSize(s); setProblem('') }
 
@@ -120,7 +126,7 @@ export default function Product() {
       setProblem(`Quantity must be between 1 and ${MAX_QTY}.`)
       return
     }
-    add(p.id, qty, size || p.sizes[0])
+    add(shown.id, qty, size || p.sizes[0], chosen && chosen.color)
     if (goToCheckout) navigate('/checkout')
   }
 
@@ -139,14 +145,14 @@ export default function Product() {
       </nav>
 
       <div className="grid md:grid-cols-2 gap-10 lg:gap-16">
-        <Gallery key={p.id} product={p} />
+        <Gallery key={shown.id} product={shown} />
 
         <div>
           <p className="text-sm text-black/60 uppercase tracking-widest">{typeLabel(p.type)}</p>
           <div className="flex items-start justify-between gap-4 mt-2">
             <h1 className="text-[32px] md:text-[42px] leading-tight">{p.title}</h1>
             <button
-              onClick={() => toggle(p.id)}
+              onClick={() => toggle(savedId)}
               aria-label={fav ? 'Remove from wishlist' : 'Add to wishlist'}
               aria-pressed={fav}
               className="shrink-0 w-11 h-11 rounded-full border border-black/20 grid place-items-center hover:border-black transition"
@@ -181,20 +187,20 @@ export default function Product() {
             </>
           )}
 
-          {variants.length > 0 && (
+          {colors.length > 1 && (
             <fieldset className="mt-7">
-              <legend className="text-sm mb-2">Colour <span className="text-black/55">— {colour}</span></legend>
+              <legend className="text-sm mb-2">Colour <span className="text-black/55">— {chosen.color}</span></legend>
               <div className="flex flex-wrap gap-3">
-                <span aria-current="true" className="h-11 min-w-[52px] px-4 rounded-full font-ui inline-flex items-center justify-center bg-black text-white border border-black">{colour}</span>
-                {variants.map((v) => (
+                {colors.map((c) => (
                   <button
-                    key={v.id}
+                    key={c.id}
                     type="button"
-                    onClick={() => navigate(`/product/${v.id}`)}
-                    aria-label={`View ${v.title}`}
-                    className="h-11 min-w-[52px] px-4 rounded-full font-ui border border-black/40 hover:border-black transition"
+                    onClick={() => navigate(`/product/${c.id}`)}
+                    aria-label={`View ${p.title} in ${c.color}`}
+                    aria-current={c.id === shown.id}
+                    className={`h-11 min-w-[52px] px-4 rounded-full font-ui transition ${c.id === shown.id ? 'bg-black text-white border-black' : 'border border-black/40 hover:border-black'}`}
                   >
-                    {colourOf(v.title)}
+                    {c.color}
                   </button>
                 ))}
               </div>

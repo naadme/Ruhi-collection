@@ -55,6 +55,61 @@ const toProduct = (r) => {
   }
 }
 
+// ---- colour grouping ------------------------------------------------------
+// The client shoots one row per colour ("Stripes Dress - Blue", "… - Brown"),
+// but a design is ONE product: the shop must show a single card and let the
+// colour be chosen on the product page. Grouping is driven entirely by the
+// data — the title has to end in a colour word this catalogue actually uses
+// AND the rows have to share a type — so two unrelated products that merely
+// look alike can never be merged, and nothing is invented.
+//
+// Only these words appear in the client's own titles. Adding a colour that
+// isn't in the catalogue would risk grouping names that aren't colours.
+const COLOUR_WORDS = new Set([
+  'Babypink', 'Beige', 'Black', 'Blue', 'Brown', 'Grey', 'Maroon',
+  'Neon Green', 'Olive Green', 'Orange', 'Pink', 'Purple', 'Red',
+  'Royalblue', 'Sky Blue', 'White', 'Yellow',
+])
+
+// "Stripes Dress - Pink" -> { name: 'Stripes Dress', colour: 'Pink' }.
+// Anything without a real colour suffix returns null and is never grouped.
+const splitColour = (title) => {
+  const at = title.lastIndexOf(' - ')
+  if (at < 0) return null
+  const colour = title.slice(at + 3).trim()
+  if (!COLOUR_WORDS.has(colour)) return null
+  return { name: title.slice(0, at).trim(), colour }
+}
+
+// Rows -> one entry per design, in catalogue order. The first row of a design
+// becomes the card and keeps its own id, image and gallery (so the card shows
+// the first colour), while every colour row is kept verbatim under `colors`.
+// A design with a single row is left exactly as it was — including the colour
+// in its title, which would otherwise be thrown away with no swatch to show it.
+const groupColours = (rows) => {
+  const buckets = new Map()
+  rows.forEach((row) => {
+    const parts = splitColour(row.title)
+    // A row with no colour suffix gets a key only it can hold, so it is never
+    // pooled with anything else.
+    const key = parts ? `${row.type}\u0000${parts.name}` : `\u0000${row.id}`
+    if (!buckets.has(key)) buckets.set(key, { parts, rows: [] })
+    buckets.get(key).rows.push(row)
+  })
+
+  const out = []
+  for (const { parts, rows: group } of buckets.values()) {
+    const lead = group[0]
+    if (!parts || group.length < 2) { out.push(lead); continue }
+    out.push({
+      ...lead,
+      title: parts.name,
+      colors: group.map((r) => ({ ...r, color: splitColour(r.title).colour })),
+    })
+  }
+  return out
+}
+
 const seed = seedProducts.map((p) => ({ ...p, is_active: true }))
 
 export function ProductsProvider({ children }) {
@@ -146,7 +201,10 @@ export function ProductsProvider({ children }) {
     return () => { if (channel) { try { supabase.removeChannel(channel) } catch { /* noop */ } } }
   }, [reload])
 
-  const products = useMemo(() => all.filter((p) => p.is_active), [all])
+  // One card per design: colour rows collapse into their product here, once,
+  // so the shop, search, wishlist, related lists and homepage all agree. Only
+  // *visible* rows take part — a hidden colour is simply not offered.
+  const products = useMemo(() => groupColours(all.filter((p) => p.is_active)), [all])
   // The storefront only ever resolves *visible* products, regardless of who is
   // signed in — hidden items live exclusively in the dashboard.
   //
@@ -154,11 +212,18 @@ export function ProductsProvider({ children }) {
   // lookup runs once per cart line, per related-products list and per review on
   // every render, so a linear scan would grow with the table. `first wins`
   // preserves the previous `Array.find` answer if an id were ever repeated.
+  //
+  // Colour rows resolve to their design too, so an old cart line, wishlist
+  // heart, order or shared link naming "stripes-dress-pink" still opens the
+  // Stripes Dress — on that colour.
   const activeById = useMemo(() => {
     const index = new Map()
-    for (const p of all) if (p.is_active && !index.has(p.id)) index.set(p.id, p)
+    for (const p of products) {
+      if (!index.has(p.id)) index.set(p.id, p)
+      for (const c of p.colors || []) if (!index.has(c.id)) index.set(c.id, p)
+    }
     return index
-  }, [all])
+  }, [products])
   const getProduct = useCallback((id) => activeById.get(id) || null, [activeById])
 
   // Memoised so a consumer only re-renders when one of these actually changes.

@@ -82,14 +82,14 @@ function Summary({ lines, subtotal }) {
         {lines.map((l) => (
           <li key={l.id + l.size} className="flex gap-3">
             <div className="relative w-14 h-[74px] shrink-0 bg-neutral-100 rounded overflow-hidden">
-              <Img src={l.product.image} alt={l.product.title} className="w-full h-full object-cover" />
+              <Img src={l.image} alt={l.product.title} className="w-full h-full object-cover" />
               {l.qty > 1 && (
                 <span className="absolute top-0 right-0 bg-black/75 text-white text-[11px] font-ui px-1.5 py-[1px] rounded-bl">{l.qty}</span>
               )}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[15px] leading-snug line-clamp-2">{l.product.title}</p>
-              <p className="text-[13px] text-black/55 mt-0.5">Size {l.size} · Qty {l.qty}</p>
+              <p className="text-[13px] text-black/55 mt-0.5">Size {l.size}{l.color ? ` · ${l.color}` : ''} · Qty {l.qty}</p>
             </div>
             <p className="font-ui text-[15px] font-semibold shrink-0">{inr(l.product.price * l.qty)}</p>
           </li>

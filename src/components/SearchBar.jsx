@@ -16,7 +16,10 @@ export default function SearchBar({ onClose }) {
   // Same matching rules as the results page: name, category, collection, id and description.
   const res = term
     ? products.filter((p) =>
-        [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '']
+        [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '',
+          // Grouped designs keep their colour names on the product, so a colour
+          // search still matches the way it did before the catalogue merged.
+          ...(p.colors || []).map((c) => c.color)]
           .join(' ').toLowerCase().includes(term)
       ).slice(0, 6)
     : []
