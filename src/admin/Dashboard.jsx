@@ -153,10 +153,15 @@ export default function Dashboard() {
   const openEdit = (p) => setEditing({ isNew: false, product: p })
 
   const handleSave = async (payload, isNew) => {
-    const { error: err } = isNew
-      ? await supabase.from('products').insert(payload)
-      : await supabase.from('products').update(payload).eq('id', payload.id)
+    // `.select()` matters: PostgREST answers a statement that touched no rows
+    // with 200 + `[]` and no error — typically because row-level security
+    // filtered it out. Without this the panel would announce "Product updated."
+    // while the storefront kept rendering the old row.
+    const { data: saved, error: err } = isNew
+      ? await supabase.from('products').insert(payload).select()
+      : await supabase.from('products').update(payload).eq('id', payload.id).select()
     if (err) throw err
+    if (!saved?.length) throw new Error('Nothing was saved — your session may have expired. Sign in again and retry.')
     await reload()
     setEditing(null)
     notify('success', isNew ? 'Product added to the store.' : 'Product updated.')
@@ -165,8 +170,10 @@ export default function Dashboard() {
   const handleDelete = async (product) => {
     setBusyId(product.id)
     try {
-      const { error: err } = await supabase.from('products').delete().eq('id', product.id)
+      const { data: gone, error: err } = await supabase
+        .from('products').delete().eq('id', product.id).select()
       if (err) throw err
+      if (!gone?.length) throw new Error('Nothing was deleted — your session may have expired. Sign in again and retry.')
       setConfirm(null)
       await reload()
       notify('success', `“${product.title}” deleted.`)
@@ -181,8 +188,10 @@ export default function Dashboard() {
     const next = !product.is_active
     setBusyId(product.id)
     try {
-      const { error: err } = await supabase.from('products').update({ is_active: next }).eq('id', product.id)
+      const { data: saved, error: err } = await supabase
+        .from('products').update({ is_active: next }).eq('id', product.id).select()
       if (err) throw err
+      if (!saved?.length) throw new Error('Nothing was saved — your session may have expired. Sign in again and retry.')
       await reload()
       notify('success', next ? 'Product is now visible in the store.' : 'Product hidden from the store.')
     } catch (e) {

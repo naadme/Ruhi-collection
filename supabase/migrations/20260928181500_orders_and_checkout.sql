@@ -215,7 +215,7 @@ begin
   -- Only cash on delivery is wired up. Online payments need a gateway
   -- account, so they are refused here rather than silently accepted.
   if coalesce(payload ->> 'payment_method', 'cod') <> 'cod' then
-    raise exception 'Online payment is not available yet. Please choose cash on delivery.';
+    raise exception 'Online payment is not available yet.';
   end if;
 
   -- ---- simple double-submit / abuse guard --------------------------------

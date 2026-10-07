@@ -161,34 +161,35 @@ export const ContactStrip = () => {
   const instagram = fromSocial('Instagram')
   const whatsapp = fromSocial('WhatsApp')
   const channels = [
-    instagram && { label: 'Instagram', href: instagram.href, Icon: Instagram },
-    whatsapp && { label: 'WhatsApp', href: whatsapp.href, Icon: MessageCircle },
+    instagram && { label: 'Instagram', href: instagram.href, Icon: Instagram, iconOnly: true },
+    whatsapp && { label: 'WhatsApp', href: whatsapp.href, Icon: MessageCircle, iconOnly: true },
     { label: site.email, href: `mailto:${site.email}`, Icon: Mail },
     { label: site.phone, href: `tel:${site.phone}`, Icon: Phone },
   ].filter(Boolean)
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 pb-20">
-      <div className="border-t border-black/10 pt-14 text-center">
+      <div className="pt-14 text-center">
         <p className="text-brand-yellow font-ui tracking-[.12em] text-lg">GET IN TOUCH</p>
         <h2 className="font-ui text-[34px] md:text-[42px] mt-4 tracking-normal">Follow Ruhi, or just say hello</h2>
         <p className="text-[19px] text-black/70 mt-4 max-w-[760px] mx-auto">
           Message us on Instagram or WhatsApp, email or call — we reply within one working day.
         </p>
         <div className="flex flex-wrap justify-center gap-3 md:gap-4 mt-8">
-          {channels.map(({ label, href, Icon }) => {
+          {channels.map(({ label, href, Icon, iconOnly }) => {
             const external = /^https?:/.test(href)
             return (
               <a
                 key={label}
                 href={href}
                 {...(external ? { target: '_blank', rel: 'noreferrer' } : {})}
+                {...(iconOnly ? { 'aria-label': label, title: label } : {})}
                 className="inline-flex items-center gap-2.5 border border-black/30 rounded-full px-5 md:px-6 py-3 text-[17px] hover:bg-black hover:text-white transition"
               >
                 <Icon size={20} strokeWidth={1.6} aria-hidden="true" />
                 {/* `break-all` lets the long e-mail address wrap inside its
                     pill on a 320px screen instead of widening the row past
                     the viewport; short labels never actually break. */}
-                <span className="break-all">{label}</span>
+                {!iconOnly && <span className="break-all">{label}</span>}
               </a>
             )
           })}

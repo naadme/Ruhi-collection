@@ -8,8 +8,12 @@ import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import useOverlay from '../hooks/useOverlay'
 
-const Badge = ({ n }) => n > 0 && (
-  <span className="absolute top-0 right-0 bg-brand-badge text-white text-[11px] min-w-[20px] h-5 px-1 rounded-full grid place-items-center font-ui">{n}</span>
+/* `ring` strokes the badge in the header's own cream so one sitting on a
+   filled icon — the saved heart, which uses the badge's exact colour — reads
+   as two shapes instead of a single blob. The offset shadow sits outside the
+   box, so it costs no layout and cannot clip the count. */
+const Badge = ({ n, ring }) => n > 0 && (
+  <span className={`absolute top-0 right-0 bg-brand-badge text-white text-[11px] min-w-[20px] h-5 px-1 rounded-full grid place-items-center font-ui${ring ? ' shadow-[0_0_0_2px_#FAF0E7]' : ''}`}>{n}</span>
 )
 
 export default function Header() {
@@ -77,7 +81,7 @@ export default function Header() {
           <button onClick={() => setSearch(true)} aria-label="Search" className="p-2"><Search strokeWidth={1.4} size={26} /></button>
           <Link to="/wishlist" aria-label={`Wishlist, ${ids.length} saved`} className="p-2 relative">
             <Heart strokeWidth={1.4} size={26} fill={ids.length ? '#C08576' : 'none'} stroke={ids.length ? '#C08576' : 'currentColor'} />
-            <Badge n={ids.length} />
+            <Badge n={ids.length} ring />
           </Link>
           <Link to="/account" aria-label="Account" className="p-2 hidden sm:block"><User strokeWidth={1.4} size={26} /></Link>
           <button onClick={() => setOpen(true)} aria-label={`Cart, ${count} items`} className="p-2 relative"><ShoppingBag strokeWidth={1.4} size={26} />

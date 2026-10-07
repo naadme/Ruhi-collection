@@ -6,7 +6,7 @@ import { TYPES, typeLabel } from '../data/products'
 import usePageTitle from '../hooks/usePageTitle'
 
 const Sel = ({ label, value, onChange, opts }) => (
-  <label className="flex items-center gap-2 font-ui text-sm">
+  <label className="flex items-center gap-3 font-ui text-sm">
     <span className="sr-only sm:not-sr-only">{label}</span>
     {/* `pr-4` gives the native arrow a slot of its own so it sits centred
         in that slot and can never run into the option text. */}

@@ -13,10 +13,15 @@ export const useProducts = () => useContext(Ctx)
 // too, so an old row can never render an outside image.
 const VALID_TYPES = new Set(TYPES.map((t) => t.key))
 const OUTSIDE_PHOTO = /unsplash\.com|placehold|placeholder|picsum|loremflickr|pexels\.com|shutterstock|gettyimages/i
+// A row qualifies when it is one of the three categories, a women's item, and
+// carries no photo from a retired host. NOTE the negation sits inside `every`,
+// not outside it: `!every(x => !bad(x))` inverts the test and would instead
+// keep *only* the retired demo rows — dropping every real product and leaving
+// the storefront on the bundled catalogue forever.
 const isClientProduct = (r) =>
   VALID_TYPES.has(r.type) &&
   (r.gender === null || r.gender === undefined || r.gender === 'women') &&
-  ![r.image, r.hover, ...(Array.isArray(r.gallery) ? r.gallery : [])]
+  [r.image, r.hover, ...(Array.isArray(r.gallery) ? r.gallery : [])]
     .filter(Boolean)
     .every((src) => !OUTSIDE_PHOTO.test(String(src)))
 

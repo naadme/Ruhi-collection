@@ -1,8 +1,11 @@
 import { Link } from 'react-router-dom'
-import { Phone, Mail } from 'lucide-react'
+import { Phone, Mail, Instagram, MessageCircle } from 'lucide-react'
 import Newsletter from './Newsletter'
 import Logo from './Logo'
 import { site } from '../data/site'
+// Which glyph each social label wears. `site.social` stays the only source of
+// the URL — this decides the icon and nothing else.
+const SOCIAL_ICON = { Instagram, WhatsApp: MessageCircle }
 const Col = ({ title, links }) => (<div className="min-w-0"><h3 className="text-[22px] font-medium">{title}</h3><ul className="mt-6 space-y-4 text-[17px] text-[#4A2C23]/85">{links.map((l) => <li key={l.label}><Link to={l.to} className="hover:underline">{l.label}</Link></li>)}</ul></div>)
 export default function Footer() {
   return (
@@ -19,7 +22,7 @@ export default function Footer() {
             directly beneath it. Below `xl` the blocks stack two per row. */}
         <div className="grid gap-12 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr]">
           <div className="min-w-0"><Logo light /><p className="mt-6 text-[17px] leading-7 max-w-[280px] text-[#4A2C23]/90">{site.tagline}</p>
-            <div className="flex flex-wrap gap-x-5 gap-y-2 mt-6 text-[15px]">{site.social.map((s) => <a key={s.label} href={s.href} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">{s.label}</a>)}</div></div>
+            <div className="flex flex-wrap gap-x-5 gap-y-2 mt-6 text-[15px]">{site.social.map((s) => { const I = SOCIAL_ICON[s.label]; return (<a key={s.label} href={s.href} target="_blank" rel="noreferrer" aria-label={s.label} title={s.label} className="inline-flex items-center underline-offset-4 hover:underline">{I ? <I size={18} aria-hidden="true" /> : s.label}</a>) })}</div></div>
           <Col title="Shop" links={site.shopLinks} /><Col title="Customer service" links={site.service} />
           <div className="min-w-0">
             <div>

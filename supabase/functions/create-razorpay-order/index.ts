@@ -21,8 +21,12 @@ import {
 } from '../_shared/razorpay.ts'
 import { rpcCreateOrder, serviceFetch } from '../_shared/supabase.ts'
 
+// Shown when the shopper can't actually pay online: the Key ID / Key Secret
+// Edge Function secrets are missing, or Razorpay rejected them with a 401.
+// It names Razorpay and the environment honestly, and it must never suggest an
+// offline payment method — there are none left in this store.
 const NOT_CONFIGURED =
-  'Online payment is not switched on yet. Please contact us to place your order.'
+  'Razorpay is not switched on in this environment yet, so online payment is unavailable. Please contact us to place your order.'
 const UNREACHABLE =
   'We could not reach the payment provider. You have not been charged — please try again.'
 const GENERIC =

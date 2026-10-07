@@ -16,7 +16,7 @@ export const TYPES = [
 export const typeLabel = (key) => TYPES.find((t) => t.key === key)?.label || key
 
 const base = {
-  price: 0,
+  price: 900,
   compare: null,
   rating: 0,
   reviews: 0,
