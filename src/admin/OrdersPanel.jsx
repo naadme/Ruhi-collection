@@ -249,12 +249,21 @@ export default function OrdersPanel({ notify }) {
   const setOrderStatus = async (order, status) => {
     setBusyId(order.id)
     const previous = order.status
-    // Optimistic so the dropdown feels instant, reverted if the write fails.
+    // Optimistic so the dropdown feels instant — but only a row that comes
+    // back from Supabase carrying the new status keeps it. A statement that
+    // touched no rows answers 200 with no error at all, so `.single()` and the
+    // status check below are what stand between an admin and a status change
+    // that only ever happened in the browser.
     setState((s) => ({ ...s, orders: s.orders.map((o) => (o.id === order.id ? { ...o, status } : o)) }))
-    const { error } = await supabase.from('orders').update({ status }).eq('id', order.id)
-    if (error) {
+    const { data: saved, error } = await supabase
+      .from('orders').update({ status }).eq('id', order.id).select('id, status').single()
+    const noRow = !saved || saved.status !== status
+    if (error || noRow) {
       setState((s) => ({ ...s, orders: s.orders.map((o) => (o.id === order.id ? { ...o, status: previous } : o)) }))
-      notify('error', 'Could not update this order.')
+      const raw = (error?.message || '').trim()
+      notify('error', error && !/JSON object requested/i.test(raw)
+        ? 'Could not update this order.'
+        : 'Nothing was saved — your session may have expired. Sign in again and retry.')
     } else {
       notify('success', `${order.reference} marked ${status}.`)
     }

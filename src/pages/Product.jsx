@@ -101,17 +101,27 @@ export default function Product() {
   const colors = p.colors && p.colors.length > 1 ? p.colors : []
   const chosen = colors.find((c) => c.id === id) || colors[0] || null
   // Everything the shopper looks at follows the chosen colour: its photo set,
-  // and its own row id — so the cart and the order keep the colour, while the
-  // title stays the base product name.
+  // its own row id — so the cart and the order keep the colour, while the
+  // title stays the base product name. Its price and compare-at come from that
+  // row too: they are the numbers the cart, the checkout and `create_order()`
+  // will all charge, so showing any other row's price would be a lie.
   const shown = chosen
-    ? { ...p, id: chosen.id, image: chosen.image, hover: chosen.hover, gallery: chosen.gallery }
+    ? {
+        ...p,
+        id: chosen.id,
+        price: chosen.price,
+        compare: chosen.compare,
+        image: chosen.image,
+        hover: chosen.hover,
+        gallery: chosen.gallery,
+      }
     : p
   // A heart saved before the catalogue was grouped still names its own colour
   // row, so follow whichever id actually holds the save.
   const savedId = [p.id, ...colors.map((c) => c.id)].find((x) => has(x)) || p.id
 
   const fav = has(savedId)
-  const off = p.compare ? Math.round((1 - p.price / p.compare) * 100) : 0
+  const off = shown.compare ? Math.round((1 - shown.price / shown.compare) * 100) : 0
   const needsSize = p.sizes.length > 1 && !size
 
   const choose = (s) => { setSize(s); setProblem('') }
@@ -174,12 +184,12 @@ export default function Product() {
             </p>
           )}
 
-          {p.price > 0 && (
+          {shown.price > 0 && (
             <>
               <p className="font-ui font-bold text-[26px] mt-4 flex gap-4 items-baseline">
-                <span className="text-red-600">{inr(p.price)}</span>
-                {p.compare && <>
-                  <s className="text-gray-400 font-normal text-lg">{inr(p.compare)}</s>
+                <span className="text-red-600">{inr(shown.price)}</span>
+                {shown.compare && <>
+                  <s className="text-gray-400 font-normal text-lg">{inr(shown.compare)}</s>
                   <span className="text-green-700 text-[17px]">{off}% off</span>
                 </>}
               </p>

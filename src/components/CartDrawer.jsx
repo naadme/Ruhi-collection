@@ -23,7 +23,7 @@ export default function CartDrawer() {
         ) : (<>
           <ul className="flex-1 overflow-auto p-6 space-y-6">{lines.map((l) => (
             <li key={l.id + l.size} className="flex gap-4"><Img src={l.image} alt={l.product.title} className="w-20 h-24 object-cover" />
-              <div className="flex-1"><p className="leading-tight">{l.product.title}</p><p className="text-sm text-black/60">Size: {l.size}{l.color ? ` · ${l.color}` : ''}</p><p className="font-ui font-semibold text-red-600">{inr(l.product.price)}</p>
+              <div className="flex-1"><p className="leading-tight">{l.product.title}</p><p className="text-sm text-black/60">Size: {l.size}{l.color ? ` · ${l.color}` : ''}</p><p className="font-ui font-semibold text-red-600">{inr(l.price)}</p>
                 <div className="flex items-center gap-4 mt-2"><QtyControl qty={l.qty} onChange={(q) => setQty(l.id, l.size, q)} small /><button onClick={() => remove(l.id, l.size)} className="text-sm underline">Remove</button></div></div></li>))}</ul>
           <div className="p-6 border-t">
             <div className="flex justify-between text-xl mb-4"><span>Total</span><span className="font-ui font-semibold">{inr(totalFor(subtotal))}</span></div>

@@ -29,6 +29,9 @@ export const blankProduct = () => ({
 })
 
 // DB row -> editor form
+// Accepts both shapes the editor is handed: a mapped store product (`desc`,
+// see toProduct in ProductsContext) and a raw `products` row (`description`).
+// Reading only the first would silently blank the description on save.
 export const toForm = (p) =>
   p
     ? {
@@ -41,7 +44,7 @@ export const toForm = (p) =>
         rating: p.rating ?? 0,
         reviews: p.reviews ?? 0,
         sizes: Array.isArray(p.sizes) ? p.sizes : ['S', 'M', 'L', 'XL'],
-        desc: p.desc ?? '',
+        desc: p.desc ?? p.description ?? '',
         image: p.image ?? '',
         hover: p.hover ?? '',
         gallery: Array.isArray(p.gallery) ? p.gallery : [],
@@ -53,13 +56,18 @@ export const toForm = (p) =>
 // editor form -> DB payload (mirrors the migration's columns exactly).
 // `gallery` is only written when the images themselves changed, so editing a
 // price never drops the extra photos of a product.
+//
+// Everything is rounded/clamped here, not left to the database: the row that
+// comes back from Supabase is compared field-by-field against this payload
+// before the dashboard believes the save, so what the admin typed and what
+// `products` stores must be the same value.
 export const toPayload = (f) => ({
   id: f.id.trim(),
   title: f.title.trim(),
   type: f.type,
   price: Math.max(0, Math.round(Number(f.price) || 0)),
   compare: f.compare === '' || f.compare === null ? null : Math.max(0, Math.round(Number(f.compare))),
-  rating: Math.min(5, Math.max(0, Number(f.rating) || 0)),
+  rating: Math.round(Math.min(5, Math.max(0, Number(f.rating) || 0)) * 10) / 10,
   reviews: Math.max(0, Math.round(Number(f.reviews) || 0)),
   badge: (f.badge || '').trim() || null,
   sizes: f.sizes.length ? f.sizes : ['S', 'M', 'L', 'XL'],

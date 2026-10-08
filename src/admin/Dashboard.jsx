@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { typeLabel } from '../data/products'
-import { supabase } from '../lib/supabase'
+import { createProduct, updateProduct, deleteProduct, setProductActive } from './productApi'
 import ProductEditor from './ProductEditor'
 import OrdersPanel from './OrdersPanel'
 
@@ -119,7 +119,7 @@ function SectionSwitch({ value, onChange }) {
 }
 
 export default function Dashboard() {
-  const { all, loading, error, reload } = useProducts()
+  const { all, loading, error, source, reload, applyRow, removeRow } = useProducts()
   const [section, setSection] = useState('products')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
@@ -153,27 +153,27 @@ export default function Dashboard() {
   const openEdit = (p) => setEditing({ isNew: false, product: p })
 
   const handleSave = async (payload, isNew) => {
-    // `.select()` matters: PostgREST answers a statement that touched no rows
-    // with 200 + `[]` and no error — typically because row-level security
-    // filtered it out. Without this the panel would announce "Product updated."
-    // while the storefront kept rendering the old row.
-    const { data: saved, error: err } = isNew
-      ? await supabase.from('products').insert(payload).select()
-      : await supabase.from('products').update(payload).eq('id', payload.id).select()
-    if (err) throw err
-    if (!saved?.length) throw new Error('Nothing was saved — your session may have expired. Sign in again and retry.')
-    await reload()
+    // Supabase is the source of truth, so the write is awaited, read back and
+    // verified before React is told anything: a `.select().single()` row that
+    // carries our values is the only thing allowed to update local state. An
+    // error, an empty result or a row that comes back different throws, the
+    // editor keeps showing the previous product and the admin sees why.
+    const saved = isNew ? await createProduct(payload) : await updateProduct(payload)
+    // Local state now holds the row Supabase just confirmed.
+    applyRow(saved)
     setEditing(null)
+    // Re-read the whole catalogue in the background: any other change the
+    // owner made meanwhile lands too, and a failed re-read cannot undo the
+    // verified row that is already on screen.
+    await reload()
     notify('success', isNew ? 'Product added to the store.' : 'Product updated.')
   }
 
   const handleDelete = async (product) => {
     setBusyId(product.id)
     try {
-      const { data: gone, error: err } = await supabase
-        .from('products').delete().eq('id', product.id).select()
-      if (err) throw err
-      if (!gone?.length) throw new Error('Nothing was deleted — your session may have expired. Sign in again and retry.')
+      const gone = await deleteProduct(product.id)
+      removeRow(gone.id)
       setConfirm(null)
       await reload()
       notify('success', `“${product.title}” deleted.`)
@@ -188,10 +188,8 @@ export default function Dashboard() {
     const next = !product.is_active
     setBusyId(product.id)
     try {
-      const { data: saved, error: err } = await supabase
-        .from('products').update({ is_active: next }).eq('id', product.id).select()
-      if (err) throw err
-      if (!saved?.length) throw new Error('Nothing was saved — your session may have expired. Sign in again and retry.')
+      const saved = await setProductActive(product.id, next)
+      applyRow(saved)
       await reload()
       notify('success', next ? 'Product is now visible in the store.' : 'Product hidden from the store.')
     } catch (e) {
@@ -238,11 +236,14 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {error && (
+        {(error || (!loading && source === 'seed')) && (
           <div className="mt-6 flex items-start gap-3 border border-amber-200 bg-amber-50 text-amber-900 rounded-xl px-4 py-3 text-[14px]">
             <AlertTriangle size={18} className="shrink-0 mt-0.5" />
             <span className="min-w-0">
-              Showing the bundled catalogue — the database couldn’t be reached. <strong>{error}</strong>
+              {source === 'seed'
+                ? 'Not talking to Supabase — showing the bundled catalogue, so these rows are not the live store. '
+                : 'Could not refresh from Supabase — still showing the last rows the database returned. '}
+              {error && <strong>{error}</strong>}
             </span>
           </div>
         )}

@@ -43,12 +43,12 @@ export default function Cart() {
                 <Link to={`/product/${l.id}`} className="text-xl hover:underline">{l.product.title}</Link>
                 <p className="text-black/60">Size: {l.size}</p>
                 {l.color && <p className="text-black/60">Colour: {l.color}</p>}
-                <p className="font-ui text-red-600 font-semibold">{inr(l.product.price)}</p>
+                <p className="font-ui text-red-600 font-semibold">{inr(l.price)}</p>
                 <button onClick={() => remove(l.id, l.size)} className="underline text-sm mt-3 hover:text-black">Remove</button>
               </div>
               <div className="flex flex-col items-end gap-3">
                 <QtyControl qty={l.qty} onChange={(q) => setQty(l.id, l.size, q)} />
-                <p className="font-ui font-semibold w-24 text-right">{inr(l.qty * l.product.price)}</p>
+                <p className="font-ui font-semibold w-24 text-right">{inr(l.qty * l.price)}</p>
               </div>
             </li>
           ))}

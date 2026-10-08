@@ -91,7 +91,7 @@ function Summary({ lines, subtotal }) {
               <p className="text-[15px] leading-snug line-clamp-2">{l.product.title}</p>
               <p className="text-[13px] text-black/55 mt-0.5">Size {l.size}{l.color ? ` · ${l.color}` : ''} · Qty {l.qty}</p>
             </div>
-            <p className="font-ui text-[15px] font-semibold shrink-0">{inr(l.product.price * l.qty)}</p>
+            <p className="font-ui text-[15px] font-semibold shrink-0">{inr(l.price * l.qty)}</p>
           </li>
         ))}
       </ul>

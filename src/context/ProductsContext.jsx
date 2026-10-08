@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { products as seedProducts, TYPES } from '../data/products'
 
@@ -101,8 +101,23 @@ const groupColours = (rows) => {
   for (const { parts, rows: group } of buckets.values()) {
     const lead = group[0]
     if (!parts || group.length < 2) { out.push(lead); continue }
+    // One card per design, but every colour stays its own Supabase row with
+    // its own price. The card advertises a price the shopper really pays when
+    // they tap it, so the *cheapest* colour row carries `price`/`compare` —
+    // and hands over its `id`, which is the row the card opens on, the row
+    // the cart adds and the row `create_order()` prices server-side. All three
+    // therefore name the same row and can never disagree. When every colour
+    // costs the same (the normal case) that row *is* the first one, so nothing
+    // changes: same id, same price, same card as before.
+    const priced = group.reduce(
+      (best, r) => ((Number(r.price) || 0) < (Number(best.price) || 0) ? r : best),
+      lead,
+    )
     out.push({
       ...lead,
+      id: priced.id,
+      price: priced.price,
+      compare: priced.compare,
       title: parts.name,
       colors: group.map((r) => ({ ...r, color: splitColour(r.title).colour })),
     })
@@ -118,12 +133,26 @@ export function ProductsProvider({ children }) {
   const [error, setError] = useState(null)
   const [source, setSource] = useState('seed')
 
+  // Monotonic token for "who is allowed to write state". Every read takes the
+  // next number; a row we have just verified in Supabase takes one too. Only
+  // the newest holder may update React state, so a slow, older response can
+  // never overwrite data that is already newer — that is what stops a stale
+  // fetch (or a stale realtime patch) from rolling a saved product back.
+  const seq = useRef(0)
+
+  // True once Supabase has actually answered with this store's catalogue.
+  // After that the bundled seed is *never* allowed to replace it: the seed is
+  // a first-paint fallback for a database that has never spoken, not a second
+  // source of truth.
+  const fromDb = useRef(false)
+
   const reload = useCallback(async () => {
     // A watchdog so the grid can never sit on its skeletons: if the request
     // stalls (offline, blocked host) the bundled catalogue renders anyway and
     // the request keeps running — it will simply overwrite the state if it
     // eventually lands.
-    const watchdog = setTimeout(() => setLoading(false), 8000)
+    const mine = ++seq.current
+    const watchdog = setTimeout(() => { if (mine === seq.current) setLoading(false) }, 8000)
     try {
       // One attempt only: supabase-js otherwise retries a dead endpoint for
       // ~8s (1s/2s/4s backoff), which would leave the grid on its skeletons
@@ -133,25 +162,68 @@ export function ProductsProvider({ children }) {
         .from('products').select('*')
         .order('created_at', { ascending: true })
         .retry(false)
+      if (mine !== seq.current) return true // a newer read or a verified row already won
       if (error) {
-        // Keep the bundled catalogue so the storefront never breaks.
-        setError(error.message); setSource('seed')
+        // Keep whatever is already on screen. Falling back to the bundled
+        // catalogue here would hide a product the database just saved.
+        setError(error.message)
+        if (!fromDb.current) setSource('seed')
       } else {
         const rows = (data || []).filter(isClientProduct)
-        // If the table holds nothing but retired demo rows (or nothing at all)
-        // the real catalogue has not been seeded yet, so serve the bundled one:
-        // the site must never show anything but the client's own products.
-        setAll(rows.length ? rows.map(toProduct) : seed)
+        if (rows.length) {
+          fromDb.current = true
+          setAll(rows.map(toProduct))
+          setSource('database')
+        } else if (fromDb.current) {
+          // Supabase answered and holds nothing this store can show (the rows
+          // were retired, hidden or removed). The database is the source of
+          // truth, so that emptiness is what the store shows — the bundled
+          // seed must never resurrect products Supabase no longer returns.
+          setAll([])
+          setSource('database')
+        } else {
+          // Never spoken to: the real catalogue has not been seeded yet.
+          setAll(seed)
+          setSource('seed')
+        }
         setError(null)
-        setSource(rows.length ? 'database' : 'seed')
       }
     } catch (e) {
-      setError(e?.message || 'Unavailable'); setSource('seed')
+      if (mine === seq.current) setError(e?.message || 'Unavailable')
     } finally {
       clearTimeout(watchdog)
-      setLoading(false)
+      if (mine === seq.current) setLoading(false)
     }
     return true
+  }, [])
+
+  // Install one row that Supabase has just confirmed (the `.select().single()`
+  // answer of an admin write, or a realtime event's actual row). This — and
+  // never a locally built value — is how the dashboard updates itself.
+  const applyRow = useCallback((row) => {
+    if (!row?.id) return
+    // Anything still in flight predates this row and must not overwrite it.
+    seq.current += 1
+    setLoading(false)
+    const keep = isClientProduct(row) ? toProduct(row) : null
+    setAll((prev) => {
+      const at = prev.findIndex((p) => p.id === row.id)
+      if (!keep) return at < 0 ? prev : prev.filter((p) => p.id !== row.id)
+      if (at < 0) return [...prev, keep]
+      const next = [...prev]
+      next[at] = keep
+      return next
+    })
+    fromDb.current = true
+    setSource('database')
+    setError(null)
+  }, [])
+
+  const removeRow = useCallback((id) => {
+    if (!id) return
+    seq.current += 1
+    setLoading(false)
+    setAll((prev) => (prev.some((p) => p.id === id) ? prev.filter((p) => p.id !== id) : prev))
   }, [])
 
   // First fetch must happen *after* the Supabase session is restored — otherwise
@@ -189,17 +261,25 @@ export function ProductsProvider({ children }) {
   }, [reload])
 
   // Live updates: edit something in the dashboard and any open storefront
-  // tab refreshes itself. Silently a no-op if realtime is unavailable.
+  // tab refreshes itself. The event carries the row Supabase actually stored,
+  // so that row is what lands in React state — never a locally built value and
+  // never the bundled seed. A delete drops the row; anything the payload
+  // doesn't describe (or a subscription that can't carry payloads) simply
+  // refetches, which is still Supabase. Silently a no-op if realtime is off.
   useEffect(() => {
     let channel
     try {
       channel = supabase
         .channel('products-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => { reload() })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (payload) => {
+          if (payload?.eventType === 'DELETE') removeRow(payload.old?.id)
+          else if (payload?.new?.id) applyRow(payload.new)
+          else reload()
+        })
         .subscribe()
     } catch { /* realtime optional */ }
     return () => { if (channel) { try { supabase.removeChannel(channel) } catch { /* noop */ } } }
-  }, [reload])
+  }, [applyRow, removeRow, reload])
 
   // One card per design: colour rows collapse into their product here, once,
   // so the shop, search, wishlist, related lists and homepage all agree. Only
@@ -226,10 +306,17 @@ export function ProductsProvider({ children }) {
   }, [products])
   const getProduct = useCallback((id) => activeById.get(id) || null, [activeById])
 
+  // The *exact* catalogue row behind an id — the row Supabase holds and the
+  // row `create_order()` prices from. Colour rows are distinct rows with
+  // distinct prices, so anything that charges money (cart lines, checkout
+  // summaries) reads this, never the grouped card's price.
+  const rowsById = useMemo(() => new Map(all.map((r) => [r.id, r])), [all])
+  const getRow = useCallback((id) => rowsById.get(id) || null, [rowsById])
+
   // Memoised so a consumer only re-renders when one of these actually changes.
   const value = useMemo(
-    () => ({ products, all, getProduct, reload, loading, error, source }),
-    [products, all, getProduct, reload, loading, error, source],
+    () => ({ products, all, getProduct, getRow, reload, applyRow, removeRow, loading, error, source }),
+    [products, all, getProduct, getRow, reload, applyRow, removeRow, loading, error, source],
   )
 
   return (

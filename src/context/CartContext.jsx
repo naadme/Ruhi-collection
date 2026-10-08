@@ -5,7 +5,7 @@ import { MAX_QTY } from '../lib/checkout'
 const Ctx = createContext(null)
 export const useCart = () => useContext(Ctx)
 export function CartProvider({ children }) {
-  const { getProduct } = useProducts()
+  const { getProduct, getRow } = useProducts()
   const [items, setItems] = useState(() => { try { return JSON.parse(localStorage.getItem('cart')) || [] } catch { return [] } })
   const [open, setOpen] = useState(false)
   useEffect(() => localStorage.setItem('cart', JSON.stringify(items)), [items])
@@ -50,12 +50,17 @@ export function CartProvider({ children }) {
       // line saved without it.
       const variant = (product.colors || []).find((c) => c.id === i.id)
       const color = i.color || (variant ? variant.color : undefined)
-      built.push({ ...i, color, image: (variant && variant.image) || product.image, product })
+      // Price the line from the exact catalogue row in the cart — the same row
+      // `create_order()` reads server-side. The grouped card carries one
+      // colour's price and must never be charged for another.
+      const row = getRow(i.id)
+      const price = Number(row ? row.price : product.price) || 0
+      built.push({ ...i, color, price, image: (variant && variant.image) || product.image, product })
       qty += i.qty
-      sub += i.qty * product.price
+      sub += i.qty * price
     }
     return { lines: built, unavailable: missing, count: qty, subtotal: sub }
-  }, [items, getProduct])
+  }, [items, getProduct, getRow])
   const total = useMemo(() => totalFor(subtotal), [subtotal])
   const value = useMemo(
     () => ({ lines, unavailable, prune, clear, count, subtotal, total, add, setQty, remove, open, setOpen }),
