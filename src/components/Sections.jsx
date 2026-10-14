@@ -10,44 +10,83 @@ import Img from './Img'
 import ProductGrid from './ProductGrid'
 const icons = { Truck, Headset, Zap }
 
-export const Hero = () => {
-  // The headline discount is read from the live catalogue, so the banner can
-  // never promise more than the store is actually offering.
-  const { products } = useProducts()
-  const best = useMemo(() => products.reduce((max, p) => (
-    p.compare && p.compare > p.price
-      ? Math.max(max, Math.round((1 - p.price / p.compare) * 100))
-      : max
-  ), 0), [products])
-  const promo = best >= 5 ? `UP TO ${best}% OFF!` : 'SHOP THE COLLECTION'
-  return (
-    // The 3-column composition needs ~1280px before the headline, the promo
-    // line and the centre photo all fit side by side without colliding, so
-    // below `xl` the hero stacks exactly like the mobile layout. At `xl`+ the
-    // row is locked to the hero's own height (and the columns get `min-h-0`),
-    // which stops the panel and the two photos from spilling over the
-    // "Shop by Category" section underneath.
-    <section className="grid min-h-[560px] xl:grid-cols-[1.1fr_1fr_1fr] xl:grid-rows-[684px] xl:h-[684px] bg-[#4A2C23] text-white">
-      <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#F8EDE6] text-[#4A2C23] m-3 xl:m-0 xl:ml-[68px] xl:my-[70px] xl:min-h-0">
-        <div><p className="text-xl md:text-2xl">Ruhi Womens Clothing</p>
-          {/* The terracotta highlight on "Arrival" is taller than its line box,
-              so the original `leading-[.9]` butted it straight into "New".
-              `1.12` on small screens / `1.05` from `md` up keeps ~13px of clear
-              space under "New" at both sizes. */}
-          <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[1.12] md:leading-[1.05] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
-          <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10 rounded-lg">Shop new arrivals</Link>
-          <p className="text-xl md:text-2xl mt-8">Free shipping for all products</p></div></div>
-      {/* `w-full` + `mx` (100% + 136px of margins) made the photo 68px too
-          wide, pushing it into the promo column; size it to the space the
-          two side margins leave. */}
-      <Img src={img.heroMain} alt="New arrivals" loading="eager" className="w-full h-[420px] object-cover xl:h-[calc(100%-140px)] xl:mx-[68px] xl:w-[calc(100%-136px)] xl:self-start" />
-      <div className="grid grid-rows-[auto_auto_minmax(0,1fr)] xl:pr-[68px] xl:min-h-0">
-        <Img src={img.heroTop} alt="Women's coord set" loading="eager" className="w-full h-[300px] object-cover" />
-        <Link to="/shop" className="font-ui italic font-bold text-[40px] md:text-[44px] text-center py-4">{promo}</Link>
-        <Img src={img.heroStore} alt="Shop the collection" loading="eager" className="w-full h-[280px] object-cover xl:h-full xl:min-h-0" /></div>
-    </section>
-  )
-}
+export const Hero = () => (
+  // Two parts only: the cream poster (unchanged) and the brown area, which is
+  // a single edge-to-edge scroller. Below `xl` the hero stacks exactly like
+  // the mobile layout — poster first, photos underneath. At `xl`+ the two
+  // children are pinned to the *same* grid cell, so the carousel fills the
+  // whole brown hero while the poster is centred on top of it: the photos run
+  // behind the poster as one continuous track and stay visible on both of its
+  // sides. The row is locked to the hero's own height (and both children get
+  // `min-h-0`), which stops the panel and the photos from spilling over the
+  // "Shop by Category" section underneath.
+  <section className="grid min-h-[560px] xl:grid-rows-[684px] xl:h-[684px] bg-[#4A2C23] text-white">
+    {/* The poster keeps its size, type and button; only its placement changes
+        on desktop. `justify-self`/`self` switch it from the default stretch
+        to its natural (fit-content) box, so it can never be pulled wide by
+        the hero — it grows with its own content only, and `max-w` caps it at
+        46% of the hero so a laptop still shows a full column of photos down
+        each side. `z-10` lifts that solid cream box above the track. */}
+    <div className="relative p-6 md:p-10 grid place-items-center text-center bg-[#F8EDE6] text-[#4A2C23] m-3 xl:m-0 xl:col-start-1 xl:row-start-1 xl:z-10 xl:justify-self-center xl:self-center xl:max-w-[46%] xl:min-h-0">
+      <div><p className="text-xl md:text-2xl">Ruhi Womens Clothing</p>
+        {/* The terracotta highlight on "Arrival" is taller than its line box,
+            so the original `leading-[.9]` butted it straight into "New".
+            `1.12` on small screens / `1.05` from `md` up keeps ~13px of clear
+            space under "New" at both sizes. */}
+        <h1 className="font-serif font-bold text-[64px] md:text-[104px] leading-[1.12] md:leading-[1.05] mt-8 md:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
+        <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl md:text-[30px] px-6 py-3 mt-10 rounded-lg">Shop new arrivals</Link>
+        <p className="text-xl md:text-2xl mt-8">Free shipping for all products</p></div></div>
+    {/* The brown area of the hero: one continuous, self-running carousel of
+        the three category photos, cropped to fill this box edge to edge — and
+        at `xl` the box is the *whole* hero, not just the columns to the right
+        of the poster, so a single track passes behind the poster instead of
+        reading as two separate columns. Each slide is one entry of
+        `categories` — the very same list the "Shop by Category" row reads — so
+        the label, the photo and the `/shop?type=…` filter it links to can
+        never disagree with the rest of the store. `overflow-hidden` clips the
+        track *and* is what keeps the cell width honest: a grid item with
+        non-visible overflow has an automatic minimum size of 0, so the much
+        longer track inside can never widen its cell or push a horizontal
+        scrollbar onto the page. */}
+    <div className="group relative overflow-hidden h-[440px] md:h-[520px] lg:h-[600px] xl:h-full xl:min-h-0 xl:col-start-1 xl:row-start-1">
+      {/* The track holds two identical *visible* sets, so the site's existing
+          `marquee` keyframe (translateX 0 → -50%) lands on a perfect seam: no
+          jump, no flicker, no blank frame, no pause. Two sets only reach
+          1368px wide, which is enough for the stacked hero but would leave a
+          bare strip of brown at the right edge of a 1440px+ desktop — so from
+          `xl` two more sets join the track (50% of it is then 2736px, wider
+          than any desktop viewport) and the extra six slides are hidden below
+          `xl`, where they would only make the mobile track longer. Playing the
+          same keyframe in reverse from `xl` (a longhand, so it never touches
+          the `animation` shorthand and the hover pause or the reduced-motion
+          opt-out below stay in charge) runs that identical seam from left to
+          right behind the poster; `80s` is the longhand duration covering the
+          doubled distance at the same 34px/s the carousel has always moved —
+          a shorthand here would outrank `.motion-reduce:animate-none` and put
+          the photos back in front of users who asked for less motion.
+          Each slide is a 2:3 slot sized off the hero's own height, which is
+          the ratio the product photography is shot at, so a photo fills its
+          slot at every width instead of being cropped to a letterbox.
+          Hovering stops it for a closer look; `motion-reduce` turns it off. */}
+      <div className="flex h-full w-max animate-[marquee_40s_linear_infinite] xl:[animation-duration:80s] xl:[animation-direction:reverse] motion-reduce:animate-none group-hover:[animation-play-state:paused]">
+        {[...categories, ...categories, ...categories, ...categories].map((c, i) => {
+          // Every slide after the first set only exists to close the loop, so
+          // it is hidden from screen readers and skipped by the keyboard — the
+          // same category is never announced or tabbed to twice. The third and
+          // fourth sets are desktop-only (`hidden xl:block`).
+          const copy = i >= categories.length
+          const extra = i >= categories.length * 2
+          return (
+            <Link key={`${c.label}-${i}`} to={c.to} aria-hidden={copy || undefined} tabIndex={copy ? -1 : undefined}
+              className={`relative shrink-0 h-full aspect-[2/3] ${extra ? 'hidden xl:block' : 'block'}`}>
+              <Img src={c.image} alt={copy ? '' : c.label} loading="eager" className="absolute inset-0 w-full h-full object-cover" />
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  </section>
+)
 export const Categories = () => (
   <section className="max-w-[1300px] mx-auto px-4 pt-16 pb-10">
     <h2 className="text-center text-[34px] tracking-wide">Shop by Category</h2>
