@@ -1,6 +1,10 @@
 @tailwind base;@tailwind components;@tailwind utilities;
 body{@apply font-sans text-[#4A2C23] bg-[#F5E9E1] antialiased;letter-spacing:.03em}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+/* Hero photo swap: the manually controlled slider fades the next category in.
+   Deliberately a keyframe, not a transition, so `motion-reduce:animate-none`
+   (a utility) switches it off the same way it switches the marquee off. */
+@keyframes fade{from{opacity:0}to{opacity:1}}
 .marquee{animation:marquee 30s linear infinite}
 .field{@apply w-full border border-black/55 rounded-lg px-8 h-[72px] text-[17px] bg-white focus:outline-none focus:ring-2 focus:ring-black/70 placeholder:text-black/60}
 .btn-outline{@apply inline-block border border-black px-8 py-2 text-sm font-ui tracking-wide hover:bg-black hover:text-white transition}

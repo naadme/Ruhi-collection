@@ -258,7 +258,15 @@ export default function Product() {
             Free shipping for all products · Delivery in 7-10 working days
           </p>
 
-          {p.desc && <p className="mt-7 text-[18px] leading-8 text-black/70 border-t border-black/10 pt-6">{p.desc}</p>}
+          {/* The block itself is unconditional: the heading always marks where
+              the description lives, even for a product whose description is
+              still empty (the catalogue ships with none filled in), so the
+              section never appears and disappears between products or
+              colourways. Only the copy inside it is conditional. */}
+          <div className="mt-7 border-t border-black/10 pt-6">
+            <h2 className="text-[18px] font-bold mb-2">Description</h2>
+            {p.desc && <p className="text-[18px] leading-8 text-black/70">{p.desc}</p>}
+          </div>
         </div>
       </div>
 
