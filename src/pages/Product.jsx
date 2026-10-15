@@ -197,6 +197,11 @@ export default function Product() {
             </>
           )}
 
+          {/* A colour change swaps the URL to the colour's own row so the
+              link stays shareable, but it replaces the current history entry
+              instead of pushing one — otherwise the Back button would walk
+              backwards through every colour the shopper tried rather than
+              returning to the page they came from. */}
           {colors.length > 1 && (
             <fieldset className="mt-7">
               <legend className="text-sm mb-2">Colour <span className="text-black/55">— {chosen.color}</span></legend>
@@ -205,7 +210,7 @@ export default function Product() {
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => navigate(`/product/${c.id}`)}
+                    onClick={() => navigate(`/product/${c.id}`, { replace: true })}
                     aria-label={`View ${p.title} in ${c.color}`}
                     aria-current={c.id === shown.id}
                     className={`h-11 min-w-[52px] px-4 rounded-full font-ui transition ${c.id === shown.id ? 'bg-black text-white border-black' : 'border border-black/40 hover:border-black'}`}
