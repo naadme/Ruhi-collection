@@ -79,6 +79,8 @@ Row Level Security is on for every table. Highlights:
   only through the `create_order()` function, and a customer can only ever `SELECT` their own.
 - `admins` — the allowlist. `is_admin()` is a `SECURITY DEFINER` helper; admin rights are decided
   by the database, not by anything the browser sends.
+- `product_managers` — the restricted allowlist for catalogue collaborators. It can manage products
+  and product images, but cannot read or update orders, payment data, Supabase, or Razorpay.
 - `razorpay_webhook_events` — RLS enabled with **no** policies, granted to `service_role` only.
 
 ### Contact form → email
@@ -107,7 +109,29 @@ Also useful: the submitted address is set as `reply_to`, so replying from Gmail 
 customer directly. Set `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` as usual — no
 `VITE_` variable is added for this.
 
-### Google sign-in
+### Google sign-in and restricted product access
+
+#### Give the Ruhi client product-management access
+
+After applying `20261015103000_product_manager_allowlist.sql`, use this exact sequence for
+`ruhicollections2026@gmail.com`:
+
+1. Have her visit the live site, open `/admin`, and choose **Continue with Google** using that exact
+   account. She must finish the Google redirect once; this creates her `auth.users` record. Signing in
+   alone does **not** grant access.
+2. As the project owner, open **Supabase → SQL Editor** and run:
+
+   ```sql
+   select public.make_product_manager('ruhicollections2026@gmail.com');
+   ```
+
+3. Have her refresh `/admin` (or sign out and back in). She will see Products only and can create,
+   edit, hide, delete, and upload product images. She cannot access orders or any Supabase/Razorpay
+   dashboard; no UUID, service-role key, or dashboard account is shared.
+
+If step 2 reports that no Auth user was found, step 1 has not completed with that exact Google
+account. Do not substitute a UUID or add a row manually; have her sign in again, then rerun the same
+statement.
 
 "Continue with Google" is a three-way handshake (browser → Supabase → Google), so the
 failures worth knowing are configuration, not code. The recurring one:

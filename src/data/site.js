@@ -22,7 +22,9 @@ export const site = {
   // contact page and the homepage contact strip all render this `href`.
   // +91 90466 51272 → 919046651272 (country code, no spaces or '+').
   social: [{ label: 'Instagram', href: 'https://www.instagram.com/ruhi_fashions_/' }, { label: 'WhatsApp', href: 'https://wa.me/919046651272' }],
-  announcements: ['Fast delivery across India', 'Free shipping for all products', 'Customer support 10am – 7pm', 'Secure checkout'],
+  // Top USP strip — the three client-approved messages, shown exactly as
+  // written (the marquee repeats them for a seamless loop).
+  announcements: ['Secure Customer Support (10am - 7pm)', 'Fast & Free delivery across India', 'Everything under ₹1000'],
   nav: [
     { label: 'Home', to: '/' },
     // The catalogue branch renders as a dropdown in the header (and as a nested
@@ -30,7 +32,9 @@ export const site = {
     // filters, so no extra routes or pages are needed.
     {
       label: 'Catalogue', to: '/collections',
-      children: TYPES.map(typeLink),
+      // "All Products" leads the list (same destination as the shop page),
+      // followed by one deep link per category.
+      children: [{ label: 'All Products', to: '/shop' }, ...TYPES.map(typeLink)],
     },
     { label: 'About', to: '/about' },
     { label: 'Contact', to: '/contact' },
@@ -47,10 +51,11 @@ export const site = {
   legal: [{ label: 'Privacy policy', to: '/policies/privacy-policy' }, { label: 'Terms of service', to: '/policies/terms-of-service' }],
   // Three benefits only, so the strip renders as one even row. Every order is
   // paid online at checkout, so there is no delivery-time payment card.
+  // All three now carry a short description line under the heading.
   features: [
-    { icon: 'Truck', title: 'Free shipping', text: 'Free shipping for all products' },
-    { icon: 'Headset', title: 'Friendly customer support', text: 'Friendly, helpful support — we reply within one working day' },
-    { icon: 'Zap', title: 'Fast delivery', text: 'Fast delivery across India' },
+    { icon: 'Headset', title: 'Secure Customer Support', text: '10am - 7pm' },
+    { icon: 'Truck', title: 'Fast & Free Delivery', text: 'Across India' },
+    { icon: 'IndianRupee', title: 'All Products', text: 'under ₹1000' },
   ],
   faq: [
     ['How long does delivery take?', 'Most orders arrive in 7-10 working days across India.'],

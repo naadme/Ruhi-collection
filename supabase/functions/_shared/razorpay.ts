@@ -103,7 +103,8 @@ export async function verifyPaymentSignature(input: {
 }
 
 /**
- * `HMAC_SHA256(raw_body + '|' + WEBHOOK_SECRET, WEBHOOK_SECRET)`.
+ * `HMAC_SHA256(raw_body, WEBHOOK_SECRET)` — the webhook signs the exact bytes
+ * of the request body, nothing else.
  *
  * Returns `false` when the webhook secret has not been configured: an
  * unverifiable webhook is never accepted.

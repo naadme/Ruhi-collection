@@ -93,14 +93,14 @@ function ConfirmDelete({ product, busy, onCancel, onConfirm }) {
 const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
 const SECTIONS = [['products', 'Products'], ['orders', 'Orders']]
 
-function SectionSwitch({ value, onChange }) {
+function SectionSwitch({ value, onChange, showOrders }) {
   return (
     <div
       role="tablist"
       aria-label="Dashboard sections"
       className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit"
     >
-      {SECTIONS.map(([k, label]) => (
+      {SECTIONS.filter(([k]) => k !== 'orders' || showOrders).map(([k, label]) => (
         <button
           key={k}
           role="tab"
@@ -118,7 +118,7 @@ function SectionSwitch({ value, onChange }) {
   )
 }
 
-export default function Dashboard() {
+export default function Dashboard({ showOrders }) {
   const { all, loading, error, source, reload, applyRow, removeRow } = useProducts()
   const [section, setSection] = useState('products')
   const [query, setQuery] = useState('')
@@ -201,10 +201,10 @@ export default function Dashboard() {
 
   // Orders live behind their own section; returning early here keeps the
   // products panel (and every hook above it) untouched.
-  if (section === 'orders') {
+  if (showOrders && section === 'orders') {
     return (
       <div className="font-ui">
-        <SectionSwitch value={section} onChange={setSection} />
+        <SectionSwitch value={section} onChange={setSection} showOrders={showOrders} />
         <div id="panel-orders" role="tabpanel" className="mt-8">
           <OrdersPanel notify={notify} />
         </div>
@@ -216,7 +216,7 @@ export default function Dashboard() {
   return (
     <div className="font-ui">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <SectionSwitch value={section} onChange={setSection} />
+        <SectionSwitch value={section} onChange={setSection} showOrders={showOrders} />
       </div>
 
       <div id="panel-products" role="tabpanel">

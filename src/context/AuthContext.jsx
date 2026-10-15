@@ -39,7 +39,7 @@ const undouble = (value) => {
  *
  * TEMP: the result is only used for diagnostics.
  */
-function readOAuthCallback() {
+export function readOAuthCallback() {
   if (typeof window === 'undefined') return null
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
   const query = new URLSearchParams(window.location.search.replace(/^\?/, ''))
@@ -65,6 +65,17 @@ function readOAuthCallback() {
  */
 export function authRedirectUrl() {
   return `${window.location.origin}/account`
+}
+
+/**
+ * Where the admin login page sends the browser back to after Google.
+ *
+ * Same rules as {@link authRedirectUrl}: the exact URL must be listed in
+ * Supabase → Authentication → URL Configuration → Redirect URLs (this project
+ * already accepts it — verified against /auth/v1/authorize).
+ */
+export function adminAuthRedirectUrl() {
+  return `${window.location.origin}/admin`
 }
 
 /**
@@ -111,12 +122,13 @@ export function friendlyAuthError(error, provider) {
 }
 
 // Session + authorisation for the /admin dashboard.
-// Signing in is *not* enough to be an admin: `public.admins` is an allowlist
-// row, so a customer who registers through Supabase Auth gains nothing.
+// Signing in is *not* enough to manage the catalogue: the full-admin and
+// product-manager allowlists are separate from Supabase Auth.
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [canManageProducts, setCanManageProducts] = useState(false)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -131,15 +143,23 @@ export function AuthProvider({ children }) {
   // this app depends on one), so this lookup is the only "did the account land
   // in the database" check that runs after an OAuth round-trip. TEMP logging.
   useEffect(() => {
-    if (!user) { setIsAdmin(false); return }
+    if (!user) { setIsAdmin(false); setCanManageProducts(false); return }
     let alive = true
-    supabase.from('admins').select('user_id').eq('user_id', user.id).maybeSingle()
-      .then(({ data, error }) => {
+    Promise.all([
+      supabase.from('admins').select('user_id').eq('user_id', user.id).maybeSingle(),
+      supabase.from('product_managers').select('user_id').eq('user_id', user.id).maybeSingle(),
+    ])
+      .then(([admin, productManager]) => {
         if (!alive) return
-        setIsAdmin(!error && !!data)
-        oauthLog('profile lookup', error
-          ? { failed: error.message }
-          : { adminRow: !!data, note: 'no profile row is created by this app' })
+        const adminRow = !admin.error && !!admin.data
+        const productManagerRow = !productManager.error && !!productManager.data
+        setIsAdmin(adminRow)
+        setCanManageProducts(adminRow || productManagerRow)
+        oauthLog('profile lookup', {
+          adminRow,
+          productManagerRow,
+          note: 'no profile row is created by this app',
+        })
       })
       .catch((e) => { if (alive) oauthLog('profile lookup threw', e?.message || '') })
     return () => { alive = false }
@@ -262,16 +282,20 @@ export function AuthProvider({ children }) {
    *
    * Deliberately does not set the global `busy`: the page navigates away, and
    * leaving a flag stuck on would be worse than showing no spinner at all.
+   *
+   * `redirectTo` defaults to the storefront's {@link authRedirectUrl}; the
+   * admin login overrides it with {@link adminAuthRedirectUrl} so staff come
+   * back to the panel they started from instead of the shopper account page.
    */
-  const signInWithOAuth = useCallback(async (provider) => {
+  const signInWithOAuth = useCallback(async (provider, { redirectTo } = {}) => {
     try {
-      const redirectTo = authRedirectUrl()
+      const finalRedirectTo = redirectTo || authRedirectUrl()
       // TEMP — shows the port actually being handed to Supabase, which is the
       // value that must appear in the dashboard's Redirect URL allow-list.
-      oauthLog('oauth start', { provider, redirectTo, flowType: 'implicit' })
+      oauthLog('oauth start', { provider, redirectTo: finalRedirectTo, flowType: 'implicit' })
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo },
+        options: { redirectTo: finalRedirectTo },
       })
       if (error) {
         oauthLog('oauth did not start', { provider, code: error.code || '', message: error.message || '' })
@@ -292,7 +316,7 @@ export function AuthProvider({ children }) {
   return (
     <Ctx.Provider
       value={{
-        ready, session, user, isAdmin, busy,
+        ready, session, user, isAdmin, canManageProducts, busy,
         signIn, signUp, signInWithOAuth, signOut,
       }}
     >

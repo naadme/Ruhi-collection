@@ -109,6 +109,11 @@ async function claimEvent(eventId: string, eventType: string): Promise<boolean |
     headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ event_id: eventId, event_type: eventType }),
   })
+  // PostgREST answers a repeated primary key with 409 Conflict, not with an
+  // empty representation — that *is* the "already claimed" outcome, so a
+  // Razorpay retry of a settled event is acknowledged instead of answered
+  // with a 500 that would make it retry again.
+  if (res.status === 409) return false
   if (!res.ok) return 'error'
   const rows = (await res.json().catch(() => [])) as Json[]
   return Array.isArray(rows) && rows.length > 0
@@ -128,7 +133,16 @@ export async function handle(req: Request): Promise<Response> {
   // Read the body first: the signature covers the exact bytes Razorpay sent.
   const rawBody = await req.text()
 
+  // Rule 2 before rule 1: without a configured secret there is nothing to
+  // verify against, and an unverifiable webhook is refused outright.
   if (!env('RAZORPAY_WEBHOOK_SECRET')) return fail(503, PAY_NOT_CONFIGURED)
+
+  // Rule 1: the HMAC over the *raw* bytes is checked before the body is even
+  // parsed — an unauthenticated payload is never turned into JSON we act on,
+  // and nothing has touched the database at this point.
+  const signature = req.headers.get('x-razorpay-signature') ?? ''
+  const signatureOk = await verifyWebhookSignature(rawBody, signature)
+  if (!signatureOk) return fail(401, PAY_BAD_SIGNATURE)
 
   let event: Json
   try {
@@ -136,10 +150,6 @@ export async function handle(req: Request): Promise<Response> {
   } catch {
     return fail(400, 'Invalid payload.')
   }
-
-  const signature = req.headers.get('x-razorpay-signature') ?? ''
-  const signatureOk = await verifyWebhookSignature(rawBody, signature)
-  if (!signatureOk) return fail(401, PAY_BAD_SIGNATURE)
 
   const eventId = asString(event.id)
   const eventType = asString(event.event)

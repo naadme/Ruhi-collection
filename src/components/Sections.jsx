@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useMemo, useState } from 'react'
-import { Truck, Headset, Zap, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
 import { categories, reviews, TYPES } from '../data/products'
 import { site } from '../data/site'
 import { img } from '../data/images'
@@ -8,7 +8,7 @@ import { useProducts } from '../context/ProductsContext'
 import { inr } from '../lib/pricing'
 import Img from './Img'
 import ProductGrid from './ProductGrid'
-const icons = { Truck, Headset, Zap }
+const icons = { Truck, Headset, IndianRupee }
 
 export const Hero = () => {
   // Two halves, side by side from `md` up: the cream poster on the left and
@@ -18,8 +18,13 @@ export const Hero = () => {
   // same list the "Shop by Category" row reads — so the photo, its label and
   // the `/shop?type=…` filter it links to can never disagree with the rest of
   // the store. Below `md` the halves stack (poster first): a phone is far too
-  // narrow for the "Arrival" headline and a recognisable photo to share the
+  // narrow for a two-line headline and a recognisable photo to share the
   // width, so that is the balanced fallback rather than a clipped layout.
+  // The poster copy is a headline broken into two lines ("Ruhi Women's" /
+  // "Collection") plus a subheadline, so the type steps at `sm`/`md`/`lg`/
+  // `xl` rather than one jump to 104px: the longest line, "Ruhi Women's",
+  // has to clear the column at 320px and inside the 384px half a `md`
+  // viewport gives it.
   const [at, setAt] = useState(0)
   const n = categories.length
   // Read-side wrap-around, so the last photo steps back to the first and the
@@ -29,19 +34,25 @@ export const Hero = () => {
   return (
     <section className="grid min-h-[560px] md:grid-cols-2 md:h-[600px] lg:h-[684px] bg-[#4A2C23] text-white">
       {/* The poster is completely static: same wording, type, colours and
-          button as always, filling its half and centred inside it. Its type
-          now steps at `lg` rather than `md` because from `md` the headline
-          lives in a half-width column and "Arrival" alone is 332px wide at
-          104px — it would not fit a 384px column. */}
+          button as always, filling its half and centred inside it. The
+          headline, subheadline and "SHOP NOW" button are the client's
+          homepage copy — nothing else about the block changes. */}
       <div className="m-3 md:m-0 p-6 lg:p-10 grid place-items-center text-center bg-[#F8EDE6] text-[#4A2C23]">
-        <div><p className="text-xl lg:text-2xl">Ruhi Womens Clothing</p>
-          {/* The terracotta highlight on "Arrival" is taller than its line box,
-              so the original `leading-[.9]` butted it straight into "New".
-              `1.12` below `lg` / `1.05` from `lg` keeps ~13px of clear space
-              under "New" at both sizes. */}
-          <h1 className="font-serif font-bold text-[64px] lg:text-[104px] leading-[1.12] lg:leading-[1.05] mt-8 lg:mt-10">New<br /><em className="bg-[#C08576] px-4">Arrival</em></h1>
-          <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl lg:text-[30px] px-6 py-3 mt-10 rounded-lg">Shop new arrivals</Link>
-          <p className="text-xl lg:text-2xl mt-8">Free shipping for all products</p></div></div>
+        <div>
+          {/* Two explicit, centre-aligned lines: "Ruhi Women's" over
+              "Collection". The type steps up gently because the longest line
+              is "Ruhi Women's" (~6.8em): it has to clear the ~248px column
+              at 320px, the 336px half-column from `md` and the 432px column
+              from `lg`, with the `xl` step only where there is real room.
+              `1.1` leading below `lg` / `1.05` from `lg` keeps the two lines
+              tight without touching. */}
+          <h1 className="font-serif font-bold text-[34px] sm:text-[42px] md:text-[46px] lg:text-[56px] xl:text-[64px] leading-[1.1] lg:leading-[1.05] mt-2">Ruhi Women's<br />Collection</h1>
+          {/* One sentence, centred and left to wrap naturally, so the exact
+              wording never depends on where the line breaks. */}
+          <p className="text-xl lg:text-2xl mt-5 lg:mt-6">"Style You Love. Prices You’ll Love More."</p>
+          <Link to="/shop" className="inline-block bg-[#4A2C23] text-white text-2xl lg:text-[30px] px-6 py-3 mt-8 lg:mt-10 rounded-lg">SHOP NOW</Link>
+        </div>
+      </div>
       {/* The right half: one photo, `object-cover` so it fills the half at
           every width without distortion. The link is keyed by category, so
           a change of photo remounts it and the `fade` keyframe brings the new
@@ -136,7 +147,12 @@ export const OurStory = () => (
       <h2 className="font-ui text-[42px] md:text-[62px] leading-tight mt-6 mb-8 tracking-normal">Crafting fashion with passion</h2>
       <p className="text-[22px] leading-[39px] text-black/70">Ruhi Womens Clothing is a clothing brand dedicated to creating high-quality, stylish apparel that reflects your unique personality. Our journey started with a simple vision: to make fashion accessible, sustainable, and meaningful.</p>
       <p className="text-[22px] leading-[39px] text-black/70 mt-6">Every piece in our collection is carefully designed and crafted with attention to detail, ensuring you look and feel your best every day.</p>
-      <div className="flex gap-5 mt-10"><Link to="/shop" className="bg-brand-yellow px-11 h-[88px] grid place-items-center rounded-lg font-bold text-[21px]">Shop Now</Link><Link to="/about" className="border-2 border-black/10 px-11 h-[88px] grid place-items-center rounded-lg font-bold text-[21px]">Learn More</Link></div>
+      {/* Compact pair, sized to the site's small reference button (~40px tall,
+          tight padding, text-sized type) instead of the old 88px blocks. Both
+          share the same fixed height so the filled and the outlined button
+          sit level, `gap-3` keeps them side by side, and `flex-wrap` lets the
+          row drop to two lines rather than squeeze on a very narrow screen. */}
+      <div className="flex flex-wrap gap-3 mt-10"><Link to="/shop" className="inline-flex items-center justify-center h-10 px-6 rounded-lg bg-brand-yellow font-bold text-[15px] transition hover:opacity-90">Shop Now</Link><Link to="/about" className="inline-flex items-center justify-center h-10 px-6 rounded-lg border-2 border-black/10 font-bold text-[15px] transition hover:bg-black/5">About</Link></div>
     </div>
     <Img src={img.story} alt="Our story" className="w-full aspect-square object-cover shadow-[0_30px_60px_rgba(74,44,35,.12)]" />
   </section>
@@ -218,7 +234,8 @@ export const ContactStrip = () => {
 }
 export const Features = () => (
   // Three benefits only, so the row is three equal tracks from `md` up and a
-  // single stack below it — a four-up grid would leave one cell empty.
+  // single stack below it — a four-up grid would leave one cell empty. Each
+  // card is icon + heading + description line (`f.text`), all three supplied.
   <section className="max-w-page mx-auto px-4 md:px-7 py-20 grid grid-cols-1 md:grid-cols-3 gap-8 text-center">{site.features.map((f) => { const I = icons[f.icon]; return (
-    <div key={f.title}><I size={64} strokeWidth={1.6} className="mx-auto text-black/60" /><h3 className="text-[28px] font-medium mt-5">{f.title}</h3><p className="text-[19px] text-black/70 mt-3">{f.text}</p></div>) })}</section>
+    <div key={f.title}><I size={64} strokeWidth={1.6} className="mx-auto text-black/60" /><h3 className="text-[28px] font-medium mt-5">{f.title}</h3>{f.text ? <p className="text-[19px] text-black/70 mt-3">{f.text}</p> : null}</div>) })}</section>
 )

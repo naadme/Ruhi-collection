@@ -16,7 +16,7 @@ export default function About() {
       <section className="max-w-[1200px] mx-auto px-4 md:px-7 py-20 md:py-28 grid md:grid-cols-[1fr_1.4fr] gap-10 md:gap-20">
         <h2 className="font-serif text-[40px] md:text-[56px] leading-tight">Simple pieces, made with care.</h2>
         <div className="text-[21px] leading-9 text-black/70 space-y-6">
-          <p>Ruhi Womens Clothing began with a simple idea: good clothes should not be complicated or expensive. We design shirts, tees and pants that fit properly, feel soft on the skin and hold their colour wash after wash.</p>
+          <p>Ruhi Womens Clothing began with a simple idea: good clothes should not be complicated or expensive. We design Tops & tees, Co-ord sets and Dresses that fit properly, feel soft on the skin and hold their colour wash after wash.</p>
           <p>Every piece is checked for fabric, stitching and fit before it ships. We keep our range focused so each style earns its place in your wardrobe — from office days to weekends away.</p></div>
       </section>
       <section className="max-w-page mx-auto px-4 md:px-7 grid md:grid-cols-12 gap-4 items-start">

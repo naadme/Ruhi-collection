@@ -52,10 +52,12 @@ export default function Shop() {
     return sorted
   }, [filtered, sort])
 
+  // Unfiltered catalogue reads "All Products"; a category or search still
+  // names itself, so only the default label changed.
   const heading = q
     ? `Results for “${q}”`
     : t ? typeLabel(t)
-    : 'Shop all'
+    : 'All Products'
 
   const hasFilters = !!(t || q)
   // "Clear" has to be on screen whenever anything at all is filtered *or*

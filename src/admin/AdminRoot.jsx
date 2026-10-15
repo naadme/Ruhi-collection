@@ -44,7 +44,7 @@ function NotAuthorized({ email }) {
         <p className="text-[13px] font-semibold uppercase tracking-wider text-black/45">For the store owner</p>
         <p className="text-[14px] text-black/65 mt-2">In Supabase → SQL Editor, run:</p>
         <code className="block mt-2 bg-[#4A2C23] text-[#F8EDE6] rounded-lg px-4 py-3 text-[13px] overflow-x-auto">
-          select public.make_admin('{email || ''}');
+          select public.make_product_manager('{email || ''}');
         </code>
       </div>
       <div className="flex flex-wrap gap-3 justify-center mt-7">
@@ -59,7 +59,7 @@ function NotAuthorized({ email }) {
 // header, footer and navigation are not part of the admin surface.
 export default function AdminRoot() {
   usePageTitle('Admin')
-  const { ready, session, isAdmin, user, signOut, busy } = useAuth()
+  const { ready, session, isAdmin, canManageProducts, user, signOut, busy } = useAuth()
 
   if (!ready) return <Splash text="Checking access…" />
   if (!session) return <Login />
@@ -75,7 +75,7 @@ export default function AdminRoot() {
             </span>
           </div>
           <div className="flex items-center gap-3 min-w-0">
-            {isAdmin && <span className="hidden md:block text-[14px] text-black/55 truncate max-w-[240px]">{user?.email}</span>}
+            {canManageProducts && <span className="hidden md:block text-[14px] text-black/55 truncate max-w-[240px]">{user?.email}</span>}
             <button onClick={signOut} disabled={busy} className="text-[14px] border border-black/70 px-4 py-2 rounded-lg hover:bg-black hover:text-white transition disabled:opacity-60">
               Sign out
             </button>
@@ -84,7 +84,7 @@ export default function AdminRoot() {
       </header>
       <main className="flex-1">
         <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-8">
-          {!isAdmin ? <NotAuthorized email={user?.email || ''} /> : <Dashboard />}
+          {!canManageProducts ? <NotAuthorized email={user?.email || ''} /> : <Dashboard showOrders={isAdmin} />}
         </div>
       </main>
     </div>
