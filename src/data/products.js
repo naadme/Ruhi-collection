@@ -5,13 +5,14 @@
 // Prices, ratings, review counts, badges and descriptions are intentionally
 // left empty: the client folder contains photos and names only, so no values
 // are invented here. Fill them in when the client supplies them.
-import { img } from './images'
+import { img } from './images.js'
 
-// The three client folders are the store's categories (and the shop's Type filter).
+// The client folders are the store's categories (and the shop's Type filter).
 export const TYPES = [
   { key: 'tops', label: 'Tops & T-shirts' },
   { key: 'coord', label: 'Co-ord Sets' },
   { key: 'dress', label: 'Dresses' },
+  { key: 'trousers', label: 'Trousers & Pants' },
 ]
 export const typeLabel = (key) => TYPES.find((t) => t.key === key)?.label || key
 
@@ -80,11 +81,20 @@ export const products = [
 ]
 export const getProduct = (id) => products.find((x) => x.id === id)
 
-// One tile per catalogue type — the homepage "Shop by Category" row and the
-// shop's Type filter both read these, so they can never disagree.
+// One tile per catalogue type — the homepage "Shop by Category" row reads
+// these, so it can never disagree with the shop's Type filter. The image map
+// is keyed by type and the homepage only shows categories the store actually
+// stocks (see Sections.jsx), so a new category is never advertised empty.
+const CAT_IMG = {
+  tops: 'catTops',
+  coord: 'catCoord',
+  dress: 'catDress',
+  trousers: 'catTrousers',
+}
 export const categories = TYPES.map((t) => ({
+  type: t.key,
   label: t.label,
-  image: img[{ tops: 'catTops', coord: 'catCoord', dress: 'catDress' }[t.key]],
+  image: img[CAT_IMG[t.key]],
   to: `/shop?type=${t.key}`,
 }))
 
@@ -98,10 +108,12 @@ export const reviews = [
 ]
 
 // Tiles reference products by id so reordering or adding products cannot
-// silently repoint them at the wrong image.
-const tileImg = (id) => getProduct(id).image
+// silently repoint them at the wrong image. If a product is ever deleted, the
+// tile falls back to its category photo instead of crashing the page.
+const tileImg = (id, fallback) => getProduct(id)?.image || fallback
 export const collectionTiles = [
-  { title: 'Tops & Shirts', text: 'Denim shirts and panda tees', image: tileImg('denim-shirt-blue'), to: '/shop?type=tops' },
-  { title: 'Co-ord Sets', text: 'Shirt and pant sets in every colour', image: tileImg('shirt-pant-coord-set-neon-green'), to: '/shop?type=coord' },
-  { title: 'Dresses', text: 'Denim and striped dresses', image: tileImg('stripes-dress-yellow'), to: '/shop?type=dress' },
+  { title: 'Tops & Shirts', text: 'Denim shirts and panda tees', image: tileImg('denim-shirt-blue', img.catTops), to: '/shop?type=tops' },
+  { title: 'Co-ord Sets', text: 'Shirt and pant sets in every colour', image: tileImg('shirt-pant-coord-set-neon-green', img.catCoord), to: '/shop?type=coord' },
+  { title: 'Dresses', text: 'Denim and striped dresses', image: tileImg('stripes-dress-yellow', img.catDress), to: '/shop?type=dress' },
+  { title: 'Trousers & Pants', text: 'Everyday trousers and pants', image: img.catTrousers, to: '/shop?type=trousers' },
 ]

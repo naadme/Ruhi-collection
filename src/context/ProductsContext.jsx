@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { products as seedProducts, TYPES } from '../data/products'
+import { groupedCards } from '../lib/productGrouping'
 
 const Ctx = createContext(null)
 export const useProducts = () => useContext(Ctx)
@@ -13,7 +14,7 @@ export const useProducts = () => useContext(Ctx)
 // too, so an old row can never render an outside image.
 const VALID_TYPES = new Set(TYPES.map((t) => t.key))
 const OUTSIDE_PHOTO = /unsplash\.com|placehold|placeholder|picsum|loremflickr|pexels\.com|shutterstock|gettyimages/i
-// A row qualifies when it is one of the three categories, a women's item, and
+// A row qualifies when it is one of the catalogue's categories, a women's item, and
 // carries no photo from a retired host. NOTE the negation sits inside `every`,
 // not outside it: `!every(x => !bad(x))` inverts the test and would instead
 // keep *only* the retired demo rows — dropping every real product and leaving
@@ -51,79 +52,25 @@ const toProduct = (r) => {
     badge: r.badge,
     sizes: Array.isArray(r.sizes) && r.sizes.length ? r.sizes : ['S', 'M', 'L', 'XL'],
     desc: r.description || '',
+    // The explicit colour column, when the database has one. Grouping falls
+    // back to the title suffix (below) so a database without the column — or
+    // a row written before it existed — groups exactly as it always has.
+    colour: r.colour || null,
     is_active: r.is_active !== false,
   }
 }
 
 // ---- colour grouping ------------------------------------------------------
 // The client shoots one row per colour ("Stripes Dress - Blue", "… - Brown"),
-// but a design is ONE product: the shop must show a single card and let the
-// colour be chosen on the product page. Grouping is driven entirely by the
-// data — the title has to end in a colour word this catalogue actually uses
-// AND the rows have to share a type — so two unrelated products that merely
-// look alike can never be merged, and nothing is invented.
-//
-// Only these words appear in the client's own titles. Adding a colour that
-// isn't in the catalogue would risk grouping names that aren't colours.
-const COLOUR_WORDS = new Set([
-  'Babypink', 'Beige', 'Black', 'Blue', 'Brown', 'Grey', 'Maroon',
-  'Neon Green', 'Olive Green', 'Orange', 'Pink', 'Purple', 'Red',
-  'Royalblue', 'Sky Blue', 'White', 'Yellow',
-])
-
-// "Stripes Dress - Pink" -> { name: 'Stripes Dress', colour: 'Pink' }.
-// Anything without a real colour suffix returns null and is never grouped.
-const splitColour = (title) => {
-  const at = title.lastIndexOf(' - ')
-  if (at < 0) return null
-  const colour = title.slice(at + 3).trim()
-  if (!COLOUR_WORDS.has(colour)) return null
-  return { name: title.slice(0, at).trim(), colour }
-}
-
-// Rows -> one entry per design, in catalogue order. The first row of a design
-// becomes the card and keeps its own id, image and gallery (so the card shows
-// the first colour), while every colour row is kept verbatim under `colors`.
-// A design with a single row is left exactly as it was — including the colour
-// in its title, which would otherwise be thrown away with no swatch to show it.
-const groupColours = (rows) => {
-  const buckets = new Map()
-  rows.forEach((row) => {
-    const parts = splitColour(row.title)
-    // A row with no colour suffix gets a key only it can hold, so it is never
-    // pooled with anything else.
-    const key = parts ? `${row.type}\u0000${parts.name}` : `\u0000${row.id}`
-    if (!buckets.has(key)) buckets.set(key, { parts, rows: [] })
-    buckets.get(key).rows.push(row)
-  })
-
-  const out = []
-  for (const { parts, rows: group } of buckets.values()) {
-    const lead = group[0]
-    if (!parts || group.length < 2) { out.push(lead); continue }
-    // One card per design, but every colour stays its own Supabase row with
-    // its own price. The card advertises a price the shopper really pays when
-    // they tap it, so the *cheapest* colour row carries `price`/`compare` —
-    // and hands over its `id`, which is the row the card opens on, the row
-    // the cart adds and the row `create_order()` prices server-side. All three
-    // therefore name the same row and can never disagree. When every colour
-    // costs the same (the normal case) that row *is* the first one, so nothing
-    // changes: same id, same price, same card as before.
-    const priced = group.reduce(
-      (best, r) => ((Number(r.price) || 0) < (Number(best.price) || 0) ? r : best),
-      lead,
-    )
-    out.push({
-      ...lead,
-      id: priced.id,
-      price: priced.price,
-      compare: priced.compare,
-      title: parts.name,
-      colors: group.map((r) => ({ ...r, color: splitColour(r.title).colour })),
-    })
-  }
-  return out
-}
+// but a design is ONE product: the shop shows a single card and the colour is
+// chosen on the product page. BOTH the grouping rule and the card build live in
+// src/lib/productGrouping.js — shared with the admin dashboard, so the groups
+// the owner manages are exactly the groups the shop shows — and both are driven
+// entirely by the data: a row joins a design only when its colour is known (the
+// row's `colour` column, or a title suffix this catalogue actually uses) and
+// rows never pool across categories, so two unrelated products that merely look
+// alike can never be merged and nothing is invented.
+const groupColours = groupedCards
 
 const seed = seedProducts.map((p) => ({ ...p, is_active: true }))
 

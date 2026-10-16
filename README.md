@@ -71,6 +71,14 @@ storefront ignores whatever the `products` table holds and serves that bundled c
 instead, so the demo catalogue can never appear on the site; the dashboard, however, only
 lists what is actually in the table.
 
+**Apply `20261016103000_product_colour_and_trousers_category.sql` too** (same command). It adds
+the `colour` column to `products` — backfilled only from titles that already end in a colour word
+the storefront recognises, so no row is grouped differently and no title, id, URL, image, price or
+order reference changes — and relaxes the `type` check to include **Trousers & Pants**
+(`trousers`). Until it has run, saving a product from the admin panel fails (the panel writes the
+`colour` column) and `trousers` rows are rejected by the database. The file documents its own
+revert.
+
 Row Level Security is on for every table. Highlights:
 
 - `newsletter_subscribers` / `contact_messages` — INSERT-only for anonymous visitors, no SELECT.
@@ -382,12 +390,28 @@ Nothing in the browser decides price, discount, shipping, total, or whether an o
 - `site.phone` and the testimonial quotes are still owner placeholders — replace them with your
   real details before launch. `site.email` is `ruhicollections2026@gmail.com`, the same mailbox
   the contact form is delivered to.
+- **Categories** come from one list, `TYPES` in `src/data/products.js` (Tops & T-shirts, Co-ord
+  Sets, Dresses, Trousers & Pants). The header, footer, shop Type filter, admin selector and
+  homepage tiles all read it, so a category is added in exactly one place — the homepage hero
+  and the "Shop by Category"/Collections tiles only advertise a category once it has a live
+  product. The database accepts the same four values (`products_type_check`).
+- **Colour grouping** lives in `src/lib/productGrouping.js` and is shared by the storefront and
+  the admin dashboard: rows group into one design when they share a category, a design name and
+  a colour — either the row's `colour` column or a " - Colour" title suffix the catalogue
+  recognises. Nothing is ever merged on a guess, and two designs that merely share a colour
+  never pool.
+- **The admin panel manages a design as one product**: shared info (name, category, description,
+  sizes, badge, ratings) plus a card per colour with its own ID, price, photos and visibility.
+  A save writes only the columns that really changed (`src/lib/productForm.js`), so editing one
+  colour's price can never overwrite another colour's data. Removing a colour deletes only that
+  colour's row; deleting a design is confirmed and names every row it removes.
 
 ---
 
 ## Testing
 
-`npm run build` is the only quality script in `package.json`; it must pass.
+`npm test` (pure-logic tests under `node --test`) and `npm run build` are the quality scripts in
+`package.json`; both must pass.
 
 What has been verified against this codebase:
 
@@ -405,6 +429,12 @@ What has been verified against this codebase:
   button swaps between `Place order` and `Pay now`, and a failed online attempt keeps the cart so
   the shopper can retry successfully.
 - Bundle scan — `checkout.razorpay.com` present, `RAZORPAY_KEY_SECRET`/`VITE_RAZORPAY` absent.
+- Automated unit tests (`npm test`, Node's built-in runner) over the two pure modules:
+  `tests/productGrouping.test.js` pins the grouping rule (legacy titles group exactly as before,
+  no cross-category or colour-only merges, explicit colours group without losing titles) and
+  `tests/productForm.test.js` pins the editor's write path (colours round-trip without loss,
+  only changed columns are written, shared fields only travel when edited, IDs are locked and
+  de-duplicated, validation blocks duplicates/separator colours/ID clashes).
 
 Manual steps only you can do: create the Razorpay TEST keys, deploy the functions, set the
 secrets, create the webhook, and run a real test-mode payment (steps 1–7 above).

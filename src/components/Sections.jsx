@@ -10,26 +10,41 @@ import Img from './Img'
 import ProductGrid from './ProductGrid'
 const icons = { Truck, Headset, IndianRupee }
 
+// Categories the store actually stocks, in catalogue order. The homepage hero
+// and the "Shop by Category" row only advertise a category that has at least
+// one live product, so a newly added (still empty) category can never promise
+// a shopper something the shop does not have. The header, footer and shop
+// filter are generated from TYPES and still list every category. With an empty
+// catalogue nothing can be judged, so every category is shown — the same rule
+// the Collections page applies to its tiles.
+const stocked = (products) => {
+  const list = categories.filter((c) => products.some((p) => p.type === c.type))
+  return list.length ? list : categories
+}
+
 export const Hero = () => {
   // Two halves, side by side from `md` up: the cream poster on the left and
   // exactly ONE category photo on the right. Nothing moves on its own — there
   // is no autoplay, no track and no loop; the photo changes only when a
-  // shopper clicks an arrow. `cur` is one entry of `categories` — the very
-  // same list the "Shop by Category" row reads — so the photo, its label and
-  // the `/shop?type=…` filter it links to can never disagree with the rest of
-  // the store. Below `md` the halves stack (poster first): a phone is far too
-  // narrow for a two-line headline and a recognisable photo to share the
-  // width, so that is the balanced fallback rather than a clipped layout.
-  // The poster copy is a headline broken into two lines ("Ruhi Women's" /
+  // shopper clicks an arrow. `cur` is one entry of the stocked categories —
+  // the very same list the "Shop by Category" row reads — so the photo, its
+  // label and the `/shop?type=…` filter it links to can never disagree with
+  // the rest of the store. Below `md` the halves stack (poster first): a phone
+  // is far too narrow for a two-line headline and a recognisable photo to
+  // share the width, so that is the balanced fallback rather than a clipped
+  // layout. The poster copy is a headline broken into two lines ("Ruhi Women's" /
   // "Collection") plus a subheadline, so the type steps at `sm`/`md`/`lg`/
   // `xl` rather than one jump to 104px: the longest line, "Ruhi Women's",
   // has to clear the column at 320px and inside the 384px half a `md`
   // viewport gives it.
   const [at, setAt] = useState(0)
-  const n = categories.length
+  const { products } = useProducts()
+  // Only stocked categories slide here (see `stocked` above).
+  const list = stocked(products)
+  const n = list.length
   // Read-side wrap-around, so the last photo steps back to the first and the
   // first forward to the last without growing the state forever.
-  const cur = categories[((at % n) + n) % n]
+  const cur = list[((at % n) + n) % n]
   const go = (d) => setAt((v) => v + d)
   return (
     <section className="grid min-h-[560px] md:grid-cols-2 md:h-[600px] lg:h-[684px] bg-[#4A2C23] text-white">
@@ -77,13 +92,16 @@ export const Hero = () => {
     </section>
   )
 }
-export const Categories = () => (
-  <section className="max-w-[1300px] mx-auto px-4 pt-16 pb-10">
-    <h2 className="text-center text-[34px] tracking-wide">Shop by Category</h2>
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mt-8">{categories.map((c, i) => (
-      <Link key={i} to={c.to} className="text-center"><Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover" /><p className="mt-4 text-[17px]">{c.label}</p></Link>))}</div>
-  </section>
-)
+export const Categories = () => {
+  const { products } = useProducts()
+  return (
+    <section className="max-w-[1300px] mx-auto px-4 pt-16 pb-10">
+      <h2 className="text-center text-[34px] tracking-wide">Shop by Category</h2>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mt-8">{stocked(products).map((c) => (
+        <Link key={c.type} to={c.to} className="text-center"><Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover" /><p className="mt-4 text-[17px]">{c.label}</p></Link>))}</div>
+    </section>
+  )
+}
 
 // Four real catalogue styles, never two colourways of the same garment.
 // `styleKey` drops the trailing " - Colour", so "Denim Shirt - Black" and

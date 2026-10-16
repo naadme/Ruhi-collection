@@ -11,6 +11,7 @@ import QtyControl from '../components/QtyControl'
 import ProductCard from '../components/ProductCard'
 import { inr } from '../lib/pricing'
 import { MAX_QTY } from '../lib/checkout'
+import { variantFor } from '../lib/productGrouping'
 
 function Gallery({ product }) {
   const shots = [...new Set(
@@ -99,7 +100,7 @@ export default function Product() {
   // card's id or any of those rows, so a shared link or an old bookmark opens
   // on the colour it names.
   const colors = p.colors && p.colors.length > 1 ? p.colors : []
-  const chosen = colors.find((c) => c.id === id) || colors[0] || null
+  const chosen = variantFor(colors, id)
   // Everything the shopper looks at follows the chosen colour: its photo set,
   // its own row id — so the cart and the order keep the colour, while the
   // title stays the base product name. Its price and compare-at come from that

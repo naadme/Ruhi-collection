@@ -21,9 +21,16 @@ export default function Collections() {
       <h1 className="text-[36px] md:text-[44px] text-center">Collections</h1>
       <p className="text-center text-xl text-black/60 mt-3">Pick a collection to start browsing</p>
       <div className="grid sm:grid-cols-3 gap-4 mt-12">
-        {collectionTiles.map((c) => {
-          const n = countFor(products, c.to)
-          return (
+        {collectionTiles
+          .map((c) => ({ c, n: countFor(products, c.to) }))
+          // A tile only advertises a collection the store actually stocks, so
+          // a newly added (still empty) category never promises a shopper
+          // something the shop does not have. The shop's own Type filter and
+          // the header/footer links, generated from TYPES, list every category
+          // regardless. With an empty catalogue nothing can be judged, so all
+          // tiles are shown.
+          .filter(({ n }) => n > 0 || products.length === 0)
+          .map(({ c, n }) => (
             <Link key={c.title} to={c.to} className="group relative block aspect-[4/3] overflow-hidden bg-neutral-200">
               <Img src={c.image} alt={c.title} loading="eager" className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
@@ -33,8 +40,7 @@ export default function Collections() {
                 <span className="underline underline-offset-4 mt-3 inline-block">Shop now{loading ? '' : ` · ${n} ${n === 1 ? 'style' : 'styles'}`}</span>
               </div>
             </Link>
-          )
-        })}
+          ))}
       </div>
     </section>
   )

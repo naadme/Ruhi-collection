@@ -12,6 +12,7 @@
 // surfaces as a readable message in the editor.
 
 import { supabase } from '../lib/supabase'
+import { same } from '../lib/productForm'
 
 const NOT_SAVED =
   'Nothing was saved — your session may have expired. Sign in again and retry.'
@@ -40,18 +41,10 @@ const message = (err, fallback) => {
  * Compares every column of the payload against the returned row — a write that
  * was ignored, filtered by RLS, or silently coerced into something else throws
  * here instead of letting the dashboard announce a change the store never made.
+ * The comparator is the same one the editor uses to decide what to write.
  */
 export function assertSaved(saved, payload) {
   if (!saved || !saved.id) throw new Error(NOT_SAVED)
-  const same = (a, b) => {
-    if (Array.isArray(a) || Array.isArray(b)) {
-      return JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
-    }
-    if (typeof a === 'number' || typeof b === 'number') {
-      return Number(a ?? 0) === Number(b ?? 0)
-    }
-    return (a ?? null) === (b ?? null)
-  }
   const wrong = Object.keys(payload).filter((k) => !same(saved[k], payload[k]))
   if (wrong.length) {
     throw new Error(

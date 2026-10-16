@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Plus, Search, Pencil, Trash2, Package, Loader2, AlertTriangle,
+  Plus, Search, Trash2, Loader2, AlertTriangle,
   CheckCircle2, ArrowUpRight, Inbox,
 } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
-import { typeLabel } from '../data/products'
+import { TYPES, typeLabel } from '../data/products'
+import { groupRows } from '../lib/productGrouping'
+import { colourOf } from '../lib/productForm'
 import { createProduct, updateProduct, deleteProduct, setProductActive } from './productApi'
 import ProductEditor from './ProductEditor'
+import { ProductRow, GroupCard } from './ProductList'
 import OrdersPanel from './OrdersPanel'
 
 function Toast({ toast, onClose }) {
@@ -37,18 +40,22 @@ function Toast({ toast, onClose }) {
   )
 }
 
-function ConfirmDelete({ product, busy, onCancel, onConfirm }) {
+// One dialog for every destructive action, but the copy is built by the
+// dashboard so it always names exactly what will happen: deleting a product
+// with colours says so, and removing a single colour promises the product
+// itself stays.
+function Confirm({ title, body, label, busy, onCancel, onConfirm }) {
   const box = useRef(null)
   useEffect(() => {
-    if (!product) return
+    if (!title) return
     box.current?.focus()
     const onKey = (e) => {
       if (e.key === 'Escape' && !busy) onCancel()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [product, busy, onCancel])
-  if (!product) return null
+  }, [title, busy, onCancel])
+  if (!title) return null
   return (
     <div className="fixed inset-0 z-[55] grid place-items-center p-4 font-ui">
       <div className="absolute inset-0 bg-black/45" onMouseDown={busy ? undefined : onCancel} aria-hidden="true" />
@@ -63,11 +70,8 @@ function ConfirmDelete({ product, busy, onCancel, onConfirm }) {
         <span className="inline-grid place-items-center w-11 h-11 rounded-full bg-red-50 border border-red-100 text-red-600">
           <Trash2 size={20} strokeWidth={1.7} />
         </span>
-        <h2 id="confirm-title" className="text-[21px] font-bold mt-4">Delete this product?</h2>
-        <p className="text-black/60 text-[15px] mt-2 leading-relaxed">
-          <strong className="text-black/85">{product.title}</strong> will be permanently removed from the store.
-          This can’t be undone.
-        </p>
+        <h2 id="confirm-title" className="text-[21px] font-bold mt-4">{title}</h2>
+        <p className="text-black/60 text-[15px] mt-2 leading-relaxed">{body}</p>
         <div className="flex gap-3 mt-6">
           <button
             onClick={onCancel}
@@ -82,7 +86,7 @@ function ConfirmDelete({ product, busy, onCancel, onConfirm }) {
             className="flex-1 h-[46px] rounded-lg bg-red-600 text-white text-[15px] font-semibold hover:bg-red-700 transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
           >
             {busy && <Loader2 size={16} className="animate-spin" />}
-            {busy ? 'Deleting…' : 'Delete'}
+            {busy ? 'Working…' : label}
           </button>
         </div>
       </div>
@@ -123,12 +127,24 @@ export default function Dashboard({ showOrders }) {
   const [section, setSection] = useState('products')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
-  const [editing, setEditing] = useState(null) // { isNew, product }
-  const [confirm, setConfirm] = useState(null)
+  const [cat, setCat] = useState('')
+  const [openGroups, setOpenGroups] = useState({}) // group key -> expanded?
+  const [editing, setEditing] = useState(null) // { isNew, rows, focusKey }
+  const [confirm, setConfirm] = useState(null) // { kind: 'product' | 'variant', group, row? }
   const [busyId, setBusyId] = useState('')
   const [toast, setToast] = useState(null)
 
   const notify = (type, message) => setToast({ type, message, id: Date.now() })
+
+  // One entry per design, grouped with the storefront's own rule, so the
+  // dashboard can never show a different grouping than the shop does. Hidden
+  // colours take part too — the owner has to see what is hidden.
+  const groups = useMemo(() => groupRows(all), [all])
+  const colourOptions = useMemo(
+    () => [...new Set(all.map(colourOf).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [all],
+  )
+  const takenIds = useMemo(() => all.map((p) => p.id), [all])
 
   const counts = useMemo(
     () => ({
@@ -139,61 +155,192 @@ export default function Dashboard({ showOrders }) {
     [all],
   )
 
+  // Search, visibility and category filters all run over the parent product:
+  // a design matches when its name, category or ANY of its colours or ids do.
   const rows = useMemo(() => {
     const t = query.trim().toLowerCase()
-    return all.filter((p) => {
-      if (filter === 'live' && !p.is_active) return false
-      if (filter === 'hidden' && p.is_active) return false
+    return groups.filter((g) => {
+      if (filter === 'live' && !g.rows.some((r) => r.is_active)) return false
+      if (filter === 'hidden' && !g.rows.some((r) => !r.is_active)) return false
+      if (cat && g.rows[0].type !== cat) return false
       if (!t) return true
-      return p.title.toLowerCase().includes(t) || p.id.toLowerCase().includes(t)
+      const hay = [g.name, typeLabel(g.rows[0].type), g.rows[0].type,
+        ...g.rows.flatMap((r) => [r.title, r.id, colourOf(r)])]
+        .join(' ').toLowerCase()
+      return t.split(/\s+/).filter(Boolean).every((tok) => hay.includes(tok))
     })
-  }, [all, query, filter])
+  }, [groups, query, filter, cat])
 
-  const openNew = () => setEditing({ isNew: true, product: null })
-  const openEdit = (p) => setEditing({ isNew: false, product: p })
+  // Groups the client is searching through open themselves, so a search lands
+  // on the actual colours instead of collapsed cards.
+  const expandedFor = (g) => openGroups[g.key] ?? !!query.trim()
+  const toggleExpanded = (g) => setOpenGroups((m) => ({ ...m, [g.key]: !expandedFor(g) }))
 
-  const handleSave = async (payload, isNew) => {
-    // Supabase is the source of truth, so the write is awaited, read back and
-    // verified before React is told anything: a `.select().single()` row that
-    // carries our values is the only thing allowed to update local state. An
-    // error, an empty result or a row that comes back different throws, the
-    // editor keeps showing the previous product and the admin sees why.
-    const saved = isNew ? await createProduct(payload) : await updateProduct(payload)
-    // Local state now holds the row Supabase just confirmed.
-    applyRow(saved)
+  const openNew = () => setEditing({ isNew: true, rows: [] })
+  const openEdit = (g) => setEditing({ isNew: false, rows: g.rows })
+  const openEditVariant = (g, r) => setEditing({ isNew: false, rows: g.rows, focusKey: r.id })
+
+  const handleSave = async (plan) => {
+    // Supabase is the source of truth, so every write is awaited, read back
+    // and verified before React is told anything. The plan may hold several
+    // writes (one per colour); if one fails after others landed, the database
+    // — not the editor — is what the panel must show, so it reloads and says
+    // exactly how much was saved. With nothing applied yet the editor keeps
+    // the client's input and shows why.
+    const created = []
+    const updated = []
+    const deleted = []
+    const total = plan.creates.length + plan.updates.length + plan.deletes.length
+    try {
+      for (const payload of plan.creates) {
+        setBusyId(payload.id)
+        created.push(await createProduct(payload))
+      }
+      for (const { id, payload } of plan.updates) {
+        setBusyId(id)
+        updated.push(await updateProduct(payload))
+      }
+      for (const id of plan.deletes) {
+        setBusyId(id)
+        deleted.push(await deleteProduct(id))
+      }
+    } catch (e) {
+      setBusyId('')
+      created.forEach(applyRow)
+      updated.forEach(applyRow)
+      deleted.forEach((row) => removeRow(row.id))
+      if (!created.length && !updated.length && !deleted.length) throw e
+      setEditing(null)
+      await reload()
+      notify(
+        'error',
+        `Saved ${created.length + updated.length + deleted.length} of ${total} changes — the rest failed: ${
+          e?.message || 'unknown error'
+        }. The list now shows what the store really holds.`,
+      )
+      return
+    }
+    setBusyId('')
+    created.forEach(applyRow)
+    updated.forEach(applyRow)
+    deleted.forEach((row) => removeRow(row.id))
     setEditing(null)
+    if (!total) {
+      notify('success', 'No changes to save.')
+      return
+    }
     // Re-read the whole catalogue in the background: any other change the
     // owner made meanwhile lands too, and a failed re-read cannot undo the
-    // verified row that is already on screen.
+    // verified rows that are already on screen.
     await reload()
-    notify('success', isNew ? 'Product added to the store.' : 'Product updated.')
+    notify('success', created.length && !updated.length && !deleted.length ? 'Product added to the store.' : 'Product updated.')
   }
 
-  const handleDelete = async (product) => {
-    setBusyId(product.id)
+  // The exact copy for whichever destructive action is pending, so the client
+  // can never mistake "remove one colour" for "delete the whole product".
+  const confirmCopy = (c) => {
+    if (!c) return {}
+    const g = c.group
+    if (c.kind === 'variant') {
+      const colour = colourOf(c.row) || c.row.title
+      return {
+        title: `Remove the “${colour}” colour?`,
+        body: `Only this colour will be removed from “${g.name}”. The product itself and its other ${
+          g.rows.length - 1
+        } colour${g.rows.length - 1 === 1 ? '' : 's'} stay in the store.`,
+        label: 'Remove colour',
+      }
+    }
+    if (g.rows.length === 1) {
+      return {
+        title: 'Delete this product?',
+        body: `“${g.name}” will be permanently removed from the store. This can’t be undone.`,
+        label: 'Delete',
+      }
+    }
+    const colours = g.rows.map((r) => colourOf(r) || r.title).join(', ')
+    return {
+      title: 'Delete this product and all its colours?',
+      body: `“${g.name}” and its ${g.rows.length} colour variants (${colours}) will be permanently removed from the store. This can’t be undone.`,
+      label: 'Delete all',
+    }
+  }
+
+  const handleConfirm = async () => {
+    const c = confirm
+    if (!c) return
+    // Removing one colour never touches the rest of the product.
+    if (c.kind === 'variant') {
+      const row = c.row
+      setBusyId(row.id)
+      try {
+        await deleteProduct(row.id)
+        removeRow(row.id)
+        setConfirm(null)
+        await reload()
+        notify('success', `“${colourOf(row) || row.title}” removed from “${c.group.name}”.`)
+      } catch (e) {
+        notify('error', e?.message || 'Could not remove this colour.')
+      } finally {
+        setBusyId('')
+      }
+      return
+    }
+    const list = c.group.rows
+    setBusyId(list[0].id)
+    let done = 0
     try {
-      const gone = await deleteProduct(product.id)
-      removeRow(gone.id)
+      for (const row of list) {
+        await deleteProduct(row.id)
+        removeRow(row.id)
+        done += 1
+      }
       setConfirm(null)
       await reload()
-      notify('success', `“${product.title}” deleted.`)
+      notify('success', `“${c.group.name}” deleted.`)
     } catch (e) {
-      notify('error', e?.message || 'Could not delete this product.')
+      setConfirm(null)
+      await reload()
+      notify(
+        'error',
+        done
+          ? `Deleted ${done} of ${list.length} rows — the rest failed: ${e?.message || 'unknown error'}.`
+          : e?.message || 'Could not delete this product.',
+      )
     } finally {
       setBusyId('')
     }
   }
 
-  const toggleActive = async (product) => {
-    const next = !product.is_active
-    setBusyId(product.id)
+  const toggleActive = async (row) => {
+    const next = !row.is_active
+    setBusyId(row.id)
     try {
-      const saved = await setProductActive(product.id, next)
+      const saved = await setProductActive(row.id, next)
       applyRow(saved)
       await reload()
-      notify('success', next ? 'Product is now visible in the store.' : 'Product hidden from the store.')
+      notify('success', next ? 'Colour is now visible in the store.' : 'Colour hidden from the store.')
     } catch (e) {
       notify('error', e?.message || 'Could not update visibility.')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  // One switch for a whole design: shows every colour, or hides them all.
+  const toggleGroup = async (g) => {
+    const target = !g.rows.every((r) => r.is_active)
+    setBusyId(g.rows[0].id)
+    try {
+      for (const r of g.rows) {
+        if (r.is_active === target) continue
+        applyRow(await setProductActive(r.id, target))
+      }
+      await reload()
+      notify('success', target ? `“${g.name}” is now visible in the store.` : `“${g.name}” hidden from the store.`)
+    } catch (e) {
+      notify('error', e?.message || 'Could not update visibility.')
+      await reload()
     } finally {
       setBusyId('')
     }
@@ -225,7 +372,8 @@ export default function Dashboard({ showOrders }) {
           <div>
             <h1 className="text-[34px] md:text-[40px] font-bold tracking-tight leading-none">Products</h1>
             <p className="text-black/55 mt-2 text-[15px]">
-              {counts.all} {counts.all === 1 ? 'product' : 'products'} · {counts.live} live · {counts.hidden} hidden
+              {counts.all} {counts.all === 1 ? 'product' : 'products'}
+              {groups.length < counts.all ? ` in ${groups.length} designs` : ''} · {counts.live} live · {counts.hidden} hidden
             </p>
           </div>
           <button
@@ -250,26 +398,37 @@ export default function Dashboard({ showOrders }) {
 
         {/* Toolbar */}
         <div className="mt-6 flex flex-wrap gap-3 items-center justify-between border-y border-black/10 py-4">
-          <div className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1">
-            {TABS.map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setFilter(k)}
-                className={`px-3.5 h-9 rounded-lg text-[14px] font-medium transition ${
-                  filter === k ? 'bg-black text-white' : 'text-black/60 hover:text-black'
-                }`}
-              >
-                {label}
-                <span className={`ml-1.5 text-[12px] ${filter === k ? 'text-white/70' : 'text-black/40'}`}>{counts[k]}</span>
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1">
+              {TABS.map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setFilter(k)}
+                  className={`px-3.5 h-9 rounded-lg text-[14px] font-medium transition ${
+                    filter === k ? 'bg-black text-white' : 'text-black/60 hover:text-black'
+                  }`}
+                >
+                  {label}
+                  <span className={`ml-1.5 text-[12px] ${filter === k ? 'text-white/70' : 'text-black/40'}`}>{counts[k]}</span>
+                </button>
+              ))}
+            </div>
+            <select
+              value={cat}
+              onChange={(e) => setCat(e.target.value)}
+              aria-label="Filter by category"
+              className="h-10 pl-3 pr-4 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+            >
+              <option value="">All categories</option>
+              {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
           </div>
           <div className="relative flex-1 min-w-[220px] sm:max-w-[320px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-black/35" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search products…"
+              placeholder="Search products or colours…"
               aria-label="Search products"
               className="w-full h-10 pl-9 pr-3 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35"
             />
@@ -293,7 +452,7 @@ export default function Dashboard({ showOrders }) {
           <div className="mt-10 text-center py-16 border border-dashed border-black/15 rounded-2xl bg-white">
             <Inbox size={34} className="mx-auto text-black/25" strokeWidth={1.4} />
             <p className="text-[18px] font-semibold mt-4">
-              {all.length === 0 ? 'No products yet' : filter === 'all' && !query ? 'No products yet' : 'Nothing matches'}
+              {all.length === 0 ? 'No products yet' : filter === 'all' && !query && !cat ? 'No products yet' : 'Nothing matches'}
             </p>
             <p className="text-black/55 mt-1 text-[15px]">
               {all.length === 0
@@ -311,80 +470,33 @@ export default function Dashboard({ showOrders }) {
           </div>
         ) : (
           <ul className="mt-6 space-y-3">
-            {rows.map((p) => (
-              <li
-                key={p.id}
-                className="bg-white border border-black/10 rounded-xl p-3 sm:p-4 flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 hover:border-black/25 transition"
-              >
-                <div className="w-14 h-16 sm:w-16 sm:h-20 rounded-lg overflow-hidden bg-neutral-100 shrink-0">
-                  {p.image ? (
-                    <img
-                      src={p.image}
-                      alt=""
-                      loading="lazy"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none'
-                      }}
-                    />
-                  ) : (
-                    <span className="w-full h-full grid place-items-center text-black/25">
-                      <Package size={20} />
-                    </span>
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1 basis-[calc(100%-4.5rem)] sm:basis-auto">
-                  <p className="font-semibold text-[16px] leading-snug truncate">{p.title}</p>
-                  <p className="text-[13px] text-black/50 mt-0.5 capitalize">
-                    {typeLabel(p.type)} · <span className="font-mono normal-case">{p.id}</span>
-                  </p>
-                  <p className="text-[15px] mt-1 font-medium">
-                    <span className="text-red-600 font-bold">₹{p.price}</span>
-                    {p.compare ? <span className="text-black/40 text-[13px] line-through ml-2">₹{p.compare}</span> : null}
-                    {p.badge ? <span className="ml-2 text-[11px] font-bold bg-brand-badge text-white px-1.5 py-0.5 rounded-sm">{p.badge}</span> : null}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 sm:gap-3 ml-auto shrink-0">
-                  <button
-                    onClick={() => toggleActive(p)}
-                    disabled={busyId === p.id}
-                    role="switch"
-                    aria-checked={p.is_active}
-                    aria-label={p.is_active ? `Hide ${p.title}` : `Show ${p.title}`}
-                    title={p.is_active ? 'Live — click to hide' : 'Hidden — click to show'}
-                    className={`inline-flex items-center gap-2 h-9 px-3 rounded-full border text-[13px] font-medium transition disabled:opacity-60 ${
-                      p.is_active
-                        ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
-                        : 'bg-neutral-100 border-black/15 text-black/50 hover:border-black/40'
-                    }`}
-                  >
-                    {busyId === p.id ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <span className={`w-2 h-2 rounded-full ${p.is_active ? 'bg-green-600' : 'bg-black/35'}`} />
-                    )}
-                    {p.is_active ? 'Live' : 'Hidden'}
-                  </button>
-
-                  <button
-                    onClick={() => openEdit(p)}
-                    aria-label={`Edit ${p.title}`}
-                    className="w-9 h-9 grid place-items-center rounded-lg border border-black/20 hover:bg-black hover:text-white transition"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => setConfirm(p)}
-                    aria-label={`Delete ${p.title}`}
-                    className="w-9 h-9 grid place-items-center rounded-lg border border-black/20 text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </li>
-            ))}
+            {rows.map((g) =>
+              g.rows.length === 1 ? (
+                <ProductRow
+                  key={g.rows[0].id}
+                  p={g.rows[0]}
+                  busy={busyId === g.rows[0].id}
+                  onToggle={() => toggleActive(g.rows[0])}
+                  onEdit={() => openEdit(g)}
+                  onDelete={() => setConfirm({ kind: 'product', group: g })}
+                />
+              ) : (
+                <GroupCard
+                  key={g.key}
+                  g={g}
+                  expanded={expandedFor(g)}
+                  onExpand={() => toggleExpanded(g)}
+                  busyId={busyId}
+                  onToggleGroup={() => toggleGroup(g)}
+                  onToggleVariant={(r) => toggleActive(r)}
+                  onEdit={() => openEdit(g)}
+                  onEditVariant={(r) => openEditVariant(g, r)}
+                  onAddColour={() => setEditing({ isNew: false, rows: g.rows, addColour: true })}
+                  onDeleteGroup={() => setConfirm({ kind: 'product', group: g })}
+                  onRemoveVariant={(r) => setConfirm({ kind: 'variant', group: g, row: r })}
+                />
+              ),
+            )}
           </ul>
         )}
 
@@ -397,16 +509,20 @@ export default function Dashboard({ showOrders }) {
         <ProductEditor
           open={!!editing}
           isNew={!!editing?.isNew}
-          initial={editing?.product}
+          initial={editing ? { rows: editing.rows || [] } : null}
+          focusKey={editing?.focusKey || ''}
+          addColour={!!editing?.addColour}
+          takenIds={takenIds}
+          colourOptions={colourOptions}
           onClose={() => setEditing(null)}
           onSave={handleSave}
         />
 
-        <ConfirmDelete
-          product={confirm}
-          busy={!!busyId && busyId === confirm?.id}
+        <Confirm
+          {...confirmCopy(confirm)}
+          busy={!!busyId && !!confirm && (confirm.kind === 'variant' ? busyId === confirm.row?.id : confirm.group?.rows.some((r) => r.id === busyId))}
           onCancel={() => setConfirm(null)}
-          onConfirm={() => handleDelete(confirm)}
+          onConfirm={handleConfirm}
         />
       </div>
 

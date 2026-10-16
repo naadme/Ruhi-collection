@@ -1,89 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, X, Upload, Link2, Trash2, Check } from 'lucide-react'
+import { Loader2, X, Upload, Link2, Trash2, Check, Plus } from 'lucide-react'
 import useOverlay from '../hooks/useOverlay'
 import { supabase } from '../lib/supabase'
 import { TYPES } from '../data/products'
+import {
+  blankVariant, buildPlan, buildTitle, groupForm, slug, validateForm, withIds,
+} from '../lib/productForm'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[48px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 const labelCls = 'block text-[13px] font-medium text-black/60'
 const bucket = 'product-images'
-const SIZE_OPTIONS = ['S', 'M', 'L', 'XL', 'XXL']
-
-export const blankProduct = () => ({
-  id: '',
-  title: '',
-  type: TYPES[0].key,
-  price: '',
-  compare: '',
-  badge: '',
-  rating: 0,
-  reviews: 0,
-  sizes: ['S', 'M', 'L', 'XL'],
-  desc: '',
-  image: '',
-  hover: '',
-  gallery: [],
-  galleryDirty: false,
-  is_active: true,
-})
-
-// DB row -> editor form
-// Accepts both shapes the editor is handed: a mapped store product (`desc`,
-// see toProduct in ProductsContext) and a raw `products` row (`description`).
-// Reading only the first would silently blank the description on save.
-export const toForm = (p) =>
-  p
-    ? {
-        id: p.id ?? '',
-        title: p.title ?? '',
-        type: p.type ?? TYPES[0].key,
-        price: p.price ?? '',
-        compare: p.compare ?? '',
-        badge: p.badge ?? '',
-        rating: p.rating ?? 0,
-        reviews: p.reviews ?? 0,
-        sizes: Array.isArray(p.sizes) ? p.sizes : ['S', 'M', 'L', 'XL'],
-        desc: p.desc ?? p.description ?? '',
-        image: p.image ?? '',
-        hover: p.hover ?? '',
-        gallery: Array.isArray(p.gallery) ? p.gallery : [],
-        galleryDirty: false,
-        is_active: p.is_active !== false,
-      }
-    : blankProduct()
-
-// editor form -> DB payload (mirrors the migration's columns exactly).
-// `gallery` is only written when the images themselves changed, so editing a
-// price never drops the extra photos of a product.
-//
-// Everything is rounded/clamped here, not left to the database: the row that
-// comes back from Supabase is compared field-by-field against this payload
-// before the dashboard believes the save, so what the admin typed and what
-// `products` stores must be the same value.
-export const toPayload = (f) => ({
-  id: f.id.trim(),
-  title: f.title.trim(),
-  type: f.type,
-  price: Math.max(0, Math.round(Number(f.price) || 0)),
-  compare: f.compare === '' || f.compare === null ? null : Math.max(0, Math.round(Number(f.compare))),
-  rating: Math.round(Math.min(5, Math.max(0, Number(f.rating) || 0)) * 10) / 10,
-  reviews: Math.max(0, Math.round(Number(f.reviews) || 0)),
-  badge: (f.badge || '').trim() || null,
-  sizes: f.sizes.length ? f.sizes : ['S', 'M', 'L', 'XL'],
-  description: f.desc || '',
-  image: (f.image || '').trim() || null,
-  hover: (f.hover || '').trim() || null,
-  ...(f.galleryDirty ? { gallery: [...new Set([f.image, f.hover].filter(Boolean))] } : {}),
-  is_active: !!f.is_active,
-})
-
-const slug = (s) =>
-  String(s)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 50)
+const SIZE_OPTIONS = ['S', 'M', 'L', 'XL']
 
 function Section({ title, children }) {
   return (
@@ -164,38 +92,247 @@ function ImageField({ name, value, onChange, busy, onPick, note }) {
   )
 }
 
-export default function ProductEditor({ open, isNew, initial, onClose, onSave }) {
+function VisibilitySwitch({ on, onToggle, compact }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onToggle}
+      className={`w-full flex items-center justify-between gap-4 border border-black/20 rounded-${
+        compact ? 'lg px-3.5 py-2.5' : 'xl px-4 py-3.5'
+      } text-left hover:border-black/45 transition`}
+    >
+      <span className="min-w-0">
+        <span className={`block ${compact ? 'text-[14px]' : 'text-[15px]'} font-semibold`}>
+          {on ? 'Visible in store' : 'Hidden from store'}
+        </span>
+        {!compact && (
+          <span className="block text-[13px] text-black/55">
+            {on ? 'Shoppers can see and buy this colour.' : 'Only admins can see it — it won’t appear anywhere public.'}
+          </span>
+        )}
+      </span>
+      <span className={`relative w-11 h-6 rounded-full transition shrink-0 ${on ? 'bg-brand-green' : 'bg-black/25'}`}>
+        <span
+          className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${on ? 'left-[22px]' : 'left-0.5'}`}
+        />
+      </span>
+    </button>
+  )
+}
+
+// One colour card inside the editor: the free-text colour, its own ID, price,
+// photos and visibility. Every colour is edited independently and saved as its
+// own `products` row — which is exactly how the storefront groups them.
+function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, onUpload, onRemove, onUndo }) {
+  const label = String(v.colour).trim() || (v.original ? 'Colour' : `Colour ${index + 1}`)
+  return (
+    <div data-vkey={v.key} data-row={v.original?.id || undefined} className="border border-black/15 rounded-xl overflow-hidden scroll-mt-6">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 bg-neutral-50 border-b border-black/10">
+        <p className="font-semibold text-[15px] truncate">
+          {label}
+          {!v.original && (
+            <span className="ml-2 text-[11px] font-bold bg-black/10 text-black/60 px-1.5 py-0.5 rounded-sm align-middle">NEW</span>
+          )}
+        </p>
+        {!v.removed && liveCount > 1 && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex items-center gap-1.5 text-[13px] text-black/50 hover:text-red-600 shrink-0"
+          >
+            <Trash2 size={14} /> Remove colour
+          </button>
+        )}
+      </div>
+
+      {v.removed ? (
+        <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[13px] text-red-700">
+            “{label}” will be removed from this product when you save. Everything else stays untouched.
+          </p>
+          <button
+            type="button"
+            onClick={onUndo}
+            className="text-[13px] font-medium border border-black/40 rounded-lg px-3 h-[34px] hover:bg-black hover:text-white transition"
+          >
+            Undo
+          </button>
+        </div>
+      ) : (
+        <div className="px-4 py-4 space-y-4">
+          <label className="block">
+            <span className={labelCls}>Colour *</span>
+            <input
+              list="ruhi-colour-options"
+              value={v.colour}
+              onChange={(e) => onChange({ colour: e.target.value })}
+              placeholder="Type any colour — Black, Wine Red, Pastel Pink…"
+              className={`${inputCls} mt-1.5`}
+            />
+            <span className="block text-[12px] text-black/45 mt-1.5">
+              Type any colour you like — suggestions appear while you type, but nothing is restricted.
+            </span>
+          </label>
+
+          <label className="block">
+            <span className={labelCls}>Product ID</span>
+            <input
+              value={v.id}
+              onChange={(e) => onChange({ id: slug(e.target.value), idTouched: true })}
+              readOnly={!!v.original}
+              disabled={!!v.original}
+              placeholder="auto-filled from the name and colour"
+              className={`${inputCls} mt-1.5 font-mono text-[14px] disabled:bg-neutral-100 disabled:text-black/45`}
+            />
+            <span className="block text-[12px] text-black/45 mt-1.5">
+              {v.original
+                ? 'Locked so existing links keep working.'
+                : isNewProduct && !String(v.id).trim()
+                  ? 'Used in the product URL — filled in automatically.'
+                  : 'Used in the product URL — change it only if you know what you’re doing.'}
+            </span>
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className={labelCls}>Price (₹)</span>
+              <input
+                type="number" min="0" step="1" inputMode="numeric"
+                value={v.price}
+                onChange={(e) => onChange({ price: e.target.value })}
+                placeholder="900"
+                className={`${inputCls} mt-1.5`}
+              />
+            </label>
+            <label className="block">
+              <span className={labelCls}>Compare-at (₹)</span>
+              <input
+                type="number" min="0" step="1" inputMode="numeric"
+                value={v.compare}
+                onChange={(e) => onChange({ compare: e.target.value })}
+                placeholder="999"
+                className={`${inputCls} mt-1.5`}
+              />
+            </label>
+          </div>
+
+          <ImageField
+            note="Main image"
+            value={v.image}
+            onChange={(url) => onChange({ image: url })}
+            busy={uploading === `${v.key}:image`}
+            onPick={(f) => onUpload(v, 'image', f)}
+          />
+          <ImageField
+            note="Second image (shown on hover)"
+            value={v.hover}
+            onChange={(url) => onChange({ hover: url })}
+            busy={uploading === `${v.key}:hover`}
+            onPick={(f) => onUpload(v, 'hover', f)}
+          />
+
+          <VisibilitySwitch
+            on={v.is_active}
+            compact
+            onToggle={() => onChange({ is_active: !v.is_active })}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// The product editor, now managing a whole product: the shared information a
+// design carries (name, category, description, sizes, badge, ratings) plus one
+// card per colour. Each colour is its own `products` row with its own ID,
+// price, photos and visibility — the exact structure the storefront already
+// groups — so nothing here invents a second data model.
+export default function ProductEditor({ open, isNew, initial, takenIds = [], colourOptions = [], focusKey = '', addColour = false, onClose, onSave }) {
   const panel = useRef(null)
-  const [form, setForm] = useState(() => toForm(initial))
+  const [form, setForm] = useState(() => groupForm(initial?.rows || [], TYPES[0].key))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState('')
+  const [scrollSel, setScrollSel] = useState('')
 
   useOverlay(open, onClose, panel)
 
+  // Load the product once, at the moment the editor opens: later re-renders
+  // of the dashboard (toasts, spinners) must never wipe what the client typed.
+  // Opening from a colour's Edit lands on that colour; "add colour" lands on a
+  // freshly appended one.
   useEffect(() => {
-    if (open) {
-      setForm(toForm(initial))
-      setError('')
-      setSaving(false)
+    if (!open) return
+    const next = groupForm(initial?.rows || [], TYPES[0].key)
+    let sel = ''
+    if (addColour) {
+      const key = `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+      next.variants = [...next.variants, blankVariant(key)]
+      sel = `[data-vkey="${key}"]`
+    } else if (focusKey) {
+      sel = `[data-row="${focusKey}"]`
     }
-  }, [open, initial])
+    setForm(next)
+    setError('')
+    setSaving(false)
+    setUploading('')
+    setScrollSel(sel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
-  const set = (k) => (v) => setForm((f) => ({
-    ...f,
-    [k]: v,
-    // Touching a photo rebuilds the product's gallery from the images on file.
-    ...(k === 'image' || k === 'hover' ? { galleryDirty: true } : {}),
-  }))
+  useEffect(() => {
+    if (!open || !scrollSel) return
+    const el = panel.current?.querySelector(scrollSel)
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    setScrollSel('')
+  }, [open, scrollSel])
 
-  const upload = async (field, file) => {
+  // Shared fields: also re-derive the IDs of colours that do not have one yet,
+  // exactly as the editor has always derived them while typing.
+  const setShared = (patch) =>
+    setForm((f) => {
+      const shared = { ...f.shared, ...patch }
+      return { ...f, shared, variants: withIds(shared, f.variants, takenIds) }
+    })
+
+  const setVariant = (key, patch) =>
+    setForm((f) => ({
+      ...f,
+      variants: withIds(
+        f.shared,
+        f.variants.map((v) =>
+          v.key === key
+            ? {
+                ...v,
+                ...patch,
+                // Touching a photo rebuilds that colour's gallery from the
+                // images on file — the same rule the editor has always used.
+                ...('image' in patch || 'hover' in patch ? { galleryDirty: true } : {}),
+              }
+            : v,
+        ),
+        takenIds,
+      ),
+    }))
+
+  const appendColour = () => {
+    const key = `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+    setForm((f) => ({ ...f, variants: [...f.variants, blankVariant(key)] }))
+    setScrollSel(`[data-vkey="${key}"]`)
+  }
+
+  const upload = async (v, field, file) => {
     setError('')
     if (!file.type?.startsWith('image/')) return setError('Please choose an image file.')
     if (file.size > 5 * 1024 * 1024) return setError('Images must be smaller than 5 MB.')
-    setUploading(field)
+    setUploading(`${v.key}:${field}`)
     try {
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
-      const base = slug(form.id || form.title) || 'product'
+      const base = slug(v.id || buildTitle(form.shared.name, v.colour)) || 'product'
+      // Unique per upload, so a photo added to one colour can never overwrite
+      // another colour's photo in the bucket.
       const path = `${base}-${field}-${Date.now()}.${ext}`
       const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, {
         contentType: file.type,
@@ -203,7 +340,7 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
       })
       if (upErr) throw upErr
       const { data } = supabase.storage.from(bucket).getPublicUrl(path)
-      set(field)(data.publicUrl)
+      setVariant(v.key, { [field]: data.publicUrl })
     } catch (e) {
       setError(e?.message || 'Upload failed. Please try again.')
     } finally {
@@ -212,16 +349,23 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
   }
 
   const submit = async (e) => {
-    e.preventDefault()
+    e?.preventDefault?.()
     setError('')
-    const f = { ...form, id: form.id.trim() || slug(form.title) }
-    if (!f.title.trim()) return setError('Please enter a product name.')
-    if (!/^[a-z0-9][a-z0-9-]*$/.test(f.id)) return setError('Product ID may only contain lowercase letters, numbers and dashes.')
-    if (!(Number(f.price) >= 0)) return setError('Please enter a valid price.')
-    setForm(f)
+    const shared = { ...form.shared, name: String(form.shared.name).trim() }
+    const variants = withIds(shared, form.variants, takenIds)
+    setForm((f) => ({ ...f, shared, variants }))
+
+    const errors = validateForm({ shared, variants, takenIds })
+    if (errors.length) return setError(errors.join(' '))
+
+    // The lead row is the colour the shared section was read from; the parent
+    // fields it changes are measured against that row, so an untouched shared
+    // section writes to no row at all.
+    const lead = variants.find((v) => v.original)?.original || null
+    const plan = buildPlan({ shared, variants, takenIds, lead })
     setSaving(true)
     try {
-      await onSave(toPayload(f), isNew, f.id)
+      await onSave(plan)
     } catch (err) {
       setError(err?.message || 'Could not save this product.')
       setSaving(false)
@@ -229,6 +373,9 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
   }
 
   if (!open) return null
+
+  const live = form.variants.filter((v) => !v.removed)
+  const removals = form.variants.length - live.length
 
   return (
     <div className="fixed inset-0 z-50 font-ui">
@@ -243,12 +390,15 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
         onKeyDown={(e) => {
           if (e.key === 'Escape') onClose()
         }}
-        className="absolute right-0 top-0 h-full w-full sm:w-[560px] bg-white shadow-2xl outline-none flex flex-col"
+        className="absolute right-0 top-0 h-full w-full sm:w-[600px] bg-white shadow-2xl outline-none flex flex-col"
       >
         <header className="shrink-0 border-b border-black/10 px-6 py-4 flex items-center justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[12px] uppercase tracking-[.14em] text-black/40">{isNew ? 'New product' : 'Editing'}</p>
-            <h2 className="text-[20px] font-bold truncate">{isNew ? 'Add product' : form.title || 'Untitled'}</h2>
+            <h2 className="text-[20px] font-bold truncate">
+              {form.shared.name || 'Untitled'}
+              {live.length > 1 ? <span className="text-black/45 font-medium"> · {live.length} colours</span> : null}
+            </h2>
           </div>
           <button
             type="button"
@@ -260,82 +410,76 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
           </button>
         </header>
 
+        {/* Suggestions only — the colour field itself accepts anything typed. */}
+        <datalist id="ruhi-colour-options">
+          {colourOptions.map((c) => <option key={c} value={c} />)}
+        </datalist>
+
         <form onSubmit={submit} noValidate className="flex-1 overflow-y-auto px-6 py-6 space-y-7">
           <Section title="Basics">
             <label className="block">
               <span className={labelCls}>Product name *</span>
               <input
-                value={form.title}
-                onChange={(e) => {
-                  set('title')(e.target.value)
-                  if (isNew && !form.id) setForm((f) => ({ ...f, title: e.target.value, id: slug(e.target.value) }))
-                }}
-                placeholder="Acid wash coord set - Beige"
+                value={form.shared.name}
+                onChange={(e) => setShared({ name: e.target.value })}
+                placeholder="Classic Shirt"
                 className={`${inputCls} mt-1.5`}
               />
-            </label>
-
-            <label className="block">
-              <span className={labelCls}>Product ID</span>
-              <input
-                value={form.id}
-                onChange={(e) => set('id')(slug(e.target.value))}
-                readOnly={!isNew}
-                disabled={!isNew}
-                placeholder="acid-wash-coord-set-beige"
-                className={`${inputCls} mt-1.5 font-mono text-[14px] disabled:bg-neutral-100 disabled:text-black/45`}
-              />
               <span className="block text-[12px] text-black/45 mt-1.5">
-                {isNew ? 'Used in the product URL — filled in automatically.' : 'Locked so existing links keep working.'}
+                The design name on its own — the colour is added by each colour below, e.g. “Classic Shirt - Black”.
               </span>
             </label>
 
             <label className="block">
               <span className={labelCls}>Category</span>
-              <select value={form.type} onChange={(e) => set('type')(e.target.value)} className={`${inputCls} mt-1.5`}>
+              <select value={form.shared.type} onChange={(e) => setShared({ type: e.target.value })} className={`${inputCls} mt-1.5`}>
                 {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </label>
-          </Section>
 
-          <Section title="Pricing">
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className={labelCls}>Price (₹) *</span>
-                <input
-                  type="number" min="0" step="1" inputMode="numeric"
-                  value={form.price}
-                  onChange={(e) => set('price')(e.target.value)}
-                  placeholder="899"
-                  className={`${inputCls} mt-1.5`}
-                />
-              </label>
-              <label className="block">
-                <span className={labelCls}>Compare-at (₹)</span>
-                <input
-                  type="number" min="0" step="1" inputMode="numeric"
-                  value={form.compare}
-                  onChange={(e) => set('compare')(e.target.value)}
-                  placeholder="999"
-                  className={`${inputCls} mt-1.5`}
-                />
-              </label>
-            </div>
             <label className="block">
               <span className={labelCls}>Badge</span>
               <input
-                value={form.badge}
-                onChange={(e) => set('badge')(e.target.value)}
+                value={form.shared.badge}
+                onChange={(e) => setShared({ badge: e.target.value })}
                 placeholder="Bestseller (leave blank for none)"
                 className={`${inputCls} mt-1.5`}
               />
             </label>
           </Section>
 
+          <Section title={`Colours${live.length > 1 ? ` (${live.length})` : ''}`}>
+            {form.variants.map((v, i) => (
+              <ColourCard
+                key={v.key}
+                v={v}
+                index={i}
+                liveCount={live.length}
+                isNewProduct={isNew}
+                uploading={uploading}
+                onChange={(patch) => setVariant(v.key, patch)}
+                onUpload={upload}
+                onRemove={() => setVariant(v.key, { removed: true })}
+                onUndo={() => setVariant(v.key, { removed: false })}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={appendColour}
+              className="w-full h-[46px] rounded-lg border border-dashed border-black/35 text-[14px] font-medium text-black/60 hover:border-black hover:text-black transition inline-flex items-center justify-center gap-2"
+            >
+              <Plus size={16} /> Add another colour
+            </button>
+            <p className="text-[12px] text-black/45">
+              Each colour is its own product row: its own price, photos and visibility. On the shop they appear as one
+              product with a colour choice.
+            </p>
+          </Section>
+
           <Section title="Description">
             <textarea
-              value={form.desc}
-              onChange={(e) => set('desc')(e.target.value)}
+              value={form.shared.desc}
+              onChange={(e) => setShared({ desc: e.target.value })}
               rows={4}
               placeholder="Soft, breathable fabric with a comfortable everyday fit…"
               className="w-full border border-black/30 rounded-lg px-4 py-3 text-[15px] leading-relaxed bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 resize-y"
@@ -345,14 +489,16 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
           <Section title="Sizes">
             <div className="flex flex-wrap gap-2">
               {SIZE_OPTIONS.map((s) => {
-                const on = form.sizes.includes(s)
+                const on = form.shared.sizes.includes(s)
                 return (
                   <button
                     key={s}
                     type="button"
                     aria-pressed={on}
                     onClick={() =>
-                      set('sizes')(on ? form.sizes.filter((x) => x !== s) : [...form.sizes, s])
+                      setShared({
+                        sizes: on ? form.shared.sizes.filter((x) => x !== s) : [...form.shared.sizes, s],
+                      })
                     }
                     className={`min-w-[52px] h-[40px] px-3 rounded-lg border text-[14px] font-medium transition ${
                       on ? 'bg-black text-white border-black' : 'bg-white text-black/60 border-black/25 hover:border-black/60'
@@ -363,23 +509,7 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
                 )
               })}
             </div>
-          </Section>
-
-          <Section title="Images">
-            <ImageField
-              note="Main image"
-              value={form.image}
-              onChange={set('image')}
-              busy={uploading === 'image'}
-              onPick={(f) => upload('image', f)}
-            />
-            <ImageField
-              note="Second image (shown on hover)"
-              value={form.hover}
-              onChange={set('hover')}
-              busy={uploading === 'hover'}
-              onPick={(f) => upload('hover', f)}
-            />
+            <span className="block text-[12px] text-black/45">Applies to every colour of this product.</span>
           </Section>
 
           <Section title="Ratings">
@@ -388,8 +518,8 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
                 <span className={labelCls}>Rating (0–5)</span>
                 <input
                   type="number" min="0" max="5" step="0.1"
-                  value={form.rating}
-                  onChange={(e) => set('rating')(e.target.value)}
+                  value={form.shared.rating}
+                  onChange={(e) => setShared({ rating: e.target.value })}
                   className={`${inputCls} mt-1.5`}
                 />
               </label>
@@ -397,40 +527,24 @@ export default function ProductEditor({ open, isNew, initial, onClose, onSave })
                 <span className={labelCls}>Review count</span>
                 <input
                   type="number" min="0" step="1"
-                  value={form.reviews}
-                  onChange={(e) => set('reviews')(e.target.value)}
+                  value={form.shared.reviews}
+                  onChange={(e) => setShared({ reviews: e.target.value })}
                   className={`${inputCls} mt-1.5`}
                 />
               </label>
             </div>
+            <span className="block text-[12px] text-black/45">Shown on the shop card for every colour.</span>
           </Section>
 
-          <Section title="Visibility">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={form.is_active}
-              onClick={() => set('is_active')(!form.is_active)}
-              className="w-full flex items-center justify-between gap-4 border border-black/20 rounded-xl px-4 py-3.5 text-left hover:border-black/45 transition"
-            >
-              <span className="min-w-0">
-                <span className="block text-[15px] font-semibold">{form.is_active ? 'Visible in store' : 'Hidden from store'}</span>
-                <span className="block text-[13px] text-black/55">
-                  {form.is_active ? 'Shoppers can see and buy this product.' : 'Only admins can see it — it won’t appear anywhere public.'}
-                </span>
-              </span>
-              <span className={`relative w-11 h-6 rounded-full transition shrink-0 ${form.is_active ? 'bg-brand-green' : 'bg-black/25'}`}>
-                <span
-                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${
-                    form.is_active ? 'left-[22px]' : 'left-0.5'
-                  }`}
-                />
-              </span>
-            </button>
-          </Section>
+          {removals > 0 && (
+            <p className="text-[14px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+              {removals === 1 ? 'One colour' : `${removals} colours`} will be removed when you save. The product itself
+              stays in the store.
+            </p>
+          )}
 
           {error && (
-            <p role="alert" className="text-[14px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+            <p role="alert" className="text-[14px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 whitespace-pre-line">
               {error}
             </p>
           )}

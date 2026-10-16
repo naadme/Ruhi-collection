@@ -18,6 +18,9 @@ export const img = {
   catTops: p('denim-shirt-blue.jpg'),
   catCoord: p('acid-wash-coord-set-beige.jpg'),
   catDress: p('stripes-dress-blue.jpg'),
+  // Trousers & Pants has no dedicated client photo yet; this real shot shows
+  // the trousers prominently. Swap it when the client supplies one.
+  catTrousers: p('denim-pant-coord-set-black.jpg'),
   // Customer review photos (each matches the product it is linked to)
   r1: p('embroidery-coord-set-beige2.jpg'),
   r2: p('shorts-and-shirt-blue.jpg'),
