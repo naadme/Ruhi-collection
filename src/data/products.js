@@ -78,6 +78,36 @@ export const products = [
   p('stripes-dress-brown', 'dress', 'Stripes Dress - Brown', ['/images/products/stripes-dress-brown.jpg']),
   p('stripes-dress-pink', 'dress', 'Stripes Dress - Pink', ['/images/products/stripes-dress-pink.jpg']),
   p('stripes-dress-yellow', 'dress', 'Stripes Dress - Yellow', ['/images/products/stripes-dress-yellow.jpg']),
+
+  // ---- Trousers & Pants (the client's "Trousers & Pants" folder) ----------
+  // One row per colour, exactly like every design above. `colour` is repeated
+  // beside the " - Colour" title suffix (the database rows carry it too): it
+  // is the value the storefront's grouping reads first, which is what lets
+  // colours this catalogue has never used before — "Green", "Rust Orange",
+  // "Peach" — group into one design instead of being read as part of the name.
+  //
+  // Korean Pants — the Beige row is the product that already lived in the
+  // catalogue, adopted into this design with its id, price, photos, badge,
+  // sizes and rating untouched. Every colour keeps that row's own price.
+  { ...p('korean-pants-biege-jpg', 'trousers', 'Korean Pants - Beige', ['https://xhsjwhzutalckeektluj.supabase.co/storage/v1/object/public/product-images/korean-pants-biege-jpg-image-1792129784202.jpg']), colour: 'Beige', price: 400, compare: 999, rating: 5, reviews: 2, badge: 'new arrival', sizes: ['L'], desc: 'soft and breathable fabric ' },
+  { ...p('korean-pants-black', 'trousers', 'Korean Pants - Black', ['/images/products/korean-pants-black.jpg']), colour: 'Black', price: 400, compare: 999 },
+  { ...p('korean-pants-maroon', 'trousers', 'Korean Pants - Maroon', ['/images/products/korean-pants-maroon.jpg']), colour: 'Maroon', price: 400, compare: 999 },
+  { ...p('korean-pants-olive-green', 'trousers', 'Korean Pants - Olive Green', ['/images/products/korean-pants-olive-green.jpg']), colour: 'Olive Green', price: 400, compare: 999 },
+  { ...p('korean-pants-brown', 'trousers', 'Korean Pants - Brown', ['/images/products/korean-pants-brown.jpg']), colour: 'Brown', price: 400, compare: 999 },
+
+  // Mulmul cotton Trousers — five colours. The two flat-lay "all colours"
+  // photographs ride in the lead colour's gallery, the same place the denim
+  // shirts' all-colours photo has always lived.
+  { ...p('mulmul-cotton-trousers-blue', 'trousers', 'Mulmul cotton Trousers - Blue', ['/images/products/mulmul-cotton-trousers-blue.jpg', '/images/products/mulmul-cotton-trousers-all-colours1.jpg', '/images/products/mulmul-cotton-trousers-all-colours2.jpg']), colour: 'Blue' },
+  { ...p('mulmul-cotton-trousers-white', 'trousers', 'Mulmul cotton Trousers - White', ['/images/products/mulmul-cotton-trousers-white.jpg']), colour: 'White' },
+  { ...p('mulmul-cotton-trousers-green', 'trousers', 'Mulmul cotton Trousers - Green', ['/images/products/mulmul-cotton-trousers-green.jpg']), colour: 'Green' },
+  { ...p('mulmul-cotton-trousers-rust-orange', 'trousers', 'Mulmul cotton Trousers - Rust Orange', ['/images/products/mulmul-cotton-trousers-rust-orange.jpg']), colour: 'Rust Orange' },
+  { ...p('mulmul-cotton-trousers-peach', 'trousers', 'Mulmul cotton Trousers - Peach', ['/images/products/mulmul-cotton-trousers-peach.jpg']), colour: 'Peach' },
+
+  // Thick Linen Pants — one photograph showing every colour together. With no
+  // photograph per colour it stays a single product, like Denim Dress, until
+  // the client supplies one shot per colour.
+  p('thick-linen-pants', 'trousers', 'Thick Linen Pants', ['/images/products/thick-linen-pants.jpg']),
 ]
 export const getProduct = (id) => products.find((x) => x.id === id)
 
