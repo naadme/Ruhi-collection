@@ -165,14 +165,15 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
           <label className="block">
             <span className={labelCls}>Colour *</span>
             <input
-              list="ruhi-colour-options"
+              type="text"
+              autoComplete="off"
               value={v.colour}
               onChange={(e) => onChange({ colour: e.target.value })}
               placeholder="Type any colour — Black, Wine Red, Pastel Pink…"
               className={`${inputCls} mt-1.5`}
             />
             <span className="block text-[12px] text-black/45 mt-1.5">
-              Type any colour you like — suggestions appear while you type, but nothing is restricted.
+              Type any colour you like — nothing is restricted.
             </span>
           </label>
 
@@ -249,7 +250,7 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
 // card per colour. Each colour is its own `products` row with its own ID,
 // price, photos and visibility — the exact structure the storefront already
 // groups — so nothing here invents a second data model.
-export default function ProductEditor({ open, isNew, initial, takenIds = [], colourOptions = [], focusKey = '', addColour = false, onClose, onSave }) {
+export default function ProductEditor({ open, isNew, initial, takenIds = [], focusKey = '', addColour = false, onClose, onSave }) {
   const panel = useRef(null)
   const [form, setForm] = useState(() => groupForm(initial?.rows || [], TYPES[0].key))
   const [error, setError] = useState('')
@@ -409,11 +410,6 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], col
             <X size={18} />
           </button>
         </header>
-
-        {/* Suggestions only — the colour field itself accepts anything typed. */}
-        <datalist id="ruhi-colour-options">
-          {colourOptions.map((c) => <option key={c} value={c} />)}
-        </datalist>
 
         <form onSubmit={submit} noValidate className="flex-1 overflow-y-auto px-6 py-6 space-y-7">
           <Section title="Basics">

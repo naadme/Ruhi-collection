@@ -140,10 +140,6 @@ export default function Dashboard({ showOrders }) {
   // dashboard can never show a different grouping than the shop does. Hidden
   // colours take part too — the owner has to see what is hidden.
   const groups = useMemo(() => groupRows(all), [all])
-  const colourOptions = useMemo(
-    () => [...new Set(all.map(colourOf).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
-    [all],
-  )
   const takenIds = useMemo(() => all.map((p) => p.id), [all])
 
   const counts = useMemo(
@@ -513,7 +509,6 @@ export default function Dashboard({ showOrders }) {
           focusKey={editing?.focusKey || ''}
           addColour={!!editing?.addColour}
           takenIds={takenIds}
-          colourOptions={colourOptions}
           onClose={() => setEditing(null)}
           onSave={handleSave}
         />
