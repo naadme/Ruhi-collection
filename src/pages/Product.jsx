@@ -118,6 +118,12 @@ export default function Product() {
         image: chosen.image,
         hover: chosen.hover,
         gallery: chosen.gallery,
+        // Sizes belong to the colour row, not to the design. The catalogue
+        // carries them per row and `create_order()` checks the chosen size
+        // against the row it is actually ordering, so showing the lead colour's
+        // list would advertise sizes the chosen colour does not stock — or hide
+        // ones it does. The selector follows the colour, like everything else.
+        sizes: chosen.sizes && chosen.sizes.length ? chosen.sizes : p.sizes,
       }
     : p
   // A heart saved before the catalogue was grouped still names its own colour
@@ -126,7 +132,7 @@ export default function Product() {
 
   const fav = has(savedId)
   const off = shown.compare ? Math.round((1 - shown.price / shown.compare) * 100) : 0
-  const needsSize = p.sizes.length > 1 && !size
+  const needsSize = shown.sizes.length > 1 && !size
 
   const choose = (s) => { setSize(s); setProblem('') }
 
@@ -140,7 +146,7 @@ export default function Product() {
       setProblem(`Quantity must be between 1 and ${MAX_QTY}.`)
       return
     }
-    add(shown.id, qty, size || p.sizes[0], chosen && chosen.color)
+    add(shown.id, qty, size || shown.sizes[0], chosen && chosen.color)
     if (goToCheckout) navigate('/checkout')
   }
 
@@ -229,7 +235,7 @@ export default function Product() {
           <fieldset className="mt-7" id="size-options" tabIndex={-1}>
             <legend className="text-sm mb-2">Size {needsSize && <span className="text-red-600">*</span>}</legend>
             <div className="flex flex-wrap gap-3">
-              {p.sizes.map((s) => (
+              {shown.sizes.map((s) => (
                 <button
                   key={s}
                   type="button"

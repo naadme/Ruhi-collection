@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { normalizeCode, discountFor, serverHonoursCoupon } from '../src/lib/couponRules.js';
-import { totalFor } from '../src/lib/pricing.js';
+import { displayedTotalMatchesCharge, totalFor } from '../src/lib/pricing.js';
+import { MAX_CART_LINES } from '../src/lib/checkout.js';
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 
@@ -146,4 +147,87 @@ test('a 100% coupon cannot slip past Razorpay at zero or one rupee', () => {
   // and verification insists the gateway processed exactly our amount
   const VERIFY = read('supabase/functions/verify-razorpay-payment/index.ts');
   assert.match(VERIFY, /gatewayOrder\.amount !== toPaise\(Number\(order\.total\)\)/);
+});
+
+// ---------------------------------------------------------------------------
+// The page must never promise an amount the payment window does not collect.
+// ---------------------------------------------------------------------------
+
+test('displayedTotalMatchesCharge accepts the exact paise the gateway was given', () => {
+  // ₹1,400 on screen == 140000 paise handed to Razorpay
+  assert.equal(displayedTotalMatchesCharge(1400, { amount: 140000 }), true);
+  assert.equal(displayedTotalMatchesCharge(0, { amount: 0 }), true);
+  assert.equal(displayedTotalMatchesCharge(1, { amount: 100 }), true);
+  assert.equal(displayedTotalMatchesCharge(479, { amount: 47900 }), true);
+});
+
+test('a total that disagrees with the charge is refused in BOTH directions', () => {
+  // page shows less than it charges (customer would be surprised by a bigger bill)
+  assert.equal(displayedTotalMatchesCharge(1000, { amount: 150000 }), false);
+  // page shows more than it charges (the old coupon-drop bug: page promised the
+  // full price while the window charged the discounted one)
+  assert.equal(displayedTotalMatchesCharge(1500, { amount: 100000 }), false);
+  // an off-by-one rupee still fails — the amounts must be identical
+  assert.equal(displayedTotalMatchesCharge(1400, { amount: 140100 }), false);
+  assert.equal(displayedTotalMatchesCharge(1401, { amount: 140000 }), false);
+});
+
+test('with no coupon the gate still checks the total (the gap serverHonoursCoupon leaves open)', () => {
+  // serverHonoursCoupon returns true straight away when nothing is discounted,
+  // so a stale catalogue price used to reach the gateway unchallenged.
+  assert.equal(serverHonoursCoupon(null, 900, { total: 950 }), true,
+    'the coupon-specific check deliberately stands down without a coupon');
+  // ...but the total gate does not
+  assert.equal(displayedTotalMatchesCharge(900, { amount: 95000 }), false);
+  assert.equal(displayedTotalMatchesCharge(900, { amount: 90000 }), true);
+});
+
+test('the gate fails open only when there is genuinely nothing to compare', () => {
+  assert.equal(displayedTotalMatchesCharge(900, {}), true, 'amount absent');
+  assert.equal(displayedTotalMatchesCharge(900, { amount: undefined }), true);
+  assert.equal(displayedTotalMatchesCharge(900, null), true, 'response absent');
+  assert.equal(displayedTotalMatchesCharge(900, { amount: 'nonsense' }), true, 'unparseable');
+});
+
+test('Checkout refuses to open the payment window when the totals disagree', () => {
+  const SRC = read('src/pages/Checkout.jsx');
+  assert.match(SRC, /displayedTotalMatchesCharge\(shownTotal, started\)/,
+    'the gate is evaluated against the amount actually handed to Razorpay');
+  assert.match(SRC, /const shownTotal = totalFor\(subtotal, coupon \? discountFor\(coupon, subtotal\) : 0\)/,
+    'the shown total is the one rendered in the summary and on the Pay button');
+  // It must bail out BEFORE the gateway window, and re-price rather than carry on.
+  const gateAt = SRC.indexOf('displayedTotalMatchesCharge(shownTotal, started)');
+  const gatewayAt = SRC.indexOf('await openRazorpay');
+  assert.ok(gateAt > 0 && gatewayAt > gateAt, 'the gate runs before the payment window opens');
+  const gateBlock = SRC.slice(gateAt, SRC.indexOf('let response', gateAt));
+  assert.match(gateBlock, /^\s*return\s*$/m, 'a mismatch stops the flow instead of proceeding');
+  assert.match(gateBlock, /reload\(\)/, 'prices are refreshed from the database');
+});
+
+// ---------------------------------------------------------------------------
+// Cart lines: the client must not be able to send a count the server refuses
+// with a message about an empty basket.
+// ---------------------------------------------------------------------------
+
+test("the client's cart-line limit is exactly the one the server enforces", () => {
+  const FN = read('supabase/functions/create-razorpay-order/index.ts');
+  const m = FN.match(/value\.length > (\d+)/);
+  assert.ok(m, 'readItems still documents its upper bound');
+  assert.equal(MAX_CART_LINES, Number(m[1]),
+    'MAX_CART_LINES must match readItems, or checkout shows a misleading error');
+});
+
+test('Checkout states the line limit before the request instead of "Your cart is empty"', () => {
+  const SRC = read('src/pages/Checkout.jsx');
+  assert.match(SRC, /lines\.length > MAX_CART_LINES/,
+    'the limit is checked locally first');
+  const at = SRC.indexOf('lines.length > MAX_CART_LINES');
+  // `payOnline` (which creates the order) is defined earlier in the file, so
+  // the meaningful comparison is against the point submit actually calls it.
+  const serverAt = SRC.indexOf('await payOnline(customer, items');
+  assert.ok(serverAt > at, 'checked before the order is created');
+  assert.ok(serverAt > 0, 'the payOnline call site is present');
+  const block = SRC.slice(at, SRC.indexOf('return', at));
+  assert.ok(/different items|remove/i.test(block), 'the message says what to do');
+  assert.ok(!/Your cart is empty/.test(block), 'it does not claim an empty basket');
 });

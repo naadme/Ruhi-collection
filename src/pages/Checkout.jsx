@@ -7,9 +7,9 @@ import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import Img from '../components/Img'
 import { saveOrder } from '../lib/orderStore'
-import { inr, shippingFor, totalFor } from '../lib/pricing'
+import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
 import { discountFor, normalizeCode, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
-import { EMPTY_ADDRESS, INDIAN_STATES, validateAddress } from '../lib/checkout'
+import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, validateAddress } from '../lib/checkout'
 import { onlinePaymentReady, openRazorpay } from '../lib/razorpay'
 import { createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
 
@@ -273,6 +273,10 @@ export default function Checkout() {
       throw new Error('We could not start your payment. You have not been charged — please try again.')
     }
 
+    // What this page is showing the shopper right now, in rupees — the exact
+    // number in the summary and on the Pay button.
+    const shownTotal = totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0)
+
     // The gateway charges the total the DATABASE priced, which comes back as
     // `started.total` — never the number this page worked out for itself. If a
     // discount is showing that the server did not price, the shopper would be
@@ -285,6 +289,21 @@ export default function Checkout() {
         kind: 'err',
         text: 'That coupon could not be applied to this order — the amount in the payment window is the amount you will be charged.',
       })
+    }
+
+    // Hard gate before any gateway window opens: the total on screen must be
+    // EXACTLY the paise amount Razorpay was handed. Without this a stale
+    // catalogue price slipped through whenever no coupon was showing
+    // (`serverHonoursCoupon` returns early in that case), and dropping a
+    // mismatched coupon above left the page promising the full price while the
+    // window charged the discounted one. Disagreement in either direction is
+    // refused — the prices are re-read from the database instead of letting
+    // the shopper discover the difference at the payment window.
+    if (!displayedTotalMatchesCharge(shownTotal, started)) {
+      reload()
+      setFailure('The total changed while you were checking out, so we have refreshed the prices from the store. Please review the amount below and try again — you have not been charged.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
     }
 
     let response
@@ -338,6 +357,11 @@ export default function Checkout() {
       return
     }
     if (!lines.length) { setFailure('Your cart is empty.'); return }
+    if (lines.length > MAX_CART_LINES) {
+      setFailure(`An order can hold up to ${MAX_CART_LINES} different items, and your basket has ${lines.length}. Please remove a few items before checking out — nothing has been charged.`)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
 
     const customer = {
       full_name: f.full_name.trim(),

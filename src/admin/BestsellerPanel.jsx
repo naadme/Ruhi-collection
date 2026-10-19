@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle, ChevronDown, ChevronUp, Eye, EyeOff, Loader2, Search, Star, Trash2,
 } from 'lucide-react'
-import { fetchBestsellers, MAX_BESTSELLERS, saveBestsellers } from '../lib/bestsellers'
+import { fetchBestsellers, locatePicks, MAX_BESTSELLERS, saveBestsellers } from '../lib/bestsellers'
 import { groupedCards } from '../lib/productGrouping'
 
 const inputCls =
@@ -81,20 +81,30 @@ export default function BestsellerPanel({ notify, products = [] }) {
   // Every design the store actually sells, built by the same rule the
   // storefront uses, so the picker and the homepage can never disagree.
   const cards = useMemo(() => groupedCards(products), [products])
-  const chosen = useMemo(() => {
-    const byId = new Map(cards.map((c) => [c.id, c]))
-    const out = []
-    const seen = new Set()
-    for (const pick of state.picks) {
-      const card = byId.get(pick)
-      // A pick whose design was deleted or hidden drops out here instead of
-      // rendering as a broken card on the homepage.
-      if (!card || seen.has(card.id)) continue
-      seen.add(card.id)
-      out.push(card)
-    }
-    return out
-  }, [cards, state.picks])
+  // THE one resolution rule for this panel. A pick and the list on screen are
+  // not the same thing, and assuming they were is what made the old reorder
+  // arrows move the wrong row:
+  //
+  //   * a pick may name the card OR any colour row of a grouped design (a
+  //     card's id is the id of its cheapest row, and the owner may have
+  //     promoted a different one);
+  //   * two picks may resolve to the same card, which then shows once;
+  //   * a pick whose whole design is hidden, or deleted while this panel was
+  //     open, resolves to nothing and does not render — yet it is still in
+  //     `state.picks`.
+  //
+  // So `resolved` records, for every entry that renders, where it lives in
+  // `state.picks`. Everything on screen reads from it, and nothing indexes
+  // `state.picks` with a position read off the rendered list.
+  //
+  // The id rule itself deliberately mirrors bestsellerRules'
+  // `resolveBestsellers`, so this panel and the homepage agree on which picks
+  // are live — matching only `card.id` used to hide a promotion that was
+  // already showing on the homepage, while still offering its design as a
+  // candidate (inviting the owner to add it twice).
+  const resolved = useMemo(() => locatePicks(state.picks, cards), [cards, state.picks])
+
+  const chosen = useMemo(() => resolved.map((entry) => entry.card), [resolved])
 
   const chosenIds = useMemo(() => new Set(chosen.map((c) => c.id)), [chosen])
 
@@ -137,12 +147,33 @@ export default function BestsellerPanel({ notify, products = [] }) {
     }
     setState((s) => ({ ...s, picks: [...s.picks, card.id] }))
   }
-  const remove = (id) => setState((s) => ({ ...s, picks: s.picks.filter((p) => p !== id) }))
-  const move = (index, dir) => setState((s) => {
-    const j = index + dir
-    if (j < 0 || j >= s.picks.length) return s
+  // Removing drops EVERY pick that renders as this card, so it cannot survive a
+  // stored duplicate or a pick recorded under one of its colour rows.
+  const remove = (cardId) => setState((s) => {
+    // Resolved from `s.picks`, not from the render-time memo: two quick clicks
+    // must never act on positions computed before the first one landed.
+    const drop = new Set(locatePicks(s.picks, cards)
+      .filter((entry) => entry.cardId === cardId)
+      .map((entry) => entry.pick))
+    if (!drop.size) return s
+    return { ...s, picks: s.picks.filter((p) => !drop.has(p)) }
+  })
+
+  // Swap the two entries the arrows actually sit between, at their real
+  // positions in `state.picks`. Anything in between that does not render keeps
+  // its place, and a pick that resolves to nothing can no longer shift the row
+  // the owner meant to move.
+  const move = (cardId, dir) => setState((s) => {
+    const shown = locatePicks(s.picks, cards)
+    const at = shown.findIndex((entry) => entry.cardId === cardId)
+    const to = at + dir
+    if (at < 0 || to < 0 || to >= shown.length) return s
     const next = [...s.picks]
-    ;[next[index], next[j]] = [next[j], next[index]]
+    const a = shown[at].index
+    const b = shown[to].index
+    const tmp = next[a]
+    next[a] = next[b]
+    next[b] = tmp
     return { ...s, picks: next }
   })
 
@@ -219,7 +250,7 @@ export default function BestsellerPanel({ notify, products = [] }) {
                 index={i}
                 total={chosen.length}
                 busy={saving}
-                onMove={(dir) => move(i, dir)}
+                onMove={(dir) => move(card.id, dir)}
                 onRemove={() => remove(card.id)}
               />
             ))}

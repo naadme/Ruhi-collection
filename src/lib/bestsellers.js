@@ -18,7 +18,7 @@
 import { supabase } from './supabase'
 import { MAX_BESTSELLERS, normalizePicks } from './bestsellerRules'
 
-export { MAX_BESTSELLERS, resolveBestsellers } from './bestsellerRules'
+export { MAX_BESTSELLERS, locatePicks, resolveBestsellers } from './bestsellerRules'
 
 /**
  * The owner's picks as `{ product_id, position }`, in display order.

@@ -101,7 +101,14 @@ export const Hero = () => {
   const n = slides.length
   // Read-side wrap-around, so the last photo steps back to the first and the
   // first forward to the last without growing the state forever.
-  const cur = slides[((at % n) + n) % n]
+  //
+  // `n` can legitimately be 0: ProductsContext deliberately lets the catalogue
+  // go empty (`setAll([])`) when the database returns no rows, and an empty
+  // catalogue leaves no stocked category to fall back on. Without this guard
+  // `at % 0` is NaN, `slides[NaN]` is undefined and reading `cur.key` in the
+  // markup below takes the entire homepage down. With nothing to show the right
+  // half stays blank and the static hero still renders.
+  const cur = n > 0 ? slides[((at % n) + n) % n] : null
   const go = (d) => setAt((v) => v + d)
   return (
     <section className="grid min-h-[560px] md:grid-cols-2 md:h-[600px] lg:h-[684px] bg-[#4A2C23] text-white">
@@ -134,9 +141,11 @@ export const Hero = () => {
           can never also follow the category link. At 44px they match the
           touch target the wishlist button already uses. */}
       <div className="relative overflow-hidden h-[380px] md:h-auto">
-        <Link key={cur.key} to={cur.to} className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none">
-          <Img src={cur.image} alt={cur.label} loading="eager" className="absolute inset-0 w-full h-full object-cover" />
-        </Link>
+        {cur && (
+          <Link key={cur.key} to={cur.to} className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none">
+              <Img src={cur.image} alt={cur.label} loading="eager" className="absolute inset-0 w-full h-full object-cover" />
+          </Link>
+        )}
         {n > 1 && (
           <>
             <button type="button" onClick={() => go(-1)} aria-label="Show previous photo"

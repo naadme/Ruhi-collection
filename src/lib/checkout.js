@@ -9,6 +9,15 @@ export const emailOk = (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.trim())
 // too — otherwise a shopper can build a basket the server will always refuse.
 export const MAX_QTY = 10
 
+// How many distinct lines one order may carry.
+//
+// `create-razorpay-order`'s `readItems()` accepts 1..20 items and returns null
+// outside that, which the caller answers with "Your cart is empty." — a baffling
+// message for a shopper looking at 21 products. Stating the limit here, before
+// the request, keeps the two in step and tells them what to actually do.
+// `qty` is per line, so this counts lines, not units.
+export const MAX_CART_LINES = 20
+
 // Accepts 9876543210, 9046651272, 98765-43210 … but must contain
 // between 10 and 15 digits once formatting is stripped.
 export const phoneDigits = (v) => v.replace(/\D/g, '')

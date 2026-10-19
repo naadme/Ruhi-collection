@@ -66,7 +66,15 @@ export default function CouponsPanel({ notify }) {
       return setFormError('Codes may use letters, numbers, dashes and underscores — 2 to 32 characters.')
     }
     if (!Number.isFinite(value) || value < 1) return setFormError('Please enter a discount value.')
-    if (form.kind === 'percent' && value > 100) return setFormError('A percentage discount cannot be over 100%.')
+    // Capped at 99, not 100: this store is online-payment-only, and Razorpay
+    // refuses an amount of ₹0. A 100% code would therefore validate, show its
+    // discount, and then wedge checkout — `create_order()` inserts the order and
+    // `create-razorpay-order` refuses the ₹0 amount after the fact, leaving a
+    // permanently "pending" row the owner can neither charge nor clear. 99% is
+    // still a valid giveaway discount and always leaves a payable balance.
+    if (form.kind === 'percent' && value > 99) {
+      return setFormError('A percentage discount must be 99% or less — a 100% coupon totals ₹0 and this store can only take online payment.')
+    }
     if (form.kind === 'fixed' && value > 1000000) return setFormError('That fixed discount is too large.')
     const starts = form.starts_at ? new Date(form.starts_at).toISOString() : null
     const ends = form.ends_at ? new Date(form.ends_at).toISOString() : null

@@ -287,8 +287,14 @@ export const validateForm = ({ shared, variants, takenIds }) => {
       else seenColours.set(key, i)
     }
 
-    if (!(Number(v.price) >= 0)) {
-      errors.push(`${label}: please enter a valid price.`)
+    // >= 1, and never blank. `Number('')` is 0, so the old `>= 0` test accepted
+    // an empty field and saved a free product: it would render at ₹0, price to
+    // ₹0 in `create_order()`, and then `create-razorpay-order` — which refuses
+    // any amount under ₹1 — rejected the payment only after the order row had
+    // already been inserted, leaving an order nobody can pay. A price of ₹1 or
+    // more is the cheapest value Razorpay will actually take.
+    if (v.price === '' || v.price === null || v.price === undefined || !(Number(v.price) >= 1)) {
+      errors.push(`${label}: please enter a valid price of ₹1 or more.`)
     }
 
     // `photosOf` deliberately truncates to the cap for display, so a too-long

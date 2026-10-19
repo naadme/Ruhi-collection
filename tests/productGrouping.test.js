@@ -9,9 +9,12 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { COLOUR_WORDS, splitColour, splitTitle, partsOf, groupRows } from '../src/lib/productGrouping.js'
+import { COLOUR_WORDS, splitColour, splitTitle, partsOf, groupRows, groupedCards, variantFor } from '../src/lib/productGrouping.js'
+import fs from 'node:fs'
+import path from 'node:path'
 
 const row = (id, type, title, extra = {}) => ({ id, type, title, ...extra })
+const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
 
 test('splitColour keeps the legacy title parsing', () => {
   assert.deepEqual(splitColour('Stripes Dress - Pink'), { name: 'Stripes Dress', colour: 'Pink' })
@@ -112,4 +115,52 @@ test('partsOf prefers the colour column and strips the matching suffix only', ()
   assert.deepEqual(partsOf(row('a', 'tops', 'Denim Shirt', { colour: 'Wine Red' })), { name: 'Denim Shirt', colour: 'Wine Red' })
   assert.equal(partsOf(row('a', 'tops', 'Denim Dress')), null)
   assert.equal(partsOf(row('a', 'tops', 'Denim Dress', { colour: '  ' })), null, 'a blank colour is no colour')
+})
+
+// ---- sizes belong to the selected colour row, not the design ---------------
+// Regression: the product page used to read `p.sizes` — the LEAD colour row's
+// list — for every colour, so a design whose lead row stocked only L (Korean
+// Pants) hid S/M/XL on the other four colours even though their own rows carry
+// them. `create_order()` validates the size against the row actually ordered,
+// so those sizes were unwinnable at the checkout too.
+
+test('every colour row offers its OWN sizes, not the lead row\'s', () => {
+  const cards = groupedCards([
+    row('pants-beige', 'trousers', 'Korean Pants - Beige', { colour: 'Beige', sizes: ['L'] }),
+    row('pants-black', 'trousers', 'Korean Pants - Black', { colour: 'Black', sizes: ['S', 'M', 'L', 'XL'] }),
+    row('pants-olive', 'trousers', 'Korean Pants - Olive Green', { colour: 'Olive Green', sizes: ['S', 'M', 'L', 'XL'] }),
+  ])
+  assert.equal(cards.length, 1, 'the three rows are one card')
+  const card = cards[0]
+  assert.deepEqual(card.sizes, ['L'], 'the lead row really does stock only L')
+
+  for (const c of card.colors) {
+    const shown = variantFor(card.colors, c.id)
+    // Exactly the expression the product page resolves to.
+    const offered = shown.sizes && shown.sizes.length ? shown.sizes : card.sizes
+    assert.deepEqual(offered, c.sizes, `${c.id} must offer its own ${JSON.stringify(c.sizes)}`)
+  }
+})
+
+test('a colour row with no sizes of its own falls back to the design list', () => {
+  const cards = groupedCards([
+    row('x-a', 'tops', 'Blouse - Black', { colour: 'Black', sizes: ['S', 'M'] }),
+    row('x-b', 'tops', 'Blouse - White', { colour: 'White' }),
+  ])
+  const card = cards[0]
+  const shown = variantFor(card.colors, 'x-b')
+  assert.ok(!shown.sizes || !shown.sizes.length, 'the white row carries no sizes')
+  const offered = shown.sizes && shown.sizes.length ? shown.sizes : card.sizes
+  assert.deepEqual(offered, ['S', 'M'], 'falls back to the design list rather than offering nothing')
+})
+
+test('the product page reads sizes from `shown`, never from the lead card', () => {
+  const src = read('src/pages/Product.jsx')
+  for (const needle of ['shown.sizes.length > 1', 'size || shown.sizes[0]', 'shown.sizes.map((s) =>']) {
+    assert.ok(src.includes(needle), `Product.jsx still resolves "${needle}"`)
+  }
+  // The three lead-row reads that caused the bug must be gone.
+  for (const stale of ['p.sizes.length > 1', 'p.sizes[0]', 'p.sizes.map((s) =>']) {
+    assert.ok(!src.includes(stale), `Product.jsx must not read the lead row's "${stale}"`)
+  }
 })

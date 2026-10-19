@@ -2,6 +2,7 @@ import usePageTitle from '../hooks/usePageTitle'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Lock } from 'lucide-react'
 import { useCart } from '../context/CartContext'
+import { useProducts } from '../context/ProductsContext'
 import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
 import { inr, shippingFor, totalFor } from '../lib/pricing'
@@ -9,7 +10,36 @@ import { inr, shippingFor, totalFor } from '../lib/pricing'
 export default function Cart() {
   usePageTitle('Cart')
   const { lines, unavailable, prune, subtotal, setQty, remove, setOpen, clear } = useCart()
+  const { loading } = useProducts()
   const shipping = shippingFor()
+
+  // A basket whose lines all fail to resolve is NOT an empty basket. Falling
+  // through to the empty state below hid this warning — and the Remove button
+  // with it — so a shopper whose items had all been retired or hidden was told
+  // their basket was empty, with no way to find out why or clear it. Nothing
+  // here deletes anything: pruning stays the shopper's own deliberate action.
+  //
+  // While the catalogue is still loading, `unavailable` is counted against the
+  // bundled seed, which knows nothing about products added after launch — so
+  // the warning (and the Remove button, which `prune` refuses to act on during
+  // load) is withheld until there is a real catalogue to judge against.
+  if (!lines.length && unavailable > 0) return (
+    <section className="max-w-[1100px] mx-auto px-4 py-14">
+      <h1 className="text-[40px] mb-8">Your cart</h1>
+      <div className="flex flex-wrap items-center gap-3 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl px-4 py-3.5 text-[15px]">
+        <AlertTriangle size={18} className="shrink-0" />
+        <span className="flex-1 min-w-[200px]">
+          {loading
+            ? 'We are checking whether the items in your basket are still available…'
+            : `${unavailable} ${unavailable === 1 ? 'item is' : 'items are'} no longer available and can't be ordered.`}
+        </span>
+        {!loading && (
+          <button onClick={prune} className="underline underline-offset-2 font-medium">Remove {unavailable === 1 ? 'it' : 'them'}</button>
+        )}
+      </div>
+      <Link to="/shop" onClick={() => { setOpen(false); window.scrollTo(0, 0) }} className="inline-block bg-[#8A6556] text-white px-12 py-5 rounded-lg mt-8 text-lg">Continue shopping</Link>
+    </section>
+  )
 
   if (!lines.length) return (
     <section className="text-center py-24 px-4">
@@ -24,7 +54,10 @@ export default function Cart() {
     <section className="max-w-[1100px] mx-auto px-4 py-14">
       <h1 className="text-[40px] mb-8">Your cart</h1>
 
-      {unavailable > 0 && (
+      {/* Only once the real catalogue has landed: `unavailable` is counted
+          against the bundled seed while loading, which would announce that a
+          product added after launch has been retired. */}
+      {unavailable > 0 && !loading && (
         <div className="mb-6 flex flex-wrap items-center gap-3 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl px-4 py-3.5 text-[15px]">
           <AlertTriangle size={18} className="shrink-0" />
           <span className="flex-1 min-w-[200px]">

@@ -2,11 +2,32 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useProducts } from './ProductsContext'
 import { totalFor } from '../lib/pricing'
 import { MAX_QTY } from '../lib/checkout'
+
+/**
+ * Restore a persisted array, never anything else.
+ *
+ * `JSON.parse` succeeds on `"{}"`, `"\"x\""` and `"7"` — none of which are
+ * arrays — and the old `|| []` passed them straight through, so a partial
+ * write or a hand-edited key reached `.find` / `.filter` / `.map` and took the
+ * basket down on the very first render. Anything that is not an array reads as
+ * empty, which is recoverable; cart lines must also be objects that actually
+ * carry an id, because a line with no id can never resolve to a product.
+ */
+const readStoredArray = (key, requireId = false) => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key))
+    if (!Array.isArray(parsed)) return []
+    if (!requireId) return parsed
+    return parsed.filter((line) => line && typeof line === 'object' && line.id != null && line.id !== '')
+  } catch {
+    return []
+  }
+}
 const Ctx = createContext(null)
 export const useCart = () => useContext(Ctx)
 export function CartProvider({ children }) {
-  const { getProduct, getRow } = useProducts()
-  const [items, setItems] = useState(() => { try { return JSON.parse(localStorage.getItem('cart')) || [] } catch { return [] } })
+  const { getProduct, getRow, loading } = useProducts()
+  const [items, setItems] = useState(() => readStoredArray('cart', true))
   const [open, setOpen] = useState(false)
   useEffect(() => localStorage.setItem('cart', JSON.stringify(items)), [items])
   // `color` is the colour chosen on the product page. Lines stay keyed by
@@ -32,7 +53,18 @@ export function CartProvider({ children }) {
   const clear = useCallback(() => setItems([]), [])
   // Drop lines whose product no longer resolves (deleted or hidden by the
   // owner). Kept separate from `lines` so the UI can warn before pruning.
-  const prune = useCallback(() => setItems((c) => c.filter((i) => !!getProduct(i.id))), [getProduct])
+  //
+  // It must never run against the *bundled seed*. On a hard refresh of
+  // /checkout the first commit still holds `seed`, so every line the seed does
+  // not contain — i.e. any product created in the dashboard after launch —
+  // would be filtered out and immediately written back to localStorage, emptying
+  // a full basket at the moment of purchase intent, silently. `loading` only
+  // clears once the real catalogue (or a confirmed-empty one) has landed, so
+  // waiting for it is exactly right.
+  const prune = useCallback(() => {
+    if (loading) return
+    setItems((c) => c.filter((i) => !!getProduct(i.id)))
+  }, [getProduct, loading])
   // Derived in one pass and memoised: the basket view, the header badge and the
   // checkout summary all read these, and they must not be rebuilt on renders
   // that only touch `open`.

@@ -6,7 +6,7 @@ import path from 'node:path';
 // The rules are imported from the pure module on purpose: `bestsellers.js`
 // pulls in the Supabase client, which plain Node cannot resolve (the same
 // split as `categoryRules.js` / `couponRules.js`).
-import { resolveBestsellers, MAX_BESTSELLERS, normalizePicks } from '../src/lib/bestsellerRules.js';
+import { locatePicks, resolveBestsellers, MAX_BESTSELLERS, normalizePicks } from '../src/lib/bestsellerRules.js';
 import { groupedCards } from '../src/lib/productGrouping.js';
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
@@ -82,7 +82,16 @@ test('fetchBestsellers is exported for the panel and the homepage', () => {
   // Supabase client, which plain Node cannot load.
   assert.match(IO, /export async function fetchBestsellers\(/);
   assert.match(IO, /export async function saveBestsellers\(/);
-  assert.match(IO, /export \{ MAX_BESTSELLERS, resolveBestsellers \} from '\.\/bestsellerRules'/);
+  // Asserted name-by-name rather than as one exact string, so this still checks
+  // what it always did — that the pure rules are re-exported through here for
+  // both consumers — while allowing the set of rules to grow.
+  // Match the EXPORT, not the module's own import of the same path above it.
+  const reExport = IO.split('\n')
+    .find((line) => line.startsWith('export') && line.includes("'./bestsellerRules'"));
+  assert.ok(reExport, "bestsellerRules is re-exported by bestsellers.js");
+  for (const name of ['MAX_BESTSELLERS', 'resolveBestsellers', 'locatePicks']) {
+    assert.ok(reExport.includes(name), `${name} is re-exported for the panel and the homepage`);
+  }
 });
 
 test('a failed load is reported to the admin but never blanks the homepage', () => {
@@ -146,4 +155,95 @@ test('the migration is wrapped in a transaction', () => {
   assert.equal(begins, 1);
   assert.equal(commits, 1);
   assert.ok(begins === commits);
+});
+
+// ---------------------------------------------------------------------------
+// The panel's reorder/remove used a position read off the RENDERED list to
+// index the SAVED list. Those two are not the same list, which is what made an
+// arrow move the wrong row — or do nothing at all.
+// ---------------------------------------------------------------------------
+
+const PANEL = read('src/admin/BestsellerPanel.jsx');
+
+test('locatePicks reports where each visible design sits in the SAVED list', () => {
+  // A pick whose design is gone leaves a gap in the saved list but nothing on
+  // screen — so the visible #2 is really saved #3.
+  const picks = ['stripes-dress-red', 'gone-from-the-catalogue', 'linen-top-white'];
+  const located = locatePicks(picks, CARDS);
+
+  assert.equal(located.length, 2, 'the vanished design does not render');
+  assert.deepEqual(located.map((e) => e.index), [0, 2],
+    'the gap is preserved: the second visible card is at saved index 2, not 1');
+  assert.deepEqual(located.map((e) => e.cardId), ['stripes-dress-red', 'linen-top-white']);
+  assert.deepEqual(located.map((e) => e.pick), ['stripes-dress-red', 'linen-top-white']);
+});
+
+test('moving the two visible designs swaps their REAL slots and leaves the gap alone', () => {
+  const picks = ['stripes-dress-red', 'gone-from-the-catalogue', 'linen-top-white'];
+  const located = locatePicks(picks, CARDS);
+
+  // Exactly what BestsellerPanel.move does with the two positions.
+  const next = [...picks];
+  const a = located[0].index;
+  const b = located[1].index;
+  const tmp = next[a]; next[a] = next[b]; next[b] = tmp;
+
+  assert.equal(next[1], 'gone-from-the-catalogue',
+    'the non-rendering entry keeps its own slot and is never disturbed');
+  assert.deepEqual(locatePicks(next, CARDS).map((e) => e.cardId),
+    ['linen-top-white', 'stripes-dress-red'], 'the two visible cards really swapped');
+
+  // The old code swapped saved[0] with saved[1] instead — which would have
+  // moved the vanished entry and left the rendered order completely unchanged,
+  // i.e. an arrow that appears to do nothing.
+  const naive = [...picks];
+  [naive[0], naive[1]] = [naive[1], naive[0]];
+  assert.deepEqual(locatePicks(naive, CARDS).map((e) => e.cardId),
+    ['stripes-dress-red', 'linen-top-white'], 'the naive swap changes nothing on screen');
+});
+
+test('a pick naming a COLOUR ROW resolves to its card, at its own position', () => {
+  // Stripes Dress becomes one card whose id is its cheapest row (Red, 850),
+  // yet the owner may have promoted Pink.
+  const picks = ['stripes-dress-pink', 'linen-top-white'];
+  const located = locatePicks(picks, CARDS);
+
+  assert.equal(located[0].cardId, 'stripes-dress-red', 'resolves to the grouped card');
+  assert.equal(located[0].pick, 'stripes-dress-pink', 'keeps the id that was actually saved');
+  assert.equal(located[0].index, 0);
+  assert.equal(located[1].cardId, 'linen-top-white');
+});
+
+test('locatePicks and resolveBestsellers apply ONE rule — panel and homepage cannot disagree', () => {
+  const cases = [
+    ['stripes-dress-pink', 'linen-top-white'],
+    ['stripes-dress-red', 'stripes-dress-pink'],
+    ['linen-top-white', 'nope', 'stripes-dress-blue'],
+    [],
+  ];
+  for (const picks of cases) {
+    const viaLocate = locatePicks(picks, CARDS).map((e) => e.card);
+    const viaResolve = resolveBestsellers(picks.map((product_id) => ({ product_id })), CARDS);
+    assert.deepEqual(viaLocate, viaResolve, `same cards for ${JSON.stringify(picks)}`);
+  }
+});
+
+test('duplicate picks collapse to one card and only the first slot is reported', () => {
+  const located = locatePicks(['stripes-dress-pink', 'stripes-dress-red', 'stripes-dress-blue'], CARDS);
+  assert.equal(located.length, 1, 'three colour rows of one design render once');
+  assert.equal(located[0].index, 0, 'the first slot wins');
+});
+
+test('the panel reorders and removes by CARD, never by a rendered array index', () => {
+  assert.match(PANEL, /const move = \(cardId, dir\)/, 'move takes the card id');
+  assert.match(PANEL, /const remove = \(cardId\)/, 'remove takes the card id');
+  assert.match(PANEL, /onMove=\{\(dir\) => move\(card\.id, dir\)\}/,
+    'the arrow passes the card it is rendered on, not its position');
+  // Both must resolve from the state they are about to write, so two quick
+  // clicks cannot act on positions computed before the first one landed.
+  assert.match(PANEL, /locatePicks\(s\.picks, cards\)/);
+  // The rendered list must never be used to index state.picks again.
+  assert.ok(!/move\(i, dir\)/.test(PANEL), 'no positional move call survives');
+  // And resolution comes from the shared rule, not a private copy.
+  assert.match(PANEL, /locatePicks\(state\.picks, cards\)/);
 });
