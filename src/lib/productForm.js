@@ -27,7 +27,7 @@ export const SIZE_DEFAULT = ['S', 'M', 'L', 'XL']
  *  own subset — a product may stop at XL while another goes to 5XL. The
  *  `sizes` column is a free `text[]`, so nothing outside this list forces a
  *  product to carry a size it does not stock. */
-export const SIZE_OPTIONS = ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL']
+export const SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL']
 export const MAX_COLOUR_LENGTH = 40
 /** Each colour of a product may carry at most this many photos. Fewer is
  *  fine — the gallery renders however many are on file. */

@@ -274,7 +274,11 @@ export default function Product() {
               colourways. Only the copy inside it is conditional. */}
           <div className="mt-7 border-t border-black/10 pt-6">
             <h2 className="text-[18px] font-bold mb-2">Description</h2>
-            {p.desc && <p className="text-[18px] leading-8 text-black/70">{p.desc}</p>}
+            {/* `whitespace-pre-line` is what keeps the paragraph and line
+                breaks an admin typed in the description textarea: without it a
+               browser collapses every newline and the text renders as one
+                run-on block. It renders plain text only — no HTML is involved. */}
+            {p.desc && <p className="text-[18px] leading-8 text-black/70 whitespace-pre-line">{p.desc}</p>}
           </div>
         </div>
       </div>

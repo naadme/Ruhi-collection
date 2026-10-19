@@ -406,9 +406,26 @@ test('fewer than four photos is always fine', () => {
 
 // ---- sizes up to 5XL -------------------------------------------------------
 
-test('the size options run from S through 5XL, and the default is unchanged', () => {
-  assert.deepEqual(SIZE_OPTIONS, ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'])
+test('the size options run from XS through 5XL, and the default is unchanged', () => {
+  assert.deepEqual(SIZE_OPTIONS, ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'])
+  // XS was added at the FRONT so every size a product already offers keeps its
+  // position in the list — nothing a catalogue row stores today shifts.
   assert.deepEqual(SIZE_DEFAULT, ['S', 'M', 'L', 'XL'], 'existing products keep their sizes')
+})
+
+test('every size already stored in production is still a known option', () => {
+  // Live catalogue holds S, M, L, XL and XXL (checked against the database
+  // when this was written). None of them may become "unknown" and get pushed
+  // to the end of the list by an edit.
+  const shipped = ['S', 'M', 'L', 'XL', 'XXL']
+  for (const size of shipped) {
+    assert.ok(SIZE_OPTIONS.includes(size), `${size} must stay a known size`)
+  }
+  assert.deepEqual(
+    toggleSize([...shipped], 'M'),
+    ['S', 'L', 'XL', 'XXL'],
+    'removing one leaves the rest in canonical order',
+  )
 })
 
 test('a product may offer only its own subset of sizes', () => {
