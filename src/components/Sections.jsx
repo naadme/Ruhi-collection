@@ -7,6 +7,7 @@ import { img } from '../data/images'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { fetchHomeBanners } from '../lib/banners'
+import { fetchBestsellers, resolveBestsellers } from '../lib/bestsellers'
 import { inr } from '../lib/pricing'
 import Img from './Img'
 import ProductGrid from './ProductGrid'
@@ -206,7 +207,29 @@ export const BestSellers = () => {
   const { products, loading, source } = useProducts()
   const { categories } = useCategories()
   const catKeys = useMemo(() => categories.map((c) => c.key), [categories])
-  const items = useMemo(() => bestSellers(products, catKeys), [products, catKeys])
+
+  // The owner's own picks, saved from the admin Bestsellers tab. Loading
+  // failure is swallowed on purpose: the row then simply shows the derived
+  // selection below, so a Supabase hiccup can never blank the homepage.
+  const [picks, setPicks] = useState([])
+  useEffect(() => {
+    let alive = true
+    fetchBestsellers()
+      .then((rows) => { if (alive) setPicks(rows) })
+      .catch(() => { if (alive) setPicks([]) })
+    return () => { alive = false }
+  }, [])
+
+  const derived = useMemo(() => bestSellers(products, catKeys), [products, catKeys])
+  // Resolved against the same mapped products every other card uses, so a
+  // promoted design is indistinguishable from an ordinary catalogue card —
+  // and one that has since been deleted or hidden simply drops out.
+  const chosen = useMemo(() => resolveBestsellers(picks, products), [picks, products])
+
+  // No picks saved → the row is derived from the catalogue exactly as it was
+  // before this feature existed, so the homepage is unchanged by default.
+  const items = chosen.length ? chosen : derived
+
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 pt-14 pb-10">
       <h2 className="text-center text-[30px] md:text-[34px] font-normal tracking-wide">Best Sellers</h2>

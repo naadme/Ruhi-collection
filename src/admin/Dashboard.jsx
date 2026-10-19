@@ -14,6 +14,7 @@ import ProductEditor from './ProductEditor'
 import { ProductRow, GroupCard } from './ProductList'
 import OrdersPanel from './OrdersPanel'
 import BannerPanel from './BannerPanel'
+import BestsellerPanel from './BestsellerPanel'
 import CouponsPanel from './CouponsPanel'
 
 function Toast({ toast, onClose }) {
@@ -98,9 +99,13 @@ function Confirm({ title, body, label, busy, onCancel, onConfirm }) {
 }
 
 const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
-// Orders, banners and coupons are owner-only surfaces: product managers see
-// only the Products tab, exactly as before.
-const SECTIONS = [['products', 'Products'], ['orders', 'Orders'], ['banners', 'Banners'], ['coupons', 'Coupons']]
+// Orders, banners, best sellers and coupons are owner-only surfaces: product
+// managers see only the Products tab, exactly as before. Promoting a design to
+// the homepage is a shop-window decision, not a catalogue edit.
+const SECTIONS = [
+  ['products', 'Products'], ['orders', 'Orders'], ['banners', 'Banners'],
+  ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'],
+]
 
 function SectionSwitch({ value, onChange, showOrders }) {
   return (
@@ -354,9 +359,9 @@ export default function Dashboard({ showOrders }) {
     }
   }
 
-  // Orders, banners and coupons live behind their own admin-only sections;
-  // returning early here keeps the products panel (and every hook above it)
-  // untouched.
+  // Orders, banners, best sellers and coupons live behind their own
+  // owner-only sections; returning early here keeps the products panel (and
+  // every hook above it) untouched.
   if (showOrders && section !== 'products') {
     return (
       <div className="font-ui">
@@ -364,6 +369,7 @@ export default function Dashboard({ showOrders }) {
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'orders' && <OrdersPanel notify={notify} />}
           {section === 'banners' && <BannerPanel notify={notify} />}
+          {section === 'bestsellers' && <BestsellerPanel notify={notify} products={all} />}
           {section === 'coupons' && <CouponsPanel notify={notify} />}
         </div>
         <Toast toast={toast} onClose={() => setToast(null)} />
