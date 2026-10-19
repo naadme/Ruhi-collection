@@ -14,6 +14,7 @@ import { serve } from '../_shared/deno.ts'
 import { env } from '../_shared/env.ts'
 import { asString, fail, json, preflight, type Json } from '../_shared/http.ts'
 import { verifyWebhookSignature } from '../_shared/razorpay.ts'
+import { sendOrderConfirmation } from '../_shared/confirmation.ts'
 import {
   fetchOrderByColumn,
   serviceFetch,
@@ -84,6 +85,15 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
         paid_at: new Date().toISOString(),
         ...(paymentId ? { razorpay_payment_id: paymentId } : {}),
       })
+      // Tell the customer, but never at the cost of the acknowledgement: a
+      // non-2xx answer here makes Razorpay redeliver this event, and a mail
+      // hiccup must not turn into a redelivery storm. The helper itself is
+      // idempotent, so arriving alongside the browser's verification is safe.
+      try {
+        await sendOrderConfirmation(orderId)
+      } catch (error) {
+        console.warn('[razorpay-webhook] confirmation not sent:', String(error))
+      }
       return
     }
     case 'payment.failed': {

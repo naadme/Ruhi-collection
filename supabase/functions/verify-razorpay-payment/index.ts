@@ -12,6 +12,7 @@ import { serve } from '../_shared/deno.ts'
 import { MissingConfigError } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
 import { getRazorpayOrder, toPaise, verifyPaymentSignature } from '../_shared/razorpay.ts'
+import { sendOrderConfirmation } from '../_shared/confirmation.ts'
 import { fetchOrderItems, fetchOrderByColumn, serviceFetch } from '../_shared/supabase.ts'
 
 const NOT_FOUND =
@@ -90,6 +91,16 @@ export async function handle(req: Request): Promise<Response> {
       settled = Array.isArray(rows) && rows.length > 0
         ? rows[0]
         : (await fetchOrderByColumn('reference', reference)) ?? order
+    }
+
+    // The payment is on file. Telling the customer is a separate concern from
+    // proving it, so a mail failure is logged and swallowed — it must never
+    // turn a payment we HAVE verified into an error the shopper sees. The
+    // shared helper also no-ops when the webhook got there first.
+    try {
+      await sendOrderConfirmation(asString(settled.id))
+    } catch (error) {
+      console.warn('[verify-razorpay-payment] confirmation not sent:', String(error))
     }
 
     const items = await fetchOrderItems(asString(settled.id))
