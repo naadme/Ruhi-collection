@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
 import Img from '../components/Img'
-import { collectionTiles } from '../data/products'
+import { categoryFallbackImage, collectionTiles } from '../data/products'
 import { useProducts } from '../context/ProductsContext'
+import { useCategories } from '../context/CategoriesContext'
 import usePageTitle from '../hooks/usePageTitle'
 
 // Tiles are defined once in src/data/products.js; the style counts come from
@@ -15,18 +16,34 @@ const countFor = (products, to) => {
 export default function Collections() {
   usePageTitle('Collections', 'Browse the Ruhi Womens Clothing ranges — tops and shirts, co-ord sets and dresses.')
   const { products, loading } = useProducts()
+  // The four launch collections keep their curated copy and photography; a
+  // category the client added later gets a tile of its own — its label, a
+  // photo from the products it actually holds — so it is reachable here too.
+  const { categories } = useCategories()
+  const curated = new Set(collectionTiles.map((c) => c.to))
+  const extra = categories
+    .filter((c) => !curated.has(`/shop?type=${c.key}`))
+    .map((c) => ({
+      title: c.label,
+      text: 'New in this collection',
+      image: categoryFallbackImage(c.key) || products.find((p) => p.type === c.key && p.image)?.image || null,
+      to: `/shop?type=${c.key}`,
+    }))
+    .filter((c) => c.image)
+  const tiles = [...collectionTiles, ...extra]
 
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-14">
       <h1 className="text-[36px] md:text-[44px] text-center">Collections</h1>
       <p className="text-center text-xl text-black/60 mt-3">Pick a collection to start browsing</p>
       <div className="grid sm:grid-cols-3 gap-4 mt-12">
-        {collectionTiles
+        {tiles
           .map((c) => ({ c, n: countFor(products, c.to) }))
           // A tile only advertises a collection the store actually stocks, so
           // a newly added (still empty) category never promises a shopper
           // something the shop does not have. The shop's own Type filter and
-          // the header/footer links, generated from TYPES, list every category
+          // the shop's own Type filter and the header/footer links, generated
+          // from the client's own category list, show every category
           // regardless. With an empty catalogue nothing can be judged, so all
           // tiles are shown.
           .filter(({ n }) => n > 0 || products.length === 0)

@@ -1,26 +1,61 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
-import { categories, reviews, TYPES } from '../data/products'
+import { categoryFallbackImage, reviews } from '../data/products'
 import { site } from '../data/site'
 import { img } from '../data/images'
 import { useProducts } from '../context/ProductsContext'
+import { useCategories } from '../context/CategoriesContext'
 import { fetchHomeBanners } from '../lib/banners'
 import { inr } from '../lib/pricing'
 import Img from './Img'
 import ProductGrid from './ProductGrid'
 const icons = { Truck, Headset, IndianRupee }
 
+// The client's own category list, as homepage tiles. The four launch
+// categories keep the photographs they were given; a category the client
+// created later is pictured with the first product photo it actually has, and
+// one with no photograph at all is left out rather than shown as a broken
+// circle. Everything else — label, link — comes straight from the row, so the
+// homepage can never disagree with the shop's Type filter.
+const tilesOf = (list, products) =>
+  list
+    .map((c) => ({
+      key: c.key,
+      label: c.label,
+      image: categoryFallbackImage(c.key)
+        || products.find((p) => p.type === c.key && p.image)?.image
+        || null,
+      to: `/shop?type=${c.key}`,
+    }))
+    .filter((t) => t.image)
+
 // Categories the store actually stocks, in catalogue order. The homepage hero
 // and the "Shop by Category" row only advertise a category that has at least
 // one live product, so a newly added (still empty) category can never promise
 // a shopper something the shop does not have. The header, footer and shop
-// filter are generated from TYPES and still list every category. With an empty
-// catalogue nothing can be judged, so every category is shown — the same rule
-// the Collections page applies to its tiles.
-const stocked = (products) => {
-  const list = categories.filter((c) => products.some((p) => p.type === c.type))
-  return list.length ? list : categories
+// filter list every category regardless. With an empty catalogue nothing can
+// be judged, so every pictured category is shown — the same rule the
+// Collections page applies to its tiles.
+const stocked = (list, products) => {
+  const withStock = tilesOf(list, products).filter((t) => products.some((p) => p.type === t.key))
+  return withStock.length ? withStock : tilesOf(list, products)
+}
+
+/** Every category with a product in it, in catalogue order, whether or not it
+ *  is one the client's list still offers — the same gap `withTypeOption`
+ *  covers in the pickers. A category that still holds products has to stay
+ *  reachable from the homepage; `stocked` above keeps the curated four
+ *  leading and the empty ones out, and this supplies what it would miss. */
+const stockedTypes = (list, products) => {
+  const known = new Set(tilesOf(list, products).map((t) => t.key))
+  const extra = []
+  for (const p of products) {
+    if (known.has(p.type) || !p.image || extra.some((c) => c.key === p.type)) continue
+    known.add(p.type)
+    extra.push({ key: p.type, label: p.type, image: p.image, to: `/shop?type=${p.type}` })
+  }
+  return extra
 }
 
 export const Hero = () => {
@@ -46,6 +81,7 @@ export const Hero = () => {
   // category-photo slider, so the page always renders something meaningful.
   const [banners, setBanners] = useState([])
   const { products } = useProducts()
+  const { categories } = useCategories()
   useEffect(() => {
     let alive = true
     fetchHomeBanners().then((rows) => {
@@ -57,10 +93,10 @@ export const Hero = () => {
   }, [])
   // Only stocked categories slide here (see `stocked` above) — unless the
   // admin has saved banner images, which then take over the slider entirely.
-  const list = stocked(products)
+  const list = stocked(categories, products)
   const slides = banners.length
     ? banners.map((b) => ({ key: b.id, image: b.image, to: b.link || '/shop', label: 'Shop now' }))
-    : list.map((c) => ({ key: c.type, image: c.image, to: c.to, label: c.label }))
+    : list.map((c) => ({ key: c.key, image: c.image, to: c.to, label: c.label }))
   const n = slides.length
   // Read-side wrap-around, so the last photo steps back to the first and the
   // first forward to the last without growing the state forever.
@@ -118,11 +154,12 @@ export const Hero = () => {
 }
 export const Categories = () => {
   const { products } = useProducts()
+  const { categories } = useCategories()
   return (
     <section className="max-w-[1300px] mx-auto px-4 pt-16 pb-10">
       <h2 className="text-center text-[34px] tracking-wide">Shop by Category</h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mt-8">{stocked(products).map((c) => (
-        <Link key={c.type} to={c.to} className="text-center"><Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover" /><p className="mt-4 text-[17px]">{c.label}</p></Link>))}</div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mt-8">{[...stocked(categories, products), ...stockedTypes(categories, products)].map((c) => (
+        <Link key={c.key} to={c.to} className="text-center"><Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover" /><p className="mt-4 text-[17px]">{c.label}</p></Link>))}</div>
     </section>
   )
 }
@@ -131,17 +168,20 @@ export const Categories = () => {
 // `styleKey` drops the trailing " - Colour", so "Denim Shirt - Black" and
 // "Denim Shirt - Blue" are one style and only the first colourway is a
 // candidate. Selection runs purely over the live catalogue, so the row can
-// never advertise a product the store does not have.
+// never advertise a product the store does not have. Categories come from the
+// client's own list, and any category that appears in the catalogue but is
+// not in that list yet still gets a bucket, so no product can be skipped.
 const styleKey = (title) => (title.includes(' - ') ? title.slice(0, title.lastIndexOf(' - ')) : title)
 
-const bestSellers = (list, n = 4) => {
+const bestSellers = (list, catKeys, n = 4) => {
   // One entry per style, grouped by category.
-  const styleBuckets = TYPES.map((t) => {
+  const keys = [...new Set([...(catKeys || []), ...list.map((p) => p.type)])]
+  const styleBuckets = keys.map((key) => {
     const first = new Map()
     for (const p of list) {
-      if (p.type !== t.key) continue
-      const key = styleKey(p.title)
-      if (!first.has(key)) first.set(key, p)
+      if (p.type !== key) continue
+      const k = styleKey(p.title)
+      if (!first.has(k)) first.set(k, p)
     }
     return [...first.values()]
   })
@@ -164,7 +204,9 @@ const bestSellers = (list, n = 4) => {
 
 export const BestSellers = () => {
   const { products, loading, source } = useProducts()
-  const items = useMemo(() => bestSellers(products), [products])
+  const { categories } = useCategories()
+  const catKeys = useMemo(() => categories.map((c) => c.key), [categories])
+  const items = useMemo(() => bestSellers(products, catKeys), [products, catKeys])
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 pt-14 pb-10">
       <h2 className="text-center text-[30px] md:text-[34px] font-normal tracking-wide">Best Sellers</h2>

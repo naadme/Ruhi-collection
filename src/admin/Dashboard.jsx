@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Plus, Search, Trash2, Loader2, AlertTriangle,
   CheckCircle2, ArrowUpRight, Inbox,
 } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
-import { TYPES, typeLabel } from '../data/products'
+import { useCategories } from '../context/CategoriesContext'
+import { typeLabelOf } from '../lib/categoryRules'
 import { groupRows } from '../lib/productGrouping'
 import { colourOf } from '../lib/productForm'
 import { createProduct, updateProduct, deleteProduct, setProductActive } from './productApi'
@@ -128,9 +129,16 @@ function SectionSwitch({ value, onChange, showOrders }) {
 
 export default function Dashboard({ showOrders }) {
   const { all, loading, error, source, reload, applyRow, removeRow } = useProducts()
+  // The same category list the storefront filters by, so the dashboard's
+  // dropdown can never disagree with the shop's Type filter. `typeLabel` is
+  // kept: the search box below matches on the displayed category name too.
+  const { categories, optionsFor } = useCategories()
   const [section, setSection] = useState('products')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
+  // `typeLabel` keeps the admin search matching the client's label — a key
+  // with no label falls back to itself, as the shop's own search does.
+  const typeLabel = useCallback((key) => typeLabelOf(categories, key), [categories])
   const [cat, setCat] = useState('')
   const [openGroups, setOpenGroups] = useState({}) // group key -> expanded?
   const [editing, setEditing] = useState(null) // { isNew, rows, focusKey }
@@ -423,7 +431,7 @@ export default function Dashboard({ showOrders }) {
               className="h-10 pl-3 pr-4 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10"
             >
               <option value="">All categories</option>
-              {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+              {optionsFor(cat).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
           </div>
           <div className="relative flex-1 min-w-[220px] sm:max-w-[320px]">
@@ -516,6 +524,7 @@ export default function Dashboard({ showOrders }) {
           focusKey={editing?.focusKey || ''}
           addColour={!!editing?.addColour}
           takenIds={takenIds}
+          canManageCategories={showOrders}
           onClose={() => setEditing(null)}
           onSave={handleSave}
         />

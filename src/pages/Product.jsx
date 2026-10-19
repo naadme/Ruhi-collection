@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, ChevronLeft, Heart, Truck } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
-import { typeLabel } from '../data/products'
+import { useCategories } from '../context/CategoriesContext'
 import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import Img from '../components/Img'
@@ -52,6 +52,9 @@ function Gallery({ product }) {
 export default function Product() {
   const { id } = useParams()
   const { getProduct, products, loading } = useProducts()
+  // The category name on the breadcrumb, the product page and the back link is
+  // the client's own label — renamed in the dashboard whenever they like.
+  const { typeLabel } = useCategories()
   const p = getProduct(id)
   const navigate = useNavigate()
   const { add } = useCart()

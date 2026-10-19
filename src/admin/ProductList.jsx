@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Loader2, Package, Pencil, Plus, Trash2 } from 'lucide-react'
-import { typeLabel } from '../data/products'
+import { useCategories } from '../context/CategoriesContext'
 import { colourOf } from '../lib/productForm'
 
 // ---------------------------------------------------------------------------
@@ -87,6 +87,9 @@ function IconBtn({ label, onClick, children, danger, disabled }) {
 
 /** A product with a single row: the dashboard row as it has always looked. */
 export function ProductRow({ p, busy, onToggle, onEdit, onDelete }) {
+  // The category's display name comes from the client's own list, so a
+  // renamed category shows its new name here rather than the old one.
+  const { typeLabel } = useCategories()
   return (
     <li className="bg-white border border-black/10 rounded-xl p-3 sm:p-4 flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 hover:border-black/25 transition">
       <Thumb src={p.image} />
@@ -125,6 +128,8 @@ export function GroupCard({
   g, expanded, onExpand, busyId, onToggleGroup, onToggleVariant,
   onEdit, onEditVariant, onAddColour, onDeleteGroup, onRemoveVariant,
 }) {
+  // Same live category name as the dashboard's filter dropdown.
+  const { typeLabel } = useCategories()
   const lead = g.rows[0]
   const colours = g.rows.map((r) => colourOf(r))
   const liveCount = g.rows.filter((r) => r.is_active).length

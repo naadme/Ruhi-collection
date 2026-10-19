@@ -3,11 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import Img from './Img'
 import { useProducts } from '../context/ProductsContext'
-import { typeLabel } from '../data/products'
+import { useCategories } from '../context/CategoriesContext'
 import { inr } from '../lib/pricing'
 
 export default function SearchBar({ onClose }) {
   const { products, loading } = useProducts()
+  // Search matches the live category label too, so a category the client
+  // renamed is found under its new name.
+  const { typeLabel } = useCategories()
   const [q, setQ] = useState('')
   const ref = useRef(); const nav = useNavigate()
   useEffect(() => ref.current?.focus(), [])

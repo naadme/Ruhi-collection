@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { Search, User, ShoppingBag, Menu, X, Heart, ChevronDown } from 'lucide-react'
 import Logo from './Logo'
@@ -6,6 +6,7 @@ import SearchBar from './SearchBar'
 import { site } from '../data/site'
 import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
+import { useCategories } from '../context/CategoriesContext'
 import useOverlay from '../hooks/useOverlay'
 
 /* `ring` strokes the badge in the header's own cream so one sitting on a
@@ -25,7 +26,19 @@ export default function Header() {
   const panel = useRef(null)
   const closeMenu = useCallback(() => setMenu(false), [])
   useOverlay(menu, closeMenu, panel)
-  const menuLinks = [...site.nav, { label: 'Wishlist', to: '/wishlist' }, { label: 'Account', to: '/account' }, { label: 'Cart', to: '/cart' }]
+  // The Catalogue dropdown is generated from the client's live category list,
+  // so a category added in the dashboard appears in the header the moment it
+  // is saved. "All Products" always leads, exactly as before.
+  const { categories } = useCategories()
+  const catLinks = useMemo(
+    () => categories.map((c) => ({ label: c.label, to: `/shop?type=${c.key}` })),
+    [categories],
+  )
+  const nav = useMemo(
+    () => site.nav.map((n) => (n.children ? { ...n, children: [{ label: 'All Products', to: '/shop' }, ...catLinks] } : n)),
+    [catLinks],
+  )
+  const menuLinks = [...nav, { label: 'Wishlist', to: '/wishlist' }, { label: 'Account', to: '/account' }, { label: 'Cart', to: '/cart' }]
   return (
     /* `#FAF0E7` is sampled straight from public/images/ruhi-logo.jpg so the
        logo's own cream plate disappears into the bar instead of reading as a
@@ -38,7 +51,7 @@ export default function Header() {
         <button className="lg:hidden p-2" onClick={() => setMenu(true)} aria-label="Open menu" aria-expanded={menu}><Menu /></button>
         <Logo />
         <nav aria-label="Main" className="hidden lg:flex gap-8 ml-12 mr-auto text-[17px] tracking-wide text-black/70">
-          {site.nav.map((n) => (n.children ? (
+          {nav.map((n) => (n.children ? (
             // Catalogue behaves as a dropdown: it opens on hover, on click and
             // on keyboard focus, and closes on mouse leave, blur or Escape.
             <div

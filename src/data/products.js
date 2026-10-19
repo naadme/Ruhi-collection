@@ -128,6 +128,12 @@ export const categories = TYPES.map((t) => ({
   to: `/shop?type=${t.key}`,
 }))
 
+/** The photographs the four launch categories were given. A category the
+ *  client creates later has no photo of its own, so the storefront tiles it
+ *  with the first product photo in that category instead (see
+ *  src/components/Sections.jsx) — never a broken image. */
+export const categoryFallbackImage = (key) => img[CAT_IMG[key]] || null
+
 // Testimonials are existing site copy; the linked product and photo always
 // point at the real client catalogue.
 export const reviews = [

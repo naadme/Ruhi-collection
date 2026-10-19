@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, X, Upload, Link2, Trash2, Check, Plus, ArrowLeft, ArrowRight } from 'lucide-react'
 import useOverlay from '../hooks/useOverlay'
 import { supabase } from '../lib/supabase'
 import { TYPES } from '../data/products'
+import { useCategories } from '../context/CategoriesContext'
+import CategoryManager from './CategoryManager'
 import {
   blankVariant, buildPlan, buildTitle, groupForm, MAX_IMAGES_PER_COLOUR, photosOf, slug,
   SIZE_OPTIONS, toggleSize, validateForm, withIds,
@@ -331,13 +333,23 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
 // card per colour. Each colour is its own `products` row with its own ID,
 // price, photos and visibility — the exact structure the storefront already
 // groups — so nothing here invents a second data model.
-export default function ProductEditor({ open, isNew, initial, takenIds = [], focusKey = '', addColour = false, onClose, onSave }) {
+export default function ProductEditor({ open, isNew, initial, takenIds = [], focusKey = '', addColour = false, canManageCategories = false, onClose, onSave }) {
   const panel = useRef(null)
   const [form, setForm] = useState(() => groupForm(initial?.rows || [], TYPES[0].key))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState('')
   const [scrollSel, setScrollSel] = useState('')
+  // The client's live category list (public read). Seeded with the same four
+  // the editor always offered, so the selector looks identical before the
+  // categories table exists or while Supabase is unreachable.
+  const { categories, optionsFor, reload: reloadCategories } = useCategories()
+  // A product may only belong to a category that exists; if the current one
+  // somehow is not in the list (another admin deleted it, or a row carries a
+  // type no longer offered), it is still shown by its raw key rather than
+  // silently rewritten to something else. The shared rule keeps this picker
+  // and the dashboard's filter dropdown in step.
+  const typeOptions = useMemo(() => optionsFor(form.shared.type), [optionsFor, form.shared.type])
 
   useOverlay(open, onClose, panel)
 
@@ -518,9 +530,30 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
 
             <label className="block">
               <span className={labelCls}>Category</span>
-              <select value={form.shared.type} onChange={(e) => setShared({ type: e.target.value })} className={`${inputCls} mt-1.5`}>
-                {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
+              <div className="mt-1.5">
+                <select value={form.shared.type} onChange={(e) => setShared({ type: e.target.value })} className={inputCls} aria-label="Category">
+                  {typeOptions.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+                {/* Creating, renaming and deleting categories is admin-only — the
+                    database refuses it for product managers, so the UI does not
+                    offer what could never be saved. */}
+                {canManageCategories && (
+                  <CategoryManager
+                    categories={categories}
+                    onSaved={async (row) => {
+                      await reloadCategories()
+                      // A category just added becomes the product's category
+                      // straight away, which is nearly always why it was added.
+                      if (row?.key) setShared({ type: row.key })
+                    }}
+                  />
+                )}
+                <span className="block text-[12px] text-black/45 mt-1.5">
+                  {canManageCategories
+                    ? 'Categories are managed here, not per product — add, rename or remove them below.'
+                    : 'Categories are added and renamed by an administrator.'}
+                </span>
+              </div>
             </label>
 
             <label className="block">

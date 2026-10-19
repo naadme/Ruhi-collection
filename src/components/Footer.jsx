@@ -3,11 +3,19 @@ import { Phone, Mail, Instagram, MessageCircle } from 'lucide-react'
 import Newsletter from './Newsletter'
 import Logo from './Logo'
 import { site } from '../data/site'
+import { useCategories } from '../context/CategoriesContext'
 // Which glyph each social label wears. `site.social` stays the only source of
 // the URL — this decides the icon and nothing else.
 const SOCIAL_ICON = { Instagram, WhatsApp: MessageCircle }
 const Col = ({ title, links }) => (<div className="min-w-0"><h3 className="text-[22px] font-medium">{title}</h3><ul className="mt-6 space-y-4 text-[17px] text-[#4A2C23]/85">{links.map((l) => <li key={l.label}><Link to={l.to} className="hover:underline">{l.label}</Link></li>)}</ul></div>)
 export default function Footer() {
+  // "All products" first, then the client's live categories — the same list
+  // the header dropdown and the shop's Type filter use.
+  const { categories } = useCategories()
+  const shopLinks = [
+    site.shopLinks[0] || { label: 'All products', to: '/shop' },
+    ...categories.map((c) => ({ label: c.label, to: `/shop?type=${c.key}` })),
+  ]
   return (
     /* The footer sits on the logo's own sampled cream (`#FAF0E7`) so the mark
        blends in with no rectangle behind it. Text/borders flip from white to
@@ -23,7 +31,7 @@ export default function Footer() {
         <div className="grid gap-12 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr]">
           <div className="min-w-0"><Logo light /><p className="mt-6 text-[17px] leading-7 max-w-[280px] text-[#4A2C23]/90">{site.tagline}</p>
             <div className="flex flex-wrap gap-x-5 gap-y-2 mt-6 text-[15px]">{site.social.map((s) => { const I = SOCIAL_ICON[s.label]; return (<a key={s.label} href={s.href} target="_blank" rel="noreferrer" aria-label={s.label} title={s.label} className="inline-flex items-center underline-offset-4 hover:underline">{I ? <I size={18} aria-hidden="true" /> : s.label}</a>) })}</div></div>
-          <Col title="Shop" links={site.shopLinks} /><Col title="Customer service" links={site.service} />
+          <Col title="Shop" links={shopLinks} /><Col title="Customer service" links={site.service} />
           <div className="min-w-0">
             <div>
               <h3 className="text-[22px] font-medium">Contact us</h3>

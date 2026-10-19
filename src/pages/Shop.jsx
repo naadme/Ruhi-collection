@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import ProductGrid, { ResetLink } from '../components/ProductGrid'
 import { useProducts } from '../context/ProductsContext'
-import { TYPES, typeLabel } from '../data/products'
+import { useCategories } from '../context/CategoriesContext'
 import usePageTitle from '../hooks/usePageTitle'
 
 const Sel = ({ label, value, onChange, opts }) => (
@@ -18,8 +18,9 @@ const Sel = ({ label, value, onChange, opts }) => (
 
 // Search across everything a shopper might type: product name, category,
 // collection, product id, badge, description and — for a grouped design —
-// any of the colours it comes in.
-const matches = (p, query) => {
+// any of the colours it comes in. The category label comes from the live
+// list, so a category the client renamed is searchable under its new name.
+const matches = (p, query, typeLabel) => {
   const haystack = [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '',
     ...(p.colors || []).map((c) => c.color)]
     .join(' ').toLowerCase()
@@ -29,6 +30,9 @@ const matches = (p, query) => {
 export default function Shop() {
   usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — co-ord sets, dresses, tops and shirts. Filter by category, sort by price and find your fit. Free shipping for all products.')
   const { products, loading, error, source } = useProducts()
+  // The Type filter is the client's own category list, so a category added in
+  // the dashboard is filterable here the moment it is saved.
+  const { optionsFor, typeLabel } = useCategories()
   const [sp, setSp] = useSearchParams()
 
   const t = sp.get('type') || ''
@@ -40,8 +44,8 @@ export default function Shop() {
   // Filter + sort only when the catalogue or the filter/sort inputs change —
   // not on every unrelated render of this page.
   const filtered = useMemo(
-    () => products.filter((p) => (!t || p.type === t) && (!q || matches(p, q))),
-    [products, t, q],
+    () => products.filter((p) => (!t || p.type === t) && (!q || matches(p, q, typeLabel))),
+    [products, t, q, typeLabel],
   )
   const items = useMemo(() => {
     const sorted = [...filtered]
@@ -79,7 +83,7 @@ export default function Shop() {
           `flex-wrap` means the group wraps as a unit on narrow screens
           instead of ever being pushed out of view. */}
       <div className="flex flex-wrap items-center gap-4 my-8 border-y border-black/10 py-4">
-        <Sel label="Type" value={t} onChange={set('type')} opts={[['', 'All'], ...TYPES.map((x) => [x.key, x.label])]} />
+        <Sel label="Type" value={t} onChange={set('type')} opts={[['', 'All'], ...optionsFor(t).map((x) => [x.key, x.label])]} />
         <Sel label="Sort" value={sort} onChange={set('sort')} opts={[
           ['', 'Featured'], ['low', 'Price, low to high'], ['high', 'Price, high to low'],
           ['rating', 'Top rated'], ['name', 'Name, A–Z'],
