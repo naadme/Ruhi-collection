@@ -31,7 +31,7 @@ function Gallery({ product }) {
         )}
       </div>
       {shots.length > 1 && (
-        <div className="flex gap-2 mt-3">
+        <div className="flex flex-wrap gap-2 mt-3">
           {shots.map((s, i) => (
             <button
               key={s}

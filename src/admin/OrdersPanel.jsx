@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, ChevronDown, Inbox, MapPin, Phone, RefreshCw, User,
+  AlertTriangle, ChevronDown, Download, Inbox, Loader2, MapPin, Phone, RefreshCw, User,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { inr } from '../lib/pricing'
+import { downloadOrdersXlsx } from './orderExport'
 
 const STATUSES = [
   ['pending', 'Pending'],
@@ -123,6 +124,14 @@ function Row({ order, open, onToggle, onStatus, busy }) {
             </ul>
             <dl className="mt-4 pt-3 border-t border-black/10 space-y-1.5 text-[14px]">
               <div className="flex justify-between"><dt className="text-black/60">Subtotal</dt><dd className="font-ui">{inr(order.subtotal)}</dd></div>
+              {Number(order.discount) > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-black/60">
+                    Discount{order.coupon_code ? <span className="font-mono"> · {order.coupon_code}</span> : null}
+                  </dt>
+                  <dd className="font-ui text-brand-green">−{inr(order.discount)}</dd>
+                </div>
+              )}
               <div className="flex justify-between"><dt className="text-black/60">Shipping</dt>
                 <dd className="font-ui">{order.shipping === 0 ? 'Free' : inr(order.shipping)}</dd></div>
               <div className="flex justify-between font-semibold"><dt>Total</dt><dd className="font-ui">{inr(order.total)}</dd></div>
@@ -205,6 +214,7 @@ export default function OrdersPanel({ notify }) {
   const [filter, setFilter] = useState('all')
   const [openId, setOpenId] = useState('')
   const [busyId, setBusyId] = useState('')
+  const [exporting, setExporting] = useState(false)
 
   const load = useCallback(async (silent) => {
     if (!silent) setState((s) => ({ ...s, loading: true }))
@@ -270,6 +280,22 @@ export default function OrdersPanel({ notify }) {
     setBusyId('')
   }
 
+  // Export what is currently on screen (the active status filter and search)
+  // as a real .xlsx file. Runs entirely against the rows this admin session
+  // already loaded — RLS decides what those are, exactly as for the list.
+  const exportOrders = () => {
+    if (exporting || state.loading || !rows.length) return
+    setExporting(true)
+    try {
+      const name = downloadOrdersXlsx(rows)
+      notify('success', `Exported ${rows.length} ${rows.length === 1 ? 'order' : 'orders'} to ${name}.`)
+    } catch (e) {
+      notify('error', e?.message || 'Could not build the Excel file. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -280,13 +306,24 @@ export default function OrdersPanel({ notify }) {
             {counts.cancelled} cancelled
           </p>
         </div>
-        <button
-          onClick={() => load()}
-          disabled={state.loading}
-          className="inline-flex items-center gap-2 h-[46px] px-4 rounded-lg border border-black/70 text-[15px] font-medium hover:bg-black hover:text-white transition disabled:opacity-60"
-        >
-          <RefreshCw size={16} className={state.loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={exportOrders}
+            disabled={exporting || state.loading || rows.length === 0}
+            title={rows.length ? `Export these ${rows.length} orders to Excel` : 'No orders to export'}
+            className="inline-flex items-center gap-2 h-[46px] px-4 rounded-lg border border-black/70 text-[15px] font-medium hover:bg-black hover:text-white transition disabled:opacity-60"
+          >
+            {exporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            {exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
+          <button
+            onClick={() => load()}
+            disabled={state.loading}
+            className="inline-flex items-center gap-2 h-[46px] px-4 rounded-lg border border-black/70 text-[15px] font-medium hover:bg-black hover:text-white transition disabled:opacity-60"
+          >
+            <RefreshCw size={16} className={state.loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
       {state.error && (

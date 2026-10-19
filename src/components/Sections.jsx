@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
 import { categories, reviews, TYPES } from '../data/products'
 import { site } from '../data/site'
 import { img } from '../data/images'
 import { useProducts } from '../context/ProductsContext'
+import { fetchHomeBanners } from '../lib/banners'
 import { inr } from '../lib/pricing'
 import Img from './Img'
 import ProductGrid from './ProductGrid'
@@ -24,12 +25,14 @@ const stocked = (products) => {
 
 export const Hero = () => {
   // Two halves, side by side from `md` up: the cream poster on the left and
-  // exactly ONE category photo on the right. Nothing moves on its own — there
+  // exactly ONE photo on the right. Nothing moves on its own — there
   // is no autoplay, no track and no loop; the photo changes only when a
-  // shopper clicks an arrow. `cur` is one entry of the stocked categories —
-  // the very same list the "Shop by Category" row reads — so the photo, its
-  // label and the `/shop?type=…` filter it links to can never disagree with
-  // the rest of the store. Below `md` the halves stack (poster first): a phone
+  // shopper clicks an arrow. The photos are either the admin-managed homepage
+  // banners (the `banners` table) or — while none are saved — one entry of
+  // the stocked categories, the very same list the "Shop by Category" row
+  // reads, so the fallback photo, its label and the `/shop?type=…` filter it
+  // links to can never disagree with the rest of the store. Below `md` the
+  // halves stack (poster first): a phone
   // is far too narrow for a two-line headline and a recognisable photo to
   // share the width, so that is the balanced fallback rather than a clipped
   // layout. The poster copy is a headline broken into two lines ("Ruhi Women's" /
@@ -38,13 +41,30 @@ export const Hero = () => {
   // has to clear the column at 320px and inside the 384px half a `md`
   // viewport gives it.
   const [at, setAt] = useState(0)
+  // Banner photos the admin has saved for the homepage hero. Empty means
+  // "none saved" (or Supabase unreachable) — the hero then keeps its original
+  // category-photo slider, so the page always renders something meaningful.
+  const [banners, setBanners] = useState([])
   const { products } = useProducts()
-  // Only stocked categories slide here (see `stocked` above).
+  useEffect(() => {
+    let alive = true
+    fetchHomeBanners().then((rows) => {
+      if (alive) setBanners(rows)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+  // Only stocked categories slide here (see `stocked` above) — unless the
+  // admin has saved banner images, which then take over the slider entirely.
   const list = stocked(products)
-  const n = list.length
+  const slides = banners.length
+    ? banners.map((b) => ({ key: b.id, image: b.image, to: b.link || '/shop', label: 'Shop now' }))
+    : list.map((c) => ({ key: c.type, image: c.image, to: c.to, label: c.label }))
+  const n = slides.length
   // Read-side wrap-around, so the last photo steps back to the first and the
   // first forward to the last without growing the state forever.
-  const cur = list[((at % n) + n) % n]
+  const cur = slides[((at % n) + n) % n]
   const go = (d) => setAt((v) => v + d)
   return (
     <section className="grid min-h-[560px] md:grid-cols-2 md:h-[600px] lg:h-[684px] bg-[#4A2C23] text-white">
@@ -77,17 +97,21 @@ export const Hero = () => {
           can never also follow the category link. At 44px they match the
           touch target the wishlist button already uses. */}
       <div className="relative overflow-hidden h-[380px] md:h-auto">
-        <Link key={cur.to} to={cur.to} className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none">
+        <Link key={cur.key} to={cur.to} className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none">
           <Img src={cur.image} alt={cur.label} loading="eager" className="absolute inset-0 w-full h-full object-cover" />
         </Link>
-        <button type="button" onClick={() => go(-1)} aria-label="Show previous category"
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#F8EDE6] text-[#4A2C23] grid place-items-center hover:bg-white transition">
-          <ChevronLeft size={22} strokeWidth={1.8} aria-hidden="true" />
-        </button>
-        <button type="button" onClick={() => go(1)} aria-label="Show next category"
-          className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#F8EDE6] text-[#4A2C23] grid place-items-center hover:bg-white transition">
-          <ChevronRight size={22} strokeWidth={1.8} aria-hidden="true" />
-        </button>
+        {n > 1 && (
+          <>
+            <button type="button" onClick={() => go(-1)} aria-label="Show previous photo"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#F8EDE6] text-[#4A2C23] grid place-items-center hover:bg-white transition">
+              <ChevronLeft size={22} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+            <button type="button" onClick={() => go(1)} aria-label="Show next photo"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#F8EDE6] text-[#4A2C23] grid place-items-center hover:bg-white transition">
+              <ChevronRight size={22} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          </>
+        )}
       </div>
     </section>
   )

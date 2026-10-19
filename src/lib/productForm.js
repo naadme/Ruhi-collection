@@ -23,7 +23,44 @@
 import { splitTitle } from './productGrouping.js'
 
 export const SIZE_DEFAULT = ['S', 'M', 'L', 'XL']
+/** Every size the store may offer, in display order. Each product picks its
+ *  own subset — a product may stop at XL while another goes to 5XL. The
+ *  `sizes` column is a free `text[]`, so nothing outside this list forces a
+ *  product to carry a size it does not stock. */
+export const SIZE_OPTIONS = ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL']
 export const MAX_COLOUR_LENGTH = 40
+/** Each colour of a product may carry at most this many photos. Fewer is
+ *  fine — the gallery renders however many are on file. */
+export const MAX_IMAGES_PER_COLOUR = 4
+
+/** Toggle one size on/off, always returning the list in SIZE_OPTIONS order so
+ *  a re-added size never lands at the end. Unknown sizes (a size stored by an
+ *  older catalogue) are kept, after the known ones, never silently dropped. */
+export const toggleSize = (sizes, size) => {
+  const cur = Array.isArray(sizes) ? sizes : []
+  const next = cur.includes(size) ? cur.filter((s) => s !== size) : [...cur, size]
+  return [
+    ...SIZE_OPTIONS.filter((s) => next.includes(s)),
+    ...next.filter((s) => !SIZE_OPTIONS.includes(s)),
+  ]
+}
+
+/** The photos on file for one colour, in display order (main image first),
+ *  de-duped and capped at MAX_IMAGES_PER_COLOUR. Accepts the editor's
+ *  `photos` list, or a stored row / mapped product (main + hover + gallery),
+ *  so a row written before the gallery existed loads exactly as it renders. */
+export const photosOf = (v) => {
+  const raw = Array.isArray(v?.photos)
+    ? v.photos
+    : [v?.image, v?.hover, ...(Array.isArray(v?.gallery) ? v.gallery : [])]
+  const out = []
+  for (const u of raw) {
+    const s = clean(u)
+    if (s && !out.includes(s)) out.push(s)
+    if (out.length >= MAX_IMAGES_PER_COLOUR) break
+  }
+  return out
+}
 
 const clean = (v) => String(v ?? '').trim()
 export const trimOrNull = (v) => clean(v) || null
@@ -110,16 +147,16 @@ export const sharedSpace = (shared) => ({
 })
 
 const SHARED_KEYS = ['type', 'description', 'sizes', 'badge', 'rating', 'reviews']
-const VARIANT_KEYS = ['title', 'price', 'compare', 'image', 'hover', 'colour', 'is_active']
+const VARIANT_KEYS = ['title', 'price', 'compare', 'colour', 'is_active']
 
-/** The variant-owned columns of one colour, in row space. */
+/** The variant-owned columns of one colour, in row space. Photos are handled
+ *  separately in `updatePayload` — they are always written as one consistent
+ *  set (main, hover and gallery together). */
 export const variantSpace = (shared, variant) => ({
   id: clean(variant.id),
   title: buildTitle(shared.name, variant.colour),
   price: price(variant.price),
   compare: money(variant.compare),
-  image: trimOrNull(variant.image),
-  hover: trimOrNull(variant.hover),
   is_active: !!variant.is_active,
   colour: trimOrNull(variant.colour),
 })
@@ -135,30 +172,33 @@ export const sharedUpdate = (lead, shared) => {
   return out
 }
 
-/** Photos on file for a colour: main + hover, oldest order preserved — the
- *  same gallery the editor has always written when a photo changed. */
-export const galleryOf = (variant) =>
-  [...new Set([clean(variant.image), clean(variant.hover)].filter(Boolean))]
-
 /** Full payload for a brand-new colour row (mirrors the create contract the
- *  editor has always sent, plus the colour). */
-export const createPayload = (shared, variant) => ({
-  id: clean(variant.id),
-  title: buildTitle(shared.name, variant.colour),
-  type: shared.type,
-  price: price(variant.price),
-  compare: money(variant.compare),
-  rating: rating(shared.rating),
-  reviews: count(shared.reviews),
-  badge: trimOrNull(shared.badge),
-  sizes: Array.isArray(shared.sizes) && shared.sizes.length ? shared.sizes : SIZE_DEFAULT,
-  description: shared.desc || '',
-  image: trimOrNull(variant.image),
-  hover: trimOrNull(variant.hover),
-  colour: trimOrNull(variant.colour),
-  is_active: !!variant.is_active,
-  ...(variant.galleryDirty ? { gallery: galleryOf(variant) } : {}),
-})
+ *  editor has always sent, plus the colour). The main image is the first
+ *  photo, the hover image the second, and the gallery carries every photo —
+ *  written together so one colour can never show another colour's photo. */
+export const createPayload = (shared, variant) => {
+  const photos = photosOf(variant)
+  return {
+    id: clean(variant.id),
+    title: buildTitle(shared.name, variant.colour),
+    type: shared.type,
+    price: price(variant.price),
+    compare: money(variant.compare),
+    rating: rating(shared.rating),
+    reviews: count(shared.reviews),
+    badge: trimOrNull(shared.badge),
+    sizes: Array.isArray(shared.sizes) && shared.sizes.length ? shared.sizes : SIZE_DEFAULT,
+    description: shared.desc || '',
+    image: photos[0] || null,
+    hover: photos[1] || null,
+    colour: trimOrNull(variant.colour),
+    is_active: !!variant.is_active,
+    // A colour holding more than main + hover needs the gallery column; with
+    // only the two classic photos the storefront's own fallback suffices,
+    // exactly as before.
+    ...(photos.length > 2 || variant.galleryDirty ? { gallery: photos } : {}),
+  }
+}
 
 /** Only the columns THIS colour's row does not already hold, so an untouched
  *  product saves as no write at all and a divergent row is never overwritten
@@ -168,9 +208,18 @@ export const updatePayload = (shared, changedShared, variant) => {
   const nxt = { ...changedShared, ...variantSpace(shared, variant) }
   const out = { id: clean(variant.id) }
   for (const k of Object.keys(nxt)) if (!same(cur[k], nxt[k])) out[k] = nxt[k]
-  // The gallery is only written when the images themselves changed, so editing
-  // a price never drops the extra photos of a colour.
-  if (variant.galleryDirty) out.gallery = galleryOf(variant)
+  // Photos are written as ONE consistent set — main image, hover image and
+  // gallery together, in the editor's order — and only when they really
+  // changed, so editing a price never drops the extra photos of a colour and
+  // a reorder can never leave `image` pointing at a photo the gallery no
+  // longer holds first.
+  const curPhotos = photosOf(variant.original)
+  const nxtPhotos = photosOf(variant)
+  if (!same(curPhotos, nxtPhotos)) {
+    out.image = nxtPhotos[0] || null
+    out.hover = nxtPhotos[1] || null
+    out.gallery = nxtPhotos
+  }
   return out
 }
 
@@ -242,6 +291,16 @@ export const validateForm = ({ shared, variants, takenIds }) => {
       errors.push(`${label}: please enter a valid price.`)
     }
 
+    // `photosOf` deliberately truncates to the cap for display, so a too-long
+    // list is checked here against the raw editor input: the fifth photo must
+    // never be dropped silently on save.
+    const rawPhotos = Array.isArray(v.photos)
+      ? [...new Set(v.photos.map(clean).filter(Boolean))]
+      : photosOf(v)
+    if (rawPhotos.length > MAX_IMAGES_PER_COLOUR) {
+      errors.push(`${label}: a colour may carry up to ${MAX_IMAGES_PER_COLOUR} photos — remove one before saving.`)
+    }
+
     const id = clean(v.id)
     if (!id) {
       errors.push(`${label}: it has no product ID yet — enter a product name first.`)
@@ -306,8 +365,7 @@ export const blankVariant = (key) => ({
   colour: '',
   price: '',
   compare: '',
-  image: '',
-  hover: '',
+  photos: [],
   galleryDirty: false,
   is_active: true,
   removed: false,
@@ -321,8 +379,9 @@ export const variantFromRow = (row, key) => ({
   colour: colourOf(row),
   price: row.price ?? '',
   compare: row.compare ?? '',
-  image: row.image || '',
-  hover: row.hover || '',
+  // Main + hover + any extra gallery photos, in display order. A row written
+  // before the gallery column existed loads as just main + hover.
+  photos: photosOf(row),
   galleryDirty: false,
   is_active: row.is_active !== false,
   removed: false,

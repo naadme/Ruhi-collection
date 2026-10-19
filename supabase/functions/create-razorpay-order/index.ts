@@ -66,6 +66,9 @@ function buildPayload(body: Json, items: Json[]): Json {
     note: asString(body.note),
     payment_method: 'razorpay',
     items,
+    // A coupon code is only ever a REQUEST: `create_order()` re-validates it
+    // in the database and computes the discount itself.
+    coupon_code: asString(body.coupon_code),
   }
 }
 

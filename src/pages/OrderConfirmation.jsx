@@ -107,11 +107,19 @@ export default function OrderConfirmation() {
           </ul>
           <dl className="mt-4 pt-4 border-t border-black/10 space-y-2 text-[15px]">
             <div className="flex justify-between"><dt className="text-black/65">Subtotal</dt><dd className="font-ui">{inr(order.subtotal)}</dd></div>
+            {Number(order.discount) > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-black/65">
+                  Discount{order.coupon_code ? <span className="font-mono"> · {order.coupon_code}</span> : ''}
+                </dt>
+                <dd className="font-ui text-brand-green font-semibold">−{inr(order.discount)}</dd>
+              </div>
+            )}
             <div className="flex justify-between"><dt className="text-black/65">Shipping</dt>
               <dd className="font-ui">{order.shipping === 0 ? <span className="text-brand-green font-semibold">Free</span> : inr(order.shipping)}</dd></div>
             <div className="flex justify-between pt-3 border-t border-black/10 text-[18px] font-semibold">
               <dt>{paid ? 'Total (paid online)' : 'Total'}</dt>
-              <dd className="font-ui">{inr(order.total ?? totalFor(order.subtotal))}</dd>
+              <dd className="font-ui">{inr(order.total ?? totalFor(order.subtotal, Number(order.discount) || 0))}</dd>
             </div>
           </dl>
         </div>

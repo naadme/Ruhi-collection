@@ -83,12 +83,17 @@ export async function rpcCreateOrder(
 
 /** SELECT the columns verification and the webhook need, by primary key. */
 export async function fetchOrder(id: string): Promise<Json | null> {
-  const res = await serviceFetch(
-    `/rest/v1/orders?id=eq.${encodeURIComponent(id)}` +
-      '&select=id,reference,status,full_name,email,phone,address,city,state,pincode,note,' +
-      'payment_method,payment_status,razorpay_order_id,razorpay_payment_id,paid_at,' +
-      'subtotal,shipping,total,created_at',
-  )
+  const path = (select: string) =>
+    `/rest/v1/orders?id=eq.${encodeURIComponent(id)}&select=${select}`
+  const common =
+    'id,reference,status,full_name,email,phone,address,city,state,pincode,note,' +
+    'payment_method,payment_status,razorpay_order_id,razorpay_payment_id,paid_at,'
+  let res = await serviceFetch(path(`${common}subtotal,shipping,discount,coupon_code,total,created_at`))
+  if (!res.ok) {
+    // The coupon columns arrive with a later migration than this function;
+    // until it is applied, verification must keep working without them.
+    res = await serviceFetch(path(`${common}subtotal,shipping,total,created_at`))
+  }
   if (!res.ok) return null
   const rows = (await res.json().catch(() => [])) as Json[]
   return Array.isArray(rows) ? (rows[0] ?? null) : null

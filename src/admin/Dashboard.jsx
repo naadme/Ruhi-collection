@@ -12,6 +12,8 @@ import { createProduct, updateProduct, deleteProduct, setProductActive } from '.
 import ProductEditor from './ProductEditor'
 import { ProductRow, GroupCard } from './ProductList'
 import OrdersPanel from './OrdersPanel'
+import BannerPanel from './BannerPanel'
+import CouponsPanel from './CouponsPanel'
 
 function Toast({ toast, onClose }) {
   useEffect(() => {
@@ -95,7 +97,9 @@ function Confirm({ title, body, label, busy, onCancel, onConfirm }) {
 }
 
 const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
-const SECTIONS = [['products', 'Products'], ['orders', 'Orders']]
+// Orders, banners and coupons are owner-only surfaces: product managers see
+// only the Products tab, exactly as before.
+const SECTIONS = [['products', 'Products'], ['orders', 'Orders'], ['banners', 'Banners'], ['coupons', 'Coupons']]
 
 function SectionSwitch({ value, onChange, showOrders }) {
   return (
@@ -104,7 +108,7 @@ function SectionSwitch({ value, onChange, showOrders }) {
       aria-label="Dashboard sections"
       className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit"
     >
-      {SECTIONS.filter(([k]) => k !== 'orders' || showOrders).map(([k, label]) => (
+      {SECTIONS.filter(([k]) => k === 'products' || showOrders).map(([k, label]) => (
         <button
           key={k}
           role="tab"
@@ -342,14 +346,17 @@ export default function Dashboard({ showOrders }) {
     }
   }
 
-  // Orders live behind their own section; returning early here keeps the
-  // products panel (and every hook above it) untouched.
-  if (showOrders && section === 'orders') {
+  // Orders, banners and coupons live behind their own admin-only sections;
+  // returning early here keeps the products panel (and every hook above it)
+  // untouched.
+  if (showOrders && section !== 'products') {
     return (
       <div className="font-ui">
         <SectionSwitch value={section} onChange={setSection} showOrders={showOrders} />
-        <div id="panel-orders" role="tabpanel" className="mt-8">
-          <OrdersPanel notify={notify} />
+        <div id={`panel-${section}`} role="tabpanel" className="mt-8">
+          {section === 'orders' && <OrdersPanel notify={notify} />}
+          {section === 'banners' && <BannerPanel notify={notify} />}
+          {section === 'coupons' && <CouponsPanel notify={notify} />}
         </div>
         <Toast toast={toast} onClose={() => setToast(null)} />
       </div>

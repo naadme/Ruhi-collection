@@ -12,9 +12,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  blankVariant, buildPlan, buildTitle, colourOf, createPayload, galleryOf,
-  groupForm, nameOf, sharedFromRow, slug, uniqueId, updatePayload, validateForm,
-  withIds,
+  blankVariant, buildPlan, buildTitle, colourOf, createPayload, groupForm, MAX_IMAGES_PER_COLOUR,
+  nameOf, photosOf, sharedFromRow, SIZE_DEFAULT, SIZE_OPTIONS, slug, toggleSize, uniqueId,
+  updatePayload, validateForm, withIds,
 } from '../src/lib/productForm.js'
 
 const row = (id, title, extra = {}) => ({
@@ -137,7 +137,7 @@ test('uniqueId suffixes until free', () => {
 
 test('createPayload carries every column a new colour needs', () => {
   const shared = { name: 'Classic Shirt', type: 'tops', desc: 'Nice.', sizes: ['S', 'M'], badge: 'New', rating: 4.2, reviews: 7 }
-  const v = { ...blankVariant('a'), id: 'classic-shirt-wine-red', colour: 'Wine Red', price: '950', compare: '1050', image: '/i.jpg', hover: '/h.jpg' }
+  const v = { ...blankVariant('a'), id: 'classic-shirt-wine-red', colour: 'Wine Red', price: '950', compare: '1050', photos: ['/i.jpg', '/h.jpg'] }
   const p = createPayload(shared, v)
 
   assert.deepEqual(p, {
@@ -158,14 +158,19 @@ test('createPayload carries every column a new colour needs', () => {
   })
 })
 
-test('the gallery is only written when a photo changed (extras preserved otherwise)', () => {
+test('the gallery is written when the colour holds more than main + hover, or was touched', () => {
   const shared = { name: 'X', type: 'tops', desc: '', sizes: ['S'], badge: '', rating: 0, reviews: 0 }
-  const untouched = { ...blankVariant('a'), id: 'x-black', colour: 'Black', image: '/a.jpg', hover: '/b.jpg' }
-  assert.equal('gallery' in createPayload(shared, untouched), false)
+  const untouched = { ...blankVariant('a'), id: 'x-black', colour: 'Black', photos: ['/a.jpg', '/b.jpg'] }
+  assert.equal('gallery' in createPayload(shared, untouched), false, 'two classic photos need no gallery column')
 
-  const touched = { ...untouched, galleryDirty: true, image: '/new.jpg' }
+  const three = { ...untouched, photos: ['/a.jpg', '/b.jpg', '/c.jpg'] }
+  assert.deepEqual(createPayload(shared, three).gallery, ['/a.jpg', '/b.jpg', '/c.jpg'])
+  assert.equal(createPayload(shared, three).image, '/a.jpg', 'the first photo is the card image')
+  assert.equal(createPayload(shared, three).hover, '/b.jpg', 'the second is the hover image')
+
+  const touched = { ...untouched, galleryDirty: true, photos: ['/new.jpg', '/b.jpg'] }
   assert.deepEqual(createPayload(shared, touched).gallery, ['/new.jpg', '/b.jpg'])
-  assert.deepEqual(galleryOf({ image: '', hover: '' }), [], 'no photos, no gallery')
+  assert.deepEqual(photosOf({ photos: [] }), [], 'no photos, no gallery')
 })
 
 test('updatePayload writes only the columns that really changed', () => {
@@ -311,4 +316,118 @@ test('a missing name or price is refused with a readable message', () => {
   assert.ok(errs.some((e) => /product name/i.test(e)))
   assert.ok(errs.some((e) => /product ID/i.test(e)))
   assert.ok(errs.some((e) => /valid price/i.test(e)))
+})
+
+// ---- photos per colour (up to four) ---------------------------------------
+
+test('a stored row loads its gallery photos in order, capped at four', () => {
+  const r = row('embroidery-coord-set-beige', 'Embroidery coord set - Beige', {
+    image: '/i1.jpg', hover: '/i2.jpg', gallery: ['/i1.jpg', '/i2.jpg', '/i3.jpg', '/i4.jpg', '/i5.jpg'],
+  })
+  assert.deepEqual(photosOf(r), ['/i1.jpg', '/i2.jpg', '/i3.jpg', '/i4.jpg'])
+  const [variant] = groupForm([r], 'coord').variants
+  assert.deepEqual(variant.photos, ['/i1.jpg', '/i2.jpg', '/i3.jpg', '/i4.jpg'])
+})
+
+test('a row from before the gallery column loads as main + hover', () => {
+  const r = row('denim-dress', 'Denim Dress', { image: '/a.jpg', hover: '/b.jpg', gallery: null })
+  assert.deepEqual(photosOf(r), ['/a.jpg', '/b.jpg'])
+})
+
+test('reordering photos writes image, hover and gallery as one consistent set', () => {
+  const lead = row('stripes-dress-blue', 'Stripes Dress - Blue', {
+    colour: 'Blue',
+    image: '/a.jpg', hover: '/b.jpg', gallery: ['/a.jpg', '/b.jpg', '/c.jpg'],
+  })
+  const [variant] = groupForm([lead], 'dress').variants
+  const payload = updatePayload(sharedFromRow(lead), {}, { ...variant, photos: ['/c.jpg', '/a.jpg', '/b.jpg'] })
+  assert.deepEqual(payload, {
+    id: 'stripes-dress-blue',
+    image: '/c.jpg',
+    hover: '/a.jpg',
+    gallery: ['/c.jpg', '/a.jpg', '/b.jpg'],
+  })
+})
+
+test('removing a photo keeps the rest in order and rewrites the set', () => {
+  const lead = row('stripes-dress-pink', 'Stripes Dress - Pink', {
+    colour: 'Pink',
+    image: '/a.jpg', hover: '/b.jpg', gallery: ['/a.jpg', '/b.jpg', '/c.jpg'],
+  })
+  const [variant] = groupForm([lead], 'dress').variants
+  const payload = updatePayload(sharedFromRow(lead), {}, { ...variant, photos: ['/a.jpg', '/c.jpg'] })
+  assert.deepEqual(payload, {
+    id: 'stripes-dress-pink',
+    image: '/a.jpg',
+    hover: '/c.jpg',
+    gallery: ['/a.jpg', '/c.jpg'],
+  })
+})
+
+test('one colour’s photos are never written to another colour’s row', () => {
+  const blue = row('stripes-dress-blue', 'Stripes Dress - Blue', {
+    colour: 'Blue', image: '/b1.jpg', hover: '/b2.jpg', gallery: ['/b1.jpg', '/b2.jpg', '/b3.jpg'],
+  })
+  const pink = row('stripes-dress-pink', 'Stripes Dress - Pink', {
+    colour: 'Pink', image: '/p1.jpg', hover: '/p2.jpg',
+  })
+  const form = groupForm([blue, pink], 'dress')
+  const plan = buildPlan({
+    shared: { ...form.shared, name: 'Stripes Dress' },
+    variants: form.variants.map((v) => (v.id === pink.id ? { ...v, photos: ['/p1.jpg', '/p2.jpg', '/p3.jpg'] } : v)),
+    takenIds: [blue.id, pink.id],
+    lead: blue,
+  })
+  assert.deepEqual(plan.updates.map((u) => u.id), [pink.id], 'only the touched colour is written at all')
+  assert.deepEqual(plan.updates[0].payload.gallery, ['/p1.jpg', '/p2.jpg', '/p3.jpg'])
+})
+
+test('the editor refuses to save more than four photos for a colour', () => {
+  const shared = { name: 'X', type: 'tops', desc: '', sizes: ['S'], badge: '', rating: 0, reviews: 0 }
+  const photos = ['/1.jpg', '/2.jpg', '/3.jpg', '/4.jpg', '/5.jpg']
+  const errs = validateForm({
+    shared,
+    variants: [{ ...blankVariant('a'), id: 'x-black', colour: 'Black', price: '900', photos }],
+    takenIds: [],
+  })
+  assert.ok(errs.some((e) => /up to 4 photos/i.test(e)))
+})
+
+test('fewer than four photos is always fine', () => {
+  const shared = { name: 'X', type: 'tops', desc: '', sizes: ['S'], badge: '', rating: 0, reviews: 0 }
+  for (const photos of [[], ['/1.jpg'], ['/1.jpg', '/2.jpg'], ['/1.jpg', '/2.jpg', '/3.jpg'], ['/1.jpg', '/2.jpg', '/3.jpg', '/4.jpg']]) {
+    assert.deepEqual(
+      validateForm({ shared, variants: [{ ...blankVariant('a'), id: 'x-black', colour: 'Black', price: '900', photos }], takenIds: [] }),
+      [],
+      `${photos.length} photo(s) save without complaint`,
+    )
+  }
+})
+
+// ---- sizes up to 5XL -------------------------------------------------------
+
+test('the size options run from S through 5XL, and the default is unchanged', () => {
+  assert.deepEqual(SIZE_OPTIONS, ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'])
+  assert.deepEqual(SIZE_DEFAULT, ['S', 'M', 'L', 'XL'], 'existing products keep their sizes')
+})
+
+test('a product may offer only its own subset of sizes', () => {
+  let sizes = ['S', 'M', 'L', 'XL']
+  sizes = toggleSize(sizes, 'XL')
+  sizes = toggleSize(sizes, 'L')
+  assert.deepEqual(sizes, ['S', 'M'], 'a product that stops at M is fine')
+  sizes = toggleSize(sizes, '5XL')
+  assert.deepEqual(sizes, ['S', 'M', '5XL'], 'and one that jumps straight to 5XL is too')
+})
+
+test('toggling keeps sizes in canonical order and never drops unknown ones', () => {
+  const sizes = toggleSize(['XL', 'S', 'Custom'], 'M')
+  assert.deepEqual(sizes, ['S', 'M', 'XL', 'Custom'], 're-added sizes return to their place; unknown sizes survive')
+  assert.deepEqual(toggleSize(sizes, 'M'), ['S', 'XL', 'Custom'], 'toggling off removes exactly one')
+})
+
+test('the create contract sends the chosen sizes verbatim', () => {
+  const shared = { name: 'X', type: 'trousers', desc: '', sizes: ['M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'], badge: '', rating: 0, reviews: 0 }
+  const p = createPayload(shared, { ...blankVariant('a'), id: 'x-black', colour: 'Black', price: '900' })
+  assert.deepEqual(p.sizes, ['M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'])
 })

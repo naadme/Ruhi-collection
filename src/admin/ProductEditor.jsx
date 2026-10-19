@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, X, Upload, Link2, Trash2, Check, Plus } from 'lucide-react'
+import { Loader2, X, Upload, Link2, Trash2, Check, Plus, ArrowLeft, ArrowRight } from 'lucide-react'
 import useOverlay from '../hooks/useOverlay'
 import { supabase } from '../lib/supabase'
 import { TYPES } from '../data/products'
 import {
-  blankVariant, buildPlan, buildTitle, groupForm, slug, validateForm, withIds,
+  blankVariant, buildPlan, buildTitle, groupForm, MAX_IMAGES_PER_COLOUR, photosOf, slug,
+  SIZE_OPTIONS, toggleSize, validateForm, withIds,
 } from '../lib/productForm'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[48px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 const labelCls = 'block text-[13px] font-medium text-black/60'
 const bucket = 'product-images'
-const SIZE_OPTIONS = ['S', 'M', 'L', 'XL']
 
 function Section({ title, children }) {
   return (
@@ -24,69 +24,143 @@ function Section({ title, children }) {
   )
 }
 
-function ImageField({ name, value, onChange, busy, onPick, note }) {
+// One photo slot inside a colour's photo list: preview, replace, remove,
+// reorder and a direct-URL field — the same controls the single-image fields
+// always had, now per photo.
+function PhotoSlot({ index, total, url, busy, onPick, onUrl, onRemove, onMove }) {
   const fileRef = useRef(null)
+  const slotLabel =
+    index === 0 ? 'Main image (shop card)' : index === 1 ? 'Second image (card hover)' : `Extra photo ${index - 1}`
+  return (
+    <div className="flex gap-3 border border-black/10 rounded-lg p-3">
+      <div className="w-[72px] h-[88px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
+        {url ? (
+          <img
+            src={url}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+            }}
+          />
+        ) : (
+          <span className="text-[10px] text-black/35 text-center px-1">No image</span>
+        )}
+      </div>
+      <div className="flex-1 min-w-0 space-y-2">
+        <p className="text-[12px] font-medium text-black/60">{slotLabel}</p>
+        <div className="flex gap-2 flex-wrap items-center">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) onPick(f)
+            }}
+          />
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => fileRef.current?.click()}
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium border border-black/60 rounded-lg px-3 h-[38px] hover:bg-black hover:text-white transition disabled:opacity-60"
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            {busy ? 'Uploading…' : 'Replace'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onMove(index, -1)}
+            disabled={index === 0}
+            aria-label={`Move photo ${index + 1} earlier`}
+            className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
+          >
+            <ArrowLeft size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onMove(index, 1)}
+            disabled={index === total - 1}
+            aria-label={`Move photo ${index + 1} later`}
+            className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
+          >
+            <ArrowRight size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex items-center gap-1.5 text-[13px] text-black/50 hover:text-red-600 px-2 h-[38px]"
+          >
+            <Trash2 size={14} /> Remove
+          </button>
+        </div>
+        <div className="relative">
+          <Link2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-black/35" />
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => onUrl(e.target.value)}
+            placeholder="…or paste an image URL"
+            aria-label={`Image URL for photo ${index + 1}`}
+            className={`${inputCls} h-[40px] pl-8 text-[13px]`}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// One colour's whole photo set: up to MAX_IMAGES_PER_COLOUR photos, in display
+// order. The first is the shop card image, the second its hover image, and all
+// of them appear in the product gallery — for this colour only, because every
+// colour is its own database row with its own gallery.
+function PhotoList({ photos, uploading, onPick, onUrl, onRemove, onMove, onAdd }) {
+  const addRef = useRef(null)
   return (
     <div>
-      <span className={labelCls}>{note}</span>
-      <div className="mt-2 flex gap-3">
-        <div className="w-[72px] h-[88px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
-          {value ? (
-            <img
-              src={value}
-              alt=""
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none'
-              }}
-            />
-          ) : (
-            <span className="text-[10px] text-black/35 text-center px-1">No image</span>
-          )}
-        </div>
-        <div className="flex-1 min-w-0 space-y-2">
-          <div className="flex gap-2">
+      <span className={labelCls}>Photos (up to {MAX_IMAGES_PER_COLOUR})</span>
+      <p className="block text-[12px] text-black/45 mt-1">
+        The first photo is the shop card image, the second is its hover image, and all of them appear in the
+        product gallery — in this order. Each colour keeps its own photos.
+      </p>
+      <div className="mt-2 space-y-3">
+        {photos.map((url, i) => (
+          <PhotoSlot
+            key={i}
+            index={i}
+            total={photos.length}
+            url={url}
+            busy={uploading === i}
+            onPick={(f) => onPick(i, f)}
+            onUrl={(u) => onUrl(i, u)}
+            onRemove={() => onRemove(i)}
+            onMove={onMove}
+          />
+        ))}
+        {photos.length < MAX_IMAGES_PER_COLOUR && (
+          <>
             <input
-              ref={fileRef}
+              ref={addRef}
               type="file"
               accept="image/*"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0]
                 e.target.value = ''
-                if (f) onPick(f)
+                if (f) onAdd(f)
               }}
             />
             <button
               type="button"
-              disabled={busy}
-              onClick={() => fileRef.current?.click()}
-              className="inline-flex items-center gap-1.5 text-[13px] font-medium border border-black/60 rounded-lg px-3 h-[38px] hover:bg-black hover:text-white transition disabled:opacity-60"
+              onClick={() => addRef.current?.click()}
+              className="w-full h-[44px] rounded-lg border border-dashed border-black/35 text-[13px] font-medium text-black/60 hover:border-black hover:text-black transition inline-flex items-center justify-center gap-2"
             >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {busy ? 'Uploading…' : 'Upload image'}
+              <Plus size={15} /> Add photo ({photos.length}/{MAX_IMAGES_PER_COLOUR})
             </button>
-            {value && (
-              <button
-                type="button"
-                onClick={() => onChange('')}
-                className="inline-flex items-center gap-1.5 text-[13px] text-black/50 hover:text-red-600 px-2 h-[38px]"
-              >
-                <Trash2 size={14} /> Clear
-              </button>
-            )}
-          </div>
-          <div className="relative">
-            <Link2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-black/35" />
-            <input
-              type="url"
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder="…or paste an image URL"
-              className={`${inputCls} h-[40px] pl-8 text-[13px]`}
-            />
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -219,19 +293,26 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
             </label>
           </div>
 
-          <ImageField
-            note="Main image"
-            value={v.image}
-            onChange={(url) => onChange({ image: url })}
-            busy={uploading === `${v.key}:image`}
-            onPick={(f) => onUpload(v, 'image', f)}
-          />
-          <ImageField
-            note="Second image (shown on hover)"
-            value={v.hover}
-            onChange={(url) => onChange({ hover: url })}
-            busy={uploading === `${v.key}:hover`}
-            onPick={(f) => onUpload(v, 'hover', f)}
+          <PhotoList
+            photos={v.photos}
+            uploading={
+              uploading && uploading.startsWith(`${v.key}:`)
+                ? Number(uploading.slice(v.key.length + 1))
+                : null
+            }
+            onPick={(i, f) => onUpload(v, i, f)}
+            onAdd={(f) => onUpload(v, v.photos.length, f)}
+            onUrl={(i, url) =>
+              onChange({ photos: v.photos.map((p, j) => (j === i ? url : p)) })
+            }
+            onRemove={(i) => onChange({ photos: v.photos.filter((_, j) => j !== i) })}
+            onMove={(i, dir) => {
+              const j = i + dir
+              if (j < 0 || j >= v.photos.length) return
+              const next = [...v.photos]
+              ;[next[i], next[j]] = [next[j], next[i]]
+              onChange({ photos: next })
+            }}
           />
 
           <VisibilitySwitch
@@ -309,8 +390,9 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
                 ...v,
                 ...patch,
                 // Touching a photo rebuilds that colour's gallery from the
-                // images on file — the same rule the editor has always used.
-                ...('image' in patch || 'hover' in patch ? { galleryDirty: true } : {}),
+                // photos in the editor — the same rule the editor has always
+                // used, now over the whole photo list.
+                ...('photos' in patch ? { galleryDirty: true } : {}),
               }
             : v,
         ),
@@ -324,24 +406,32 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
     setScrollSel(`[data-vkey="${key}"]`)
   }
 
-  const upload = async (v, field, file) => {
+  // Upload (or replace) ONE photo of a colour at a given position. The path
+  // is unique per upload, so a photo added to one colour can never overwrite
+  // another colour's photo in the bucket.
+  const upload = async (v, index, file) => {
     setError('')
     if (!file.type?.startsWith('image/')) return setError('Please choose an image file.')
     if (file.size > 5 * 1024 * 1024) return setError('Images must be smaller than 5 MB.')
-    setUploading(`${v.key}:${field}`)
+    const photos = photosOf(v)
+    const at = Math.min(Math.max(0, index), MAX_IMAGES_PER_COLOUR - 1)
+    if (index >= MAX_IMAGES_PER_COLOUR) {
+      return setError(`A colour may carry up to ${MAX_IMAGES_PER_COLOUR} photos.`)
+    }
+    setUploading(`${v.key}:${at}`)
     try {
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
       const base = slug(v.id || buildTitle(form.shared.name, v.colour)) || 'product'
-      // Unique per upload, so a photo added to one colour can never overwrite
-      // another colour's photo in the bucket.
-      const path = `${base}-${field}-${Date.now()}.${ext}`
+      const path = `${base}-photo${at + 1}-${Date.now()}.${ext}`
       const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, {
         contentType: file.type,
         upsert: false,
       })
       if (upErr) throw upErr
       const { data } = supabase.storage.from(bucket).getPublicUrl(path)
-      setVariant(v.key, { [field]: data.publicUrl })
+      while (photos.length <= at) photos.push('')
+      photos[at] = data.publicUrl
+      setVariant(v.key, { photos })
     } catch (e) {
       setError(e?.message || 'Upload failed. Please try again.')
     } finally {
@@ -491,11 +581,7 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
                     key={s}
                     type="button"
                     aria-pressed={on}
-                    onClick={() =>
-                      setShared({
-                        sizes: on ? form.shared.sizes.filter((x) => x !== s) : [...form.shared.sizes, s],
-                      })
-                    }
+                    onClick={() => setShared({ sizes: toggleSize(form.shared.sizes, s) })}
                     className={`min-w-[52px] h-[40px] px-3 rounded-lg border text-[14px] font-medium transition ${
                       on ? 'bg-black text-white border-black' : 'bg-white text-black/60 border-black/25 hover:border-black/60'
                     }`}
@@ -505,7 +591,10 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
                 )
               })}
             </div>
-            <span className="block text-[12px] text-black/45">Applies to every colour of this product.</span>
+            <span className="block text-[12px] text-black/45">
+              Applies to every colour of this product. Offer only the sizes this product actually stocks —
+              stopping at XL, or going up to 5XL, is your choice per product.
+            </span>
           </Section>
 
           <Section title="Ratings">

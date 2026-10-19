@@ -39,9 +39,15 @@ async function invoke(name, body, fallback) {
   throw Object.assign(new Error(message), { retryable, status })
 }
 
-/** Create the application order and its matching Razorpay order. */
-export function createRazorpayOrder(customer, items) {
-  return invoke('create-razorpay-order', { ...customer, items }, CREATE_FALLBACK)
+/** Create the application order and its matching Razorpay order. The coupon
+ *  code, if any, is only a REQUEST: the server re-validates it and prices the
+ *  order itself. */
+export function createRazorpayOrder(customer, items, couponCode) {
+  return invoke('create-razorpay-order', {
+    ...customer,
+    items,
+    ...(couponCode ? { coupon_code: couponCode } : {}),
+  }, CREATE_FALLBACK)
 }
 
 const VERIFY_ATTEMPTS = 3

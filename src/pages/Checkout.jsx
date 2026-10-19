@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2, Lock, ShieldCheck, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Loader2, Lock, ShieldCheck, AlertTriangle, Tag, X } from 'lucide-react'
 import usePageTitle from '../hooks/usePageTitle'
 import { useCart } from '../context/CartContext'
 import { useProducts } from '../context/ProductsContext'
@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import Img from '../components/Img'
 import { saveOrder } from '../lib/orderStore'
 import { inr, shippingFor, totalFor } from '../lib/pricing'
+import { discountFor, normalizeCode, validateCoupon } from '../lib/coupons'
 import { EMPTY_ADDRESS, INDIAN_STATES, validateAddress } from '../lib/checkout'
 import { onlinePaymentReady, openRazorpay } from '../lib/razorpay'
 import { createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
@@ -73,8 +74,13 @@ function PayOption({ value, checked, onChange, title, body }) {
   )
 }
 
-function Summary({ lines, subtotal }) {
+function Summary({
+  lines, subtotal, coupon, couponInput, setCouponInput, couponBusy, couponNote, onApply, onRemoveCoupon,
+}) {
   const shipping = shippingFor()
+  // Display only — the database recomputes the real discount when the order
+  // is created and prices the payment from its own total.
+  const discount = coupon ? discountFor(coupon, subtotal) : 0
   return (
     <div className="border border-black/10 rounded-xl bg-transparent p-5 shadow-[0_1px_2px_rgba(74,44,35,.04)]">
       <h2 className="text-[17px] font-semibold">Order summary</h2>
@@ -96,14 +102,72 @@ function Summary({ lines, subtotal }) {
         ))}
       </ul>
 
+      {/* Coupon: one input to apply, one button to remove. The code is only
+          ever checked by the database — invalid, expired or inactive codes
+          are refused with the server's own message. */}
+      <div className="mt-5 pt-5 border-t border-black/10">
+        {!coupon ? (
+          <>
+            <label htmlFor="coupon-code" className="block text-[14px] font-medium">Have a coupon code?</label>
+            <div className="flex gap-2 mt-2">
+              <input
+                id="coupon-code"
+                type="text"
+                value={couponInput}
+                onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                placeholder="Coupon code"
+                autoCapitalize="characters"
+                autoComplete="off"
+                className="flex-1 min-w-0 h-[42px] px-3 rounded-lg border border-black/30 bg-white text-[14px] font-mono outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:font-sans placeholder:text-black/35"
+              />
+              <button
+                type="button"
+                onClick={onApply}
+                disabled={couponBusy || !couponInput.trim()}
+                className="h-[42px] px-4 rounded-lg border border-black/60 text-[14px] font-semibold inline-flex items-center gap-1.5 hover:bg-black hover:text-white transition disabled:opacity-60"
+              >
+                {couponBusy ? <Loader2 size={14} className="animate-spin" /> : <Tag size={14} />}
+                {couponBusy ? 'Checking…' : 'Apply'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[15px] min-w-0 truncate">
+              <Tag size={15} className="inline -mt-0.5 mr-1.5 text-brand-green" />
+              Coupon <span className="font-mono font-semibold">{coupon.code}</span>
+              <span className="text-brand-green font-semibold"> · −{inr(discount)}</span>
+            </p>
+            <button
+              type="button"
+              onClick={onRemoveCoupon}
+              className="inline-flex items-center gap-1 text-[13px] text-black/50 hover:text-red-600 shrink-0"
+            >
+              <X size={14} /> Remove
+            </button>
+          </div>
+        )}
+        {couponNote && (
+          <p role="status" aria-live="polite" className={`mt-2 text-[13px] ${couponNote.kind === 'ok' ? 'text-green-700' : 'text-red-600'}`}>
+            {couponNote.text}
+          </p>
+        )}
+      </div>
+
       <dl className="mt-5 pt-5 border-t border-black/10 space-y-2 text-[15px]">
         <div className="flex justify-between"><dt className="text-black/65">Subtotal</dt><dd className="font-ui">{inr(subtotal)}</dd></div>
+        {discount > 0 && (
+          <div className="flex justify-between">
+            <dt className="text-black/65">Discount</dt>
+            <dd className="font-ui text-brand-green font-semibold">−{inr(discount)}</dd>
+          </div>
+        )}
         <div className="flex justify-between">
           <dt className="text-black/65">Shipping</dt>
           <dd className="font-ui">{shipping === 0 ? <span className="text-brand-green font-semibold">Free</span> : inr(shipping)}</dd>
         </div>
         <div className="flex justify-between pt-3 border-t border-black/10 text-[18px] font-semibold">
-          <dt>Total</dt><dd className="font-ui">{inr(totalFor(subtotal))}</dd>
+          <dt>Total</dt><dd className="font-ui">{inr(totalFor(subtotal, discount))}</dd>
         </div>
       </dl>
     </div>
@@ -122,6 +186,12 @@ export default function Checkout() {
   const [failure, setFailure] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [pay, setPay] = useState('razorpay')
+  // The applied coupon, exactly as the DATABASE validated it (see
+  // src/lib/coupons.js): { valid, code, kind, value, discount, message }.
+  const [coupon, setCoupon] = useState(null)
+  const [couponInput, setCouponInput] = useState('')
+  const [couponBusy, setCouponBusy] = useState(false)
+  const [couponNote, setCouponNote] = useState(null)
   const prefilled = useRef(false)
 
   // Price against the live catalogue — never against a stale cache — before
@@ -142,12 +212,63 @@ export default function Checkout() {
     setErrors((prev) => (prev[k] ? { ...prev, [k]: undefined } : prev))
   }
 
+  // A coupon is only valid for the subtotal it was checked against. When the
+  // cart or any quantity changes, the database re-checks the applied code —
+  // a code that no longer meets its minimum (or has just expired) is dropped
+  // with a message instead of quietly charging a stale discount.
+  const appliedCode = coupon?.code
+  useEffect(() => {
+    if (!appliedCode) return undefined
+    let alive = true
+    validateCoupon(appliedCode, subtotal)
+      .then((res) => {
+        if (!alive) return
+        if (res.valid) setCoupon(res)
+        else {
+          setCoupon(null)
+          setCouponInput('')
+          setCouponNote({ kind: 'err', text: res.message || 'That coupon is no longer valid for this order.' })
+        }
+      })
+      .catch(() => {
+        /* keep the current discount display; the server re-checks at payment */
+      })
+    return () => {
+      alive = false
+    }
+  }, [appliedCode, subtotal])
+
+  const applyCoupon = async () => {
+    setCouponNote(null)
+    setCouponBusy(true)
+    try {
+      const res = await validateCoupon(couponInput, subtotal)
+      if (res.valid) {
+        setCoupon(res)
+        setCouponNote({ kind: 'ok', text: res.message || 'Coupon applied.' })
+      } else {
+        setCoupon(null)
+        setCouponNote({ kind: 'err', text: res.message || 'That coupon code is not valid.' })
+      }
+    } catch (err) {
+      setCouponNote({ kind: 'err', text: err?.message || 'We could not check that coupon code.' })
+    } finally {
+      setCouponBusy(false)
+    }
+  }
+
+  const removeCoupon = () => {
+    setCoupon(null)
+    setCouponInput('')
+    setCouponNote(null)
+  }
+
   // Online payment: the server creates (or reuses) the order, prices it from
   // the catalogue and mints the matching Razorpay order. Everything after that
   // — opening Checkout, then having the signature verified — is what turns it
   // into a paid order. The cart is only cleared once verification succeeds.
-  const payOnline = async (customer, items) => {
-    const started = await createRazorpayOrder(customer, items)
+  const payOnline = async (customer, items, couponCode) => {
+    const started = await createRazorpayOrder(customer, items, couponCode)
     if (!started?.razorpay_order_id || !started?.key_id) {
       throw new Error('We could not start your payment. You have not been charged — please try again.')
     }
@@ -220,9 +341,18 @@ export default function Checkout() {
     try {
       // Every order is paid online — `payOnline` creates (or reuses) the
       // order, opens Razorpay and clears the cart once verification succeeds.
-      await payOnline(customer, items)
+      // The coupon code travels as a request only: the database re-validates
+      // it and prices the order itself.
+      await payOnline(customer, items, coupon?.code || '')
     } catch (err) {
       setFailure(err?.message || 'We could not place your order. Please try again.')
+      // A coupon the server refused must not stay applied — the customer
+      // fixes it (or pays without it) on the next attempt.
+      if (/coupon/i.test(err?.message || '')) {
+        setCoupon(null)
+        setCouponInput('')
+        setCouponNote(null)
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } finally {
       setSubmitting(false)
@@ -342,7 +472,7 @@ export default function Checkout() {
             className="mt-8 w-full h-[56px] rounded-lg bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
           >
             {submitting && <Loader2 size={18} className="animate-spin" />}
-            {submitting ? 'Opening secure payment…' : `Pay now · ${inr(totalFor(subtotal))}`}
+            {submitting ? 'Opening secure payment…' : `Pay now · ${inr(totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0))}`}
           </button>
           <p className="text-[13px] text-black/50 mt-3 text-center">
             By placing this order you agree to our <Link to="/policies/terms-of-service" className="underline underline-offset-2">terms</Link> and <Link to="/policies/refund-policy" className="underline underline-offset-2">refund policy</Link>.
@@ -350,7 +480,17 @@ export default function Checkout() {
         </form>
 
         <aside className="lg:sticky lg:top-[120px]">
-          <Summary lines={lines} subtotal={subtotal} />
+          <Summary
+            lines={lines}
+            subtotal={subtotal}
+            coupon={coupon}
+            couponInput={couponInput}
+            setCouponInput={setCouponInput}
+            couponBusy={couponBusy}
+            couponNote={couponNote}
+            onApply={applyCoupon}
+            onRemoveCoupon={removeCoupon}
+          />
         </aside>
       </div>
     </section>
