@@ -10,11 +10,11 @@
 // charged.
 
 import { supabase } from './supabase.js'
-import { normalizeCode, discountFor } from './couponRules.js'
+import { normalizeCode, discountFor, serverHonoursCoupon } from './couponRules.js'
 
 // Pure helpers live in `couponRules.js` (so tests can import them without the
 // Supabase client) and are re-exported here for every existing caller.
-export { normalizeCode, discountFor }
+export { normalizeCode, discountFor, serverHonoursCoupon }
 
 /**
  * Ask the database whether a coupon is valid for this subtotal.

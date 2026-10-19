@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import Img from '../components/Img'
 import { saveOrder } from '../lib/orderStore'
 import { inr, shippingFor, totalFor } from '../lib/pricing'
-import { discountFor, normalizeCode, validateCoupon } from '../lib/coupons'
+import { discountFor, normalizeCode, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
 import { EMPTY_ADDRESS, INDIAN_STATES, validateAddress } from '../lib/checkout'
 import { onlinePaymentReady, openRazorpay } from '../lib/razorpay'
 import { createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
@@ -271,6 +271,20 @@ export default function Checkout() {
     const started = await createRazorpayOrder(customer, items, couponCode)
     if (!started?.razorpay_order_id || !started?.key_id) {
       throw new Error('We could not start your payment. You have not been charged — please try again.')
+    }
+
+    // The gateway charges the total the DATABASE priced, which comes back as
+    // `started.total` — never the number this page worked out for itself. If a
+    // discount is showing that the server did not price, the shopper would be
+    // promised ₹1,000 and asked for ₹1,500 a moment later. Drop the coupon
+    // here, before the payment window opens, so the page and Razorpay agree.
+    if (!serverHonoursCoupon(coupon, subtotal, started)) {
+      setCoupon(null)
+      setCouponInput('')
+      setCouponNote({
+        kind: 'err',
+        text: 'That coupon could not be applied to this order — the amount in the payment window is the amount you will be charged.',
+      })
     }
 
     let response

@@ -165,6 +165,12 @@ export async function handle(req: Request): Promise<Response> {
       reference,
       subtotal: order.subtotal,
       shipping: order.shipping,
+      // The discount `create_order()` itself computed, echoed so Checkout can
+      // check that what it shows the shopper matches what Razorpay charges.
+      // Absent on a database whose coupon migration has not run, where JSON
+      // simply omits the key and Checkout compares totals instead.
+      discount: order.discount,
+      coupon_code: order.coupon_code,
       total: order.total,
       payment_method: order.payment_method,
       payment_status: order.payment_status,

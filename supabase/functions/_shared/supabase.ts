@@ -104,11 +104,20 @@ export async function fetchOrderByColumn(
   column: 'razorpay_order_id' | 'razorpay_payment_id' | 'reference',
   value: string,
 ): Promise<Json | null> {
-  const res = await serviceFetch(
-    `/rest/v1/orders?${column}=eq.${encodeURIComponent(value)}` +
-      '&select=id,reference,status,payment_method,payment_status,razorpay_order_id,' +
-      'razorpay_payment_id,paid_at,subtotal,shipping,total,created_at',
-  )
+  const common =
+    'id,reference,status,payment_method,payment_status,razorpay_order_id,' +
+    'razorpay_payment_id,paid_at,subtotal,shipping,'
+  const path = (select: string) =>
+    `/rest/v1/orders?${column}=eq.${encodeURIComponent(value)}&select=${select}`
+  // `discount` and `coupon_code` reach the shopper's confirmation page straight
+  // from here, so they are asked for first — and, exactly as `fetchOrder()`
+  // above does, dropped again if the migration adding them has not run yet.
+  // Without that fallback, a not-yet-migrated database would make this call
+  // fail outright and take payment verification down with it.
+  let res = await serviceFetch(path(`${common}discount,coupon_code,total,created_at`))
+  if (!res.ok) {
+    res = await serviceFetch(path(`${common}total,created_at`))
+  }
   if (!res.ok) return null
   const rows = (await res.json().catch(() => [])) as Json[]
   return Array.isArray(rows) ? (rows[0] ?? null) : null
