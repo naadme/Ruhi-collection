@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, ChevronDown, Download, Inbox, Loader2, MapPin, Phone, RefreshCw, User,
+  AlertTriangle, ArrowUpDown, Calendar, ChevronDown, Download, Inbox, Loader2, MapPin,
+  Phone, RefreshCw, User, X,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { inr } from '../lib/pricing'
+import { filterAndSortOrders } from '../lib/orderFiltering'
 import { downloadOrdersXlsx } from './orderExport'
 
 const STATUSES = [
@@ -212,6 +214,9 @@ export default function OrdersPanel({ notify }) {
   const [state, setState] = useState({ loading: true, orders: [], error: '' })
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
+  const [sort, setSort] = useState('newest')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [openId, setOpenId] = useState('')
   const [busyId, setBusyId] = useState('')
   const [exporting, setExporting] = useState(false)
@@ -243,18 +248,16 @@ export default function OrdersPanel({ notify }) {
     return c
   }, [state.orders])
 
-  const rows = useMemo(() => {
-    const t = query.trim().toLowerCase()
-    return state.orders.filter((o) => {
-      if (filter !== 'all' && o.status !== filter) return false
-      if (!t) return true
-      const hay = [
-        o.reference, o.full_name, o.email, o.phone, o.city, o.state, o.pincode,
-        o.razorpay_order_id, o.razorpay_payment_id,
-      ].filter(Boolean).join(' ').toLowerCase()
-      return hay.includes(t)
-    })
-  }, [state.orders, query, filter])
+  // One pass over EVERY order the admin can see — status, search, date range
+  // and date sort together — so the list, the header count and the Excel
+  // download all describe exactly the same set.
+  const rows = useMemo(
+    () => filterAndSortOrders(state.orders, { status: filter, query, sort, from, to }),
+    [state.orders, query, filter, sort, from, to],
+  )
+
+  const rangeActive = Boolean(from || to)
+  const clearRange = () => { setFrom(''); setTo('') }
 
   const setOrderStatus = async (order, status) => {
     setBusyId(order.id)
@@ -360,6 +363,56 @@ export default function OrdersPanel({ notify }) {
         </div>
       </div>
 
+      {/* Date ordering and range. Sorting always runs on the order's
+          `created_at` — when it was placed — and applies to every order the
+          admin can see, not to one page of them. */}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => setSort((s) => (s === 'newest' ? 'oldest' : 'newest'))}
+          aria-label={`Order by date: ${sort === 'newest' ? 'newest first' : 'oldest first'}. Click to switch.`}
+          className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-black/20 bg-white text-[14px] font-medium hover:border-black/50 transition"
+        >
+          <ArrowUpDown size={15} className="text-black/55" />
+          {sort === 'newest' ? 'Newest first' : 'Oldest first'}
+        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[14px] text-black/55">
+            <Calendar size={15} /> From
+          </span>
+          <input
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+            aria-label="Orders from date"
+            className="h-10 px-2.5 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+          />
+          <span className="text-[14px] text-black/55">to</span>
+          <input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+            aria-label="Orders to date"
+            className="h-10 px-2.5 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+          />
+          {rangeActive && (
+            <button
+              onClick={clearRange}
+              className="inline-flex items-center gap-1 h-10 px-2.5 rounded-lg text-[14px] text-black/55 hover:text-black hover:bg-black/5 transition"
+            >
+              <X size={14} /> Clear
+            </button>
+          )}
+        </div>
+
+        <p className="ml-auto text-[14px] text-black/50">
+          Showing {rows.length} of {state.orders.length} {state.orders.length === 1 ? 'order' : 'orders'}
+          {rangeActive ? ' in this date range' : ''}
+        </p>
+      </div>
+
       {state.loading ? (
         <ul className="mt-6 space-y-3">
           {[0, 1, 2].map((i) => (
@@ -381,7 +434,7 @@ export default function OrdersPanel({ notify }) {
           <p className="text-black/55 mt-1 text-[15px]">
             {state.orders.length === 0
               ? 'Orders placed at checkout will appear here as soon as a customer checks out.'
-              : 'Try a different search or status.'}
+              : 'Try a different search, status or date range.'}
           </p>
         </div>
       ) : (
