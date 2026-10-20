@@ -18,6 +18,8 @@ function Wordmark() {
     <Link to="/" className="shrink-0 block" aria-label="Ruhi Womens Clothing — home">
       <img
         src="/images/ruhi-logo.jpg"
+        srcSet="/images/ruhi-logo-320.jpg 320w, /images/ruhi-logo.jpg 968w"
+        sizes="48px"
         alt="Ruhi Womens Clothing"
         width={968}
         height={628}

@@ -160,8 +160,6 @@ const GoogleMark = () => (
  * *before* supabase-js's `_initialize()` parsed the same URL, so the callback
  * was destroyed while it was still being diagnosed. The rewrite now happens in
  * the effect below, gated on `ready`.
- *
- * TEMP: the raw GoTrue values are logged so the real cause is visible.
  */
 function readOAuthError() {
   if (typeof window === 'undefined') return null
@@ -189,9 +187,6 @@ function readOAuthError() {
     }
     return out
   })
-
-  // TEMP diagnostic — GoTrue's own error text, never a token or a secret.
-  console.info('[oauth] error in URL:', shown.join(' | '))
 
   const lower = shown.join(' ').toLowerCase()
   if (/access_denied|403|cancelled|canceled|denied/.test(lower)) {
@@ -280,7 +275,7 @@ function takeNext() {
    ---------------------------------------------------------------------- */
 
 function AuthForm({ mode, setMode, onDone, busy, next }) {
-  const { ready, signIn, signUp, signInWithOAuth } = useAuth()
+  const { ready, signIn, signUp, signInWithOAuth, oauthError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -293,7 +288,13 @@ function AuthForm({ mode, setMode, onDone, busy, next }) {
   // A failed/cancelled OAuth round-trip lands back on this page with the
   // reason in the URL — show it rather than silently doing nothing. Read once,
   // during the very first render, while the callback is still untouched.
-  const [oauthError] = useState(readOAuthError)
+  const [urlError] = useState(readOAuthError)
+  useEffect(() => {
+    if (urlError) setError(urlError)
+  }, [urlError])
+
+  // A round-trip that came back with a PKCE code the server then refused
+  // carries its reason in the auth context rather than in the URL.
   useEffect(() => {
     if (oauthError) setError(oauthError)
   }, [oauthError])
@@ -304,11 +305,11 @@ function AuthForm({ mode, setMode, onDone, busy, next }) {
   // `_initialize()` (child effects fire ahead of AuthProvider's) and destroy
   // the callback while it was still being diagnosed.
   useEffect(() => {
-    if (!ready || !oauthError) return
+    if (!ready || !urlError) return
     if (window.location.hash || window.location.search) {
       window.history.replaceState({}, document.title, window.location.pathname)
     }
-  }, [ready, oauthError])
+  }, [ready, urlError])
 
   const switchMode = (nextMode) => {
     setMode(nextMode)

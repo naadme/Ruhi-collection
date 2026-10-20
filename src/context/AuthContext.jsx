@@ -7,17 +7,6 @@ export const useAuth = () => useContext(Ctx)
 const OAUTH_NAME = { google: 'Google' }
 
 /**
- * TEMPORARY OAuth tracing. Remove once Google sign-in is confirmed.
- *
- * Reports the *shape* of the flow only: parameter names, GoTrue error codes and
- * the user id. Never logs access tokens, refresh tokens, provider tokens or the
- * client secret.
- */
-const oauthLog = (stage, detail) => {
-  console.info(`[oauth] ${stage}`, detail ?? '')
-}
-
-/**
  * GoTrue writes the same error into the query *and* the hash, and the hash copy
  * arrives double-encoded (`code%3A 4%2F0A`). Un-wrap it so the reason is
  * readable and matchable.
@@ -37,19 +26,16 @@ const undouble = (value) => {
  * inside a later effect) because the login page tidies the address as soon as
  * `ready` flips, and child effects run ahead of this provider's.
  *
- * TEMP: the result is only used for diagnostics.
+ * The `error*` fields describe a failed round-trip; `code` is the PKCE code
+ * used to recover a session when the project answers with one.
  */
 export function readOAuthCallback() {
   if (typeof window === 'undefined') return null
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
   const query = new URLSearchParams(window.location.search.replace(/^\?/, ''))
-  const names = [...new Set([...query.keys(), ...hash.keys()])]
-  if (!names.length) return null
+  if (![...query.keys(), ...hash.keys()].length) return null
   const grab = (k) => query.get(k) || hash.get(k) || ''
   return {
-    // Parameter *names* only: the hash carries the tokens themselves.
-    names,
-    where: window.location.hash ? 'hash' : 'query',
     error: undouble(grab('error')),
     errorCode: undouble(grab('error_code')),
     errorDescription: undouble(grab('error_description')),
@@ -131,6 +117,9 @@ export function AuthProvider({ children }) {
   const [canManageProducts, setCanManageProducts] = useState(false)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
+  // A reason the last OAuth round-trip could not be completed, for the login
+  // page to show. Empty when there is nothing to report.
+  const [oauthError, setOauthError] = useState('')
 
   // Re-check the allowlist whenever the signed-in identity changes.
   //
@@ -141,10 +130,14 @@ export function AuthProvider({ children }) {
   //
   // There is deliberately no `profiles` row to create on sign-in (nothing in
   // this app depends on one), so this lookup is the only "did the account land
-  // in the database" check that runs after an OAuth round-trip. TEMP logging.
+  // in the database" check that runs after an OAuth round-trip.
   useEffect(() => {
     if (!user) { setIsAdmin(false); setCanManageProducts(false); return }
     let alive = true
+    // Rights are cleared first: while the allowlist lookup is in flight the
+    // previous account's rights must not still be on screen.
+    setIsAdmin(false)
+    setCanManageProducts(false)
     Promise.all([
       supabase.from('admins').select('user_id').eq('user_id', user.id).maybeSingle(),
       supabase.from('product_managers').select('user_id').eq('user_id', user.id).maybeSingle(),
@@ -155,13 +148,14 @@ export function AuthProvider({ children }) {
         const productManagerRow = !productManager.error && !!productManager.data
         setIsAdmin(adminRow)
         setCanManageProducts(adminRow || productManagerRow)
-        oauthLog('profile lookup', {
-          adminRow,
-          productManagerRow,
-          note: 'no profile row is created by this app',
-        })
       })
-      .catch((e) => { if (alive) oauthLog('profile lookup threw', e?.message || '') })
+      .catch(() => {
+        // A failed lookup must not leave the previous account's rights in
+        // place: without a row we cannot say the account is an admin.
+        if (!alive) return
+        setIsAdmin(false)
+        setCanManageProducts(false)
+      })
     return () => { alive = false }
   }, [user?.id])
 
@@ -181,28 +175,27 @@ export function AuthProvider({ children }) {
     oauthCallback.current = readOAuthCallback()
 
     supabase.auth.getSession()
-      .then(({ data, error }) => {
+      .then(({ data }) => {
         if (!alive) return
-        // `_initialize()` reports a bad callback here rather than throwing; the
+        // A bad callback is reported by `_initialize()` rather than thrown; the
         // login page reads the same values out of the URL for the visible copy.
-        if (error) oauthLog('session restore rejected the callback', { code: error.code || '', message: error.message || '' })
         setSession(data?.session ?? null)
         setUser(data?.session?.user ?? null)
       })
-      .catch((e) => {
-        if (alive) oauthLog('session restore threw', e?.message || '')
+      .catch(() => {
+        // The session could not be read: treat the visitor as signed out rather
+        // than leaving the previous account's session on screen.
+        if (!alive) return
+        setSession(null)
+        setUser(null)
       })
       .finally(() => { if (alive) setReady(true) })
 
-    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       if (alive) {
         setSession(s ?? null)
         setUser(s?.user ?? null)
       }
-      // Callback events only — INITIAL_SESSION is noisy and carries no news.
-      if (event === 'SIGNED_IN') oauthLog('session detected', { userId: s?.user?.id || '' })
-      else if (event === 'SIGNED_OUT') oauthLog('session cleared')
-      else if (event === 'TOKEN_REFRESHED') oauthLog('token refreshed')
     })
     return () => { alive = false; sub.subscription.unsubscribe() }
   }, [])
@@ -219,28 +212,33 @@ export function AuthProvider({ children }) {
     const cb = oauthCallback.current
     if (!cb) return
 
-    oauthLog('callback detected', { params: cb.names, where: cb.where })
-
     if (cb.error || cb.errorCode || cb.errorDescription) {
-      // GoTrue's own diagnostics — not credentials.
-      oauthLog('actual Supabase error', {
-        error: cb.error, error_code: cb.errorCode, error_description: cb.errorDescription,
-      })
+      // GoTrue's own diagnostics — not credentials. The login page reads the
+      // same values out of the URL and shows the shopper a plain sentence.
       return
     }
 
     if (!cb.code) return
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (data?.session) { oauthLog('session detected', 'code already exchanged'); return }
-      oauthLog('pkce code present', 'exchanging for a session…')
-      return supabase.auth.exchangeCodeForSession(cb.code)
-        .then(({ error: exErr }) => {
-          if (exErr) oauthLog('code exchange failed', { code: exErr.code || '', message: exErr.message || '' })
-          else oauthLog('session detected', 'exchanged from code')
-        })
-        .catch((e) => oauthLog('code exchange threw', e?.message || ''))
-    }).catch((e) => oauthLog('code exchange pre-check threw', e?.message || ''))
+    let alive = true
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        if (data?.session) return undefined
+        return supabase.auth.exchangeCodeForSession(cb.code)
+      })
+      .then((result) => {
+        // A failed exchange resolves with an error rather than throwing; the
+        // shopper would otherwise be left staring at a page that silently did
+        // nothing, so the reason is put in front of them.
+        const failure = result?.error
+        if (!alive || !failure) return
+        setOauthError(friendlyAuthError(failure))
+      })
+      .catch((e) => {
+        if (!alive) return
+        setOauthError(friendlyAuthError(e))
+      })
+    return () => { alive = false }
   }, [ready])
 
   const signIn = useCallback(async (email, password) => {
@@ -290,20 +288,15 @@ export function AuthProvider({ children }) {
   const signInWithOAuth = useCallback(async (provider, { redirectTo } = {}) => {
     try {
       const finalRedirectTo = redirectTo || authRedirectUrl()
-      // TEMP — shows the port actually being handed to Supabase, which is the
-      // value that must appear in the dashboard's Redirect URL allow-list.
-      oauthLog('oauth start', { provider, redirectTo: finalRedirectTo, flowType: 'implicit' })
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo: finalRedirectTo },
       })
       if (error) {
-        oauthLog('oauth did not start', { provider, code: error.code || '', message: error.message || '' })
         return { error: friendlyAuthError(error, provider) }
       }
       return { ok: true }
     } catch (e) {
-      oauthLog('oauth start threw', { provider, message: e?.message || '' })
       return { error: friendlyAuthError(e, provider) }
     }
   }, [])
@@ -316,7 +309,7 @@ export function AuthProvider({ children }) {
   return (
     <Ctx.Provider
       value={{
-        ready, session, user, isAdmin, canManageProducts, busy,
+        ready, session, user, isAdmin, canManageProducts, busy, oauthError,
         signIn, signUp, signInWithOAuth, signOut,
       }}
     >

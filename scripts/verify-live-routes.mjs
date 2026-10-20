@@ -61,6 +61,13 @@ const ROUTES = ['/', '/shop', '/shop?type=coord', '/collections', '/product/soli
 
 let bad = 0
 for (const route of ROUTES) {
+  // Settle the previous page first. A navigation cancels whatever that page
+  // still had in flight, and those cancellations belong to the page that was
+  // left behind — counting them against the next route would report a failure
+  // that never happened. The counters are cleared after the settle, so only
+  // this route's own requests are judged.
+  await send('Page.navigate', { url: 'about:blank' })
+  await sleep(500)
   consoleErrors.length = 0
   failed.length = 0
   await send('Page.navigate', { url: BASE + route })

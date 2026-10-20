@@ -13,7 +13,7 @@
 // `categories` row, which only an admin can write (the table's own RLS).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, Loader2, Trash2, Upload } from 'lucide-react'
 import { useCategories } from '../context/CategoriesContext'
 import { fetchCategories } from '../lib/categories'
 import { CATEGORY_IMAGE_OPTIONS } from '../lib/categoryImages'
