@@ -178,7 +178,7 @@ export default function Dashboard({ showOrders }) {
       if (cat && g.rows[0].type !== cat) return false
       if (!t) return true
       const hay = [g.name, typeLabel(g.rows[0].type), g.rows[0].type,
-        ...g.rows.flatMap((r) => [r.title, r.id, colourOf(r)])]
+        ...g.rows.flatMap((r) => [r.title, r.id, r.sku, colourOf(r)])]
         .join(' ').toLowerCase()
       return t.split(/\s+/).filter(Boolean).every((tok) => hay.includes(tok))
     })

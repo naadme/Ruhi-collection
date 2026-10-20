@@ -7,6 +7,7 @@ import { img } from '../data/images'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { fetchHomeBanners } from '../lib/banners'
+import { heroSlides, slideAt } from '../lib/heroSlider'
 import { fetchBestsellers, resolveBestsellers } from '../lib/bestsellers'
 import { inr } from '../lib/pricing'
 import Img from './Img'
@@ -76,7 +77,7 @@ export const Hero = () => {
   // `xl` rather than one jump to 104px: the longest line, "Ruhi Women's",
   // has to clear the column at 320px and inside the 384px half a `md`
   // viewport gives it.
-  const [at, setAt] = useState(0)
+  const [atRaw, setAt] = useState(0)
   // Banner photos the admin has saved for the homepage hero. Empty means
   // "none saved" (or Supabase unreachable) — the hero then keeps its original
   // category-photo slider, so the page always renders something meaningful.
@@ -92,12 +93,14 @@ export const Hero = () => {
       alive = false
     }
   }, [])
-  // Only stocked categories slide here (see `stocked` above) — unless the
-  // admin has saved banner images, which then take over the slider entirely.
-  const list = stocked(categories, products)
-  const slides = banners.length
-    ? banners.map((b) => ({ key: b.id, image: b.image, to: b.link || '/shop', label: 'Shop now' }))
-    : list.map((c) => ({ key: c.key, image: c.image, to: c.to, label: c.label }))
+  // The hero slides the admin's saved banners FIRST — in the order they were
+  // saved, opening on the first one — and keeps the stocked-category photos on
+  // the END of the list. Keeping them is what stops the arrows from vanishing
+  // the moment a banner is saved (see src/lib/heroSlider.js). With no banners
+  // saved the list is exactly the original category slider.
+  const slides = heroSlides(banners, stocked(categories, products).map((c) => ({
+    key: c.key, image: c.image, to: c.to, label: c.label,
+  })))
   const n = slides.length
   // Read-side wrap-around, so the last photo steps back to the first and the
   // first forward to the last without growing the state forever.
@@ -108,8 +111,13 @@ export const Hero = () => {
   // `at % 0` is NaN, `slides[NaN]` is undefined and reading `cur.key` in the
   // markup below takes the entire homepage down. With nothing to show the right
   // half stays blank and the static hero still renders.
-  const cur = n > 0 ? slides[((at % n) + n) % n] : null
+  const at = slideAt(atRaw, n)
+  const cur = at === null ? null : slides[at]
   const go = (d) => setAt((v) => v + d)
+  // Banners are prepended, so a list that changes underneath the visitor must
+  // start again from the top rather than landing somewhere in the middle of a
+  // set of photos they never saw.
+  useEffect(() => { setAt(0) }, [banners.length])
   return (
     <section className="grid min-h-[560px] md:grid-cols-2 md:h-[600px] lg:h-[684px] bg-[#4A2C23] text-white">
       {/* The poster is completely static: same wording, type, colours and

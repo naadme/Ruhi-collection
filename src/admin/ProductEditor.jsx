@@ -550,7 +550,7 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
                 )}
                 <span className="block text-[12px] text-black/45 mt-1.5">
                   {canManageCategories
-                    ? 'Categories are managed here, not per product — add, rename or remove them below.'
+                    ? 'Need another one? “Add category” opens the category manager — add, rename or remove them there.'
                     : 'Categories are added and renamed by an administrator.'}
                 </span>
               </div>

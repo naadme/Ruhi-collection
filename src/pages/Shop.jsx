@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import ProductGrid, { ResetLink } from '../components/ProductGrid'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
+import { matchesProduct } from '../lib/productSearch'
 import usePageTitle from '../hooks/usePageTitle'
 
 const Sel = ({ label, value, onChange, opts }) => (
@@ -15,17 +16,6 @@ const Sel = ({ label, value, onChange, opts }) => (
     </select>
   </label>
 )
-
-// Search across everything a shopper might type: product name, category,
-// collection, product id, badge, description and — for a grouped design —
-// any of the colours it comes in. The category label comes from the live
-// list, so a category the client renamed is searchable under its new name.
-const matches = (p, query, typeLabel) => {
-  const haystack = [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '',
-    ...(p.colors || []).map((c) => c.color)]
-    .join(' ').toLowerCase()
-  return query.toLowerCase().split(/\s+/).filter(Boolean).every((t) => haystack.includes(t))
-}
 
 export default function Shop() {
   usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — co-ord sets, dresses, tops and shirts. Filter by category, sort by price and find your fit. Free shipping for all products.')
@@ -44,7 +34,11 @@ export default function Shop() {
   // Filter + sort only when the catalogue or the filter/sort inputs change —
   // not on every unrelated render of this page.
   const filtered = useMemo(
-    () => products.filter((p) => (!t || p.type === t) && (!q || matches(p, q, typeLabel))),
+    // Search across everything a shopper might type — name, category, id, SKU,
+    // badge, description and the colours of a grouped design. The rule itself
+    // lives in src/lib/productSearch.js so the header search and this page can
+    // never disagree about what a word matches.
+    () => products.filter((p) => (!t || p.type === t) && (!q || matchesProduct(p, q, typeLabel))),
     [products, t, q, typeLabel],
   )
   const items = useMemo(() => {

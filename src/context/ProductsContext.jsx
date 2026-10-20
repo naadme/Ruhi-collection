@@ -48,6 +48,11 @@ const toProduct = (r) => {
   const gallery = shots(r)
   return {
     id: r.id,
+    // The six-character ID the owner reads off the product (CC category,
+    // PP number in that category, CL colour). It is display-only: `id` above
+    // stays the immutable link target, so a colour change can never break a
+    // cart line, a bookmarked URL or an order.
+    sku: r.sku || '',
     title: r.title,
     type: r.type,
     price: Number(r.price) || 0,
@@ -113,9 +118,15 @@ export function ProductsProvider({ children }) {
       // ~8s (1s/2s/4s backoff), which would leave the grid on its skeletons
       // through an outage. Falling back immediately is safe — the bundled
       // catalogue is this same client catalogue.
+      // Newest first, decided by the QUERY and not by the dashboard: a product
+      // that is created appears at the top of the list the moment it is saved
+      // and stays there after a refresh, because that is the order Supabase
+      // answers in. `created_at` is `not null default now()`, so no row can
+      // sink out of the ordering.
       const { data, error } = await supabase
         .from('products').select('*')
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
         .retry(false)
       if (mine !== seq.current) return true // a newer read or a verified row already won
       if (error) {
@@ -164,7 +175,7 @@ export function ProductsProvider({ children }) {
     setAll((prev) => {
       const at = prev.findIndex((p) => p.id === row.id)
       if (!keep) return at < 0 ? prev : prev.filter((p) => p.id !== row.id)
-      if (at < 0) return [...prev, keep]
+      if (at < 0) return [keep, ...prev]
       const next = [...prev]
       next[at] = keep
       return next

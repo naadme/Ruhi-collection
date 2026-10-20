@@ -4,6 +4,7 @@ import { Search, X } from 'lucide-react'
 import Img from './Img'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
+import { matchesProduct } from '../lib/productSearch'
 import { inr } from '../lib/pricing'
 
 export default function SearchBar({ onClose }) {
@@ -16,18 +17,13 @@ export default function SearchBar({ onClose }) {
   useEffect(() => ref.current?.focus(), [])
 
   const term = q.trim().toLowerCase()
-  // Same matching rules as the results page: name, category, collection, id and description.
+  // Same matching rule as the results page (src/lib/productSearch.js), so the
+  // header and the shop can never disagree about what a word finds.
   const res = term
-    ? products.filter((p) =>
-        [p.title, typeLabel(p.type), p.type, p.id, p.badge || '', p.desc || '',
-          // Grouped designs keep their colour names on the product, so a colour
-          // search still matches the way it did before the catalogue merged.
-          ...(p.colors || []).map((c) => c.color)]
-          .join(' ').toLowerCase().includes(term)
-      ).slice(0, 6)
+    ? products.filter((p) => matchesProduct(p, term, typeLabel)).slice(0, 6)
     : []
 
-  const go = (e) => { e.preventDefault(); nav(`/shop?q=${encodeURIComponent(term)}`); onClose() }
+  const go = (e) => { e?.preventDefault?.(); nav(`/shop?q=${encodeURIComponent(term)}`); onClose() }
 
   return (
     <div className="absolute inset-x-0 top-full bg-[#FAF0E7] border-b border-black/10 pb-4 shadow">

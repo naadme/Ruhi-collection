@@ -97,7 +97,11 @@ export function ProductRow({ p, busy, onToggle, onEdit, onDelete }) {
       <div className="min-w-0 flex-1 basis-[calc(100%-4.5rem)] sm:basis-auto">
         <p className="font-semibold text-[16px] leading-snug truncate">{p.title}</p>
         <p className="text-[13px] text-black/50 mt-0.5 capitalize">
-          {typeLabel(p.type)} · <span className="font-mono normal-case">{p.id}</span>
+          {typeLabel(p.type)} ·{' '}
+          {/* The six-character ID the database assigns — the admin never types
+              one. A row written before the SKU migration still shows its
+              immutable product id rather than nothing. */}
+          <span className="font-mono normal-case">{p.sku || p.id}</span>
         </p>
         <p className="text-[15px] mt-1 font-medium">
           <span className="text-red-600 font-bold">₹{p.price}</span>
@@ -149,6 +153,7 @@ export function GroupCard({
           <p className="font-semibold text-[16px] leading-snug truncate">{g.name}</p>
           <p className="text-[13px] text-black/50 mt-0.5 capitalize">
             {typeLabel(lead.type)} · {g.rows.length} colours · {liveCount} live
+            {lead.sku ? <> · <span className="font-mono normal-case">{lead.sku}</span></> : null}
           </p>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {g.rows.map((r, i) => (
@@ -206,7 +211,7 @@ export function GroupCard({
               <Thumb src={r.image} w="w-10 h-12" />
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-[14px] truncate">{colours[i] || 'No colour'}</p>
-                <p className="text-[12px] text-black/45 font-mono truncate">{r.id}</p>
+                <p className="text-[12px] text-black/45 font-mono truncate">{r.sku || r.id}</p>
               </div>
               <p className="text-[14px] font-medium shrink-0">
                 <span className="text-red-600 font-bold">₹{r.price}</span>

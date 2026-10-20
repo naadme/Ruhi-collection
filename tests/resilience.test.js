@@ -116,10 +116,13 @@ test('the wishlist reads only real id strings', () => {
 // ---- 2. the homepage hero must survive having nothing to slide -------------
 
 test('the hero guards an empty slide list instead of dereferencing undefined', () => {
-  // `at % 0` is NaN, so `slides[NaN]` is undefined and `cur.key` threw.
+  // `at % 0` is NaN, so `slides[NaN]` is undefined and `cur.key` threw. The
+  // wrap now lives in src/lib/heroSlider.js's `slideAt`, which returns `null`
+  // for an empty list — tests/heroSlider.test.js drives that rule directly.
   assert.match(SECTIONS, /const n = slides\.length/, 'n is still the slide count')
-  assert.match(SECTIONS, /const cur = n > 0 \? slides\[\(\(at % n\) \+ n\) % n\] : null/,
-    'the wrap-around is skipped when there is nothing to wrap')
+  assert.match(SECTIONS, /const at = slideAt\(atRaw, n\)/, 'the index is wrapped by the shared guard')
+  assert.match(SECTIONS, /const cur = at === null \? null : slides\[at\]/,
+    'nothing is wrapped when there is nothing to wrap')
   // The markup must not touch `cur` unconditionally.
   assert.match(SECTIONS, /\{cur && \(/, 'the hero image is rendered only when a slide exists')
   assert.ok(!/key=\{cur\.key\}/.test(SECTIONS.split('{cur && (')[0].split('const cur')[1] ?? ''),

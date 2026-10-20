@@ -74,9 +74,8 @@ test('a visitor with no banners gets the original category slider, never an erro
   assert.match(BANNERS, /fetchHomeBanners\(\{ strict = false \} = \{\}\)/);
   assert.match(BANNERS, /export const HOME_HERO_SLOT = 'home_hero'/);
   // ...and the hero falls back to the stocked category list when empty
-  assert.match(HERO, /const slides = banners\.length/);
-  assert.match(HERO, /\? banners\.map\(/);
-  assert.match(HERO, /: list\.map\(/);
+  assert.match(HERO, /heroSlides\(banners/, 'the slide list comes from the shared rule');
+  assert.match(HERO, /stocked\(categories, products\)/, 'the fallback is still the stocked categories');
 });
 
 test('the admin panel asks for the strict answer, and reports a real failure', () => {
