@@ -356,7 +356,13 @@ export async function ensureSheetHeader(accessToken, sheetId, tab, columns) {
   const from = columnName(first.length)
   const to = columnName(names.length - 1)
   const res = await updateRange(accessToken, sheetId, tab, `${from}1:${to}1`, [missing])
-  return { ok: !!res.ok, written: missing.length, status: res.status }
+  if (!res.ok) {
+    // Reported, not swallowed: a sheet whose columns are not named is worse
+    // than no sheet at all, and the admin panel shows this.
+    console.warn('[google-sheets] could not name the new columns:', res.status,
+      JSON.stringify(res.body || {}).slice(0, 300))
+  }
+  return { ok: !!res.ok, written: res.ok ? missing.length : 0, status: res.status }
 }
 
 /**
