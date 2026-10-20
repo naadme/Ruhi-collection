@@ -134,8 +134,12 @@ test('there is no public endpoint that could be turned into a mail relay', () =>
 // only through the snapshot title, so dropping it from the query loses nothing.
 
 const ITEMS_TABLE_SQL = read('supabase/migrations/20260928181500_orders_and_checkout.sql');
+const MIGRATIONS_DIR = path.join(process.cwd(), 'supabase/migrations');
 
-/** Column names declared by `create table public.order_items (...)`. */
+/** Column names declared by `create table public.order_items (...)`, plus any
+ *  column a later migration adds to it. The table is created once and then
+ *  extended — the Product ID was added to it long after — so the whole
+ *  migration folder is read, not just the file that created the table. */
 function orderItemsColumns(sql) {
   const start = sql.indexOf('create table if not exists public.order_items');
   assert.ok(start !== -1, 'order_items table definition is present in the migrations');
@@ -150,6 +154,19 @@ function orderItemsColumns(sql) {
   return cols;
 }
 
+/** Every column public.order_items has, across all the migrations. */
+function allOrderItemsColumns() {
+  const cols = new Set(orderItemsColumns(ITEMS_TABLE_SQL));
+  for (const file of fs.readdirSync(MIGRATIONS_DIR)) {
+    if (!file.endsWith('.sql')) continue;
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+    const re = /alter table public\.order_items\s+add column if not exists ([a-z_]+)/gi;
+    let m;
+    while ((m = re.exec(sql)) !== null) cols.add(m[1]);
+  }
+  return [...cols];
+}
+
 test('the schema really has no colour column, so colour must not be selected', () => {
   const cols = orderItemsColumns(ITEMS_TABLE_SQL);
   assert.ok(cols.length >= 8, `parsed order_items columns: ${JSON.stringify(cols)}`);
@@ -161,7 +178,7 @@ test('the schema really has no colour column, so colour must not be selected', (
 });
 
 test('fetchItems selects only columns order_items actually has', () => {
-  const cols = orderItemsColumns(ITEMS_TABLE_SQL);
+  const cols = allOrderItemsColumns();
   // The URL is built with string concatenation across two lines, so match the
   // select clause itself rather than the whole URL on one line.
   const m = CONFIRM.match(/&select=([a-z_,]+)&order=created_at\.asc/);
@@ -173,6 +190,7 @@ test('fetchItems selects only columns order_items actually has', () => {
   }
   assert.ok(selected.includes('title'), 'the item names are still shown');
   assert.ok(selected.includes('qty') && selected.includes('unit_price'), 'quantities and prices are still shown');
+  assert.ok(selected.includes('sku'), 'the Product ID of the line is read too');
 });
 
 test('a failed item query is reported instead of failing silently', () => {

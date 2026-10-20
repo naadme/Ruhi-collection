@@ -6,6 +6,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { inr } from '../lib/pricing'
 import { filterAndSortOrders } from '../lib/orderFiltering'
+import { formatShopDateTime } from '../lib/shopTime'
 import { downloadOrdersXlsx } from './orderExport'
 import GoogleSheetsPanel from './GoogleSheetsPanel'
 
@@ -85,7 +86,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
           <p className="font-semibold text-[15px]">
             <span className="font-mono">{order.reference}</span>
             <span className="text-black/45 font-normal text-[13px] ml-2">
-              {new Date(order.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+              {formatShopDateTime(order.created_at)}
             </span>
             <span className="ml-2 align-middle inline-block">{paymentChip(order)}</span>
           </p>
@@ -112,7 +113,9 @@ function Row({ order, open, onToggle, onStatus, busy }) {
       {open && (
         <div className="border-t border-black/10 p-4 sm:p-5 grid md:grid-cols-[1.4fr_1fr] gap-6 bg-[#F8EDE6]">
           <div>
-            <h4 className="text-[13px] font-semibold uppercase tracking-wider text-black/45">Items</h4>
+            <h4 className="text-[13px] font-semibold uppercase tracking-wider text-black/45">
+              Items <span className="normal-case font-normal tracking-normal text-black/40">· the Product ID is the six-character code</span>
+            </h4>
             <ul className="mt-3 space-y-2">
               {items.length === 0 && <li className="text-[14px] text-black/50">No line items recorded.</li>}
               {items.map((it) => (
@@ -120,6 +123,15 @@ function Row({ order, open, onToggle, onStatus, busy }) {
                   <span className="min-w-0 truncate">
                     {it.title}
                     <span className="text-black/45 text-[13px]"> · Size {it.size} · ×{it.qty}</span>
+                    {/* The six-character Product ID of the exact row that was
+                        bought, snapshotted onto the line when the order was
+                        placed. It is the number the client reads off the
+                        product, and it can never drift onto another product. */}
+                    {it.sku && (
+                      <span className="ml-2 text-[12px] font-mono text-black/55 border border-black/15 rounded px-1.5 py-0.5 align-middle">
+                        {it.sku}
+                      </span>
+                    )}
                   </span>
                   <span className="font-ui shrink-0">{inr(it.unit_price * it.qty)}</span>
                 </li>
@@ -189,7 +201,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
                   {order.paid_at && (
                     <div className="flex gap-2">
                       <dt className="text-black/45 shrink-0">Paid</dt>
-                      <dd>{new Date(order.paid_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</dd>
+                      <dd>{formatShopDateTime(order.paid_at)}</dd>
                     </div>
                   )}
                 </dl>

@@ -91,6 +91,33 @@ export function groupRows(rows) {
 // taps can be unit-tested beside the rule that groups it.
 
 /**
+ * The description a design shows.
+ *
+ * A design is ONE product with several colour rows, and the description is a
+ * property of the design — but the description is stored on EVERY row, so the
+ * rows can disagree. They do disagree when one row was edited on its own, or
+ * when the row that happened to be opened had no description while another
+ * did.
+ *
+ * Reading the first row's description blindly is what made the admin editor
+ * show an empty box for a description that WAS saved, and made saving the form
+ * write that empty text over every other colour's description. So the first
+ * description that actually has text wins, and an empty one is only used when
+ * every row is empty — which is what an owner who cleared it means.
+ *
+ * The same rule is used by the storefront card and by the editor, so the text
+ * the owner wrote is exactly the text the shopper reads.
+ */
+export const designDescription = (rows) => {
+  const list = Array.isArray(rows) ? rows : []
+  for (const row of list) {
+    const text = String(row?.desc ?? row?.description ?? '').trim()
+    if (text) return row.desc ?? row.description ?? ''
+  }
+  return list.length ? String(list[0]?.desc ?? list[0]?.description ?? '') : ''
+}
+
+/**
  * One design -> the single card the storefront shows.
  *
  * A design with no colour, or only one row, is returned untouched (its title,
@@ -103,6 +130,11 @@ export function groupRows(rows) {
  * `create_order()` prices server-side, so all three always name the same row.
  * When every colour costs the same (the normal case) that row *is* the first
  * one, so ids and prices are unchanged from before grouping existed.
+ *
+ * The description is the design's, not a colour's: it is the first one in the
+ * group that actually has text. A design whose first colour row has no
+ * description — and another colour does — used to show an empty description
+ * on its page even though the admin had written one.
  */
 export function groupedCards(rows) {
   const out = []
@@ -119,6 +151,7 @@ export function groupedCards(rows) {
       price: priced.price,
       compare: priced.compare,
       title: parts.name,
+      desc: designDescription(group),
       colors: group.map((r) => ({ ...r, color: partsOf(r)?.colour || '' })),
     })
   }

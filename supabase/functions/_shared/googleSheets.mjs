@@ -15,7 +15,7 @@
 // which is a convenience: if the Drive API is not enabled on the project, the
 // list is simply empty and everything else still works.
 
-import { buildSheetValues, duplicatesAmong } from './sheetRows.mjs'
+import { buildSheetValues, duplicatesAmong, SHEET_COLUMNS } from './sheetRows.mjs'
 
 export const SPREADSHEET_MIME = 'application/vnd.google-apps.spreadsheet'
 export const DEFAULT_TAB = 'Orders'
@@ -309,6 +309,56 @@ export async function readRange(accessToken, sheetId, tab, range = 'A1:Z50') {
 }
 
 
+/** Write a range of values — used to name the columns a sheet is missing. */
+export async function updateRange(accessToken, sheetId, tab, range, values) {
+  const url = `${SHEETS_API}/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(`${tab}!${range}`)}`
+  return googleJson(url, accessToken, { method: 'PUT', body: JSON.stringify({ values }) })
+}
+
+/** The spreadsheet column name for a zero-based index: 0 -> A, 25 -> Z, 26 -> AA. */
+export function columnName(index) {
+  let n = Number(index)
+  if (!Number.isFinite(n) || n < 0) return 'A'
+  let out = ''
+  n = Math.floor(n)
+  do {
+    out = String.fromCharCode(65 + (n % 26)) + out
+    n = Math.floor(n / 26) - 1
+  } while (n >= 0)
+  return out
+}
+
+/**
+ * Name the columns a sheet does not have yet.
+ *
+ * The export appends, so a sheet that already has rows keeps the first row it
+ * was given. If a column has been added since that sheet was created — the
+ * Product ID and the colour — its heading would be missing, and a sheet with
+ * a blank heading over real data is worse than no sheet at all. This writes
+ * ONLY the missing headings, into the cells after the ones already there, and
+ * changes nothing else.
+ *
+ * The first row is only treated as a heading when it really is one — the
+ * export's own first column. A sheet whose first row is data is left exactly
+ * as it is.
+ */
+export async function ensureSheetHeader(accessToken, sheetId, tab, columns) {
+  const names = Array.isArray(columns) ? columns : []
+  if (!names.length) return { ok: true, written: 0 }
+  const header = await readRange(accessToken, sheetId, tab, 'A1:ZZ1')
+  const first = header && header.length ? (header[0] || []) : []
+  // Only a real heading row is extended.
+  if (!first.length || String(first[0] || '').trim() !== String(names[0] || '').trim()) {
+    return { ok: true, written: 0 }
+  }
+  const missing = names.slice(first.length).filter(Boolean)
+  if (!missing.length) return { ok: true, written: 0 }
+  const from = columnName(first.length)
+  const to = columnName(names.length - 1)
+  const res = await updateRange(accessToken, sheetId, tab, `${from}1:${to}1`, [missing])
+  return { ok: !!res.ok, written: missing.length, status: res.status }
+}
+
 /**
  * The orders, with their line items, as the export needs them.
  *
@@ -323,7 +373,7 @@ export async function loadOrdersForExport(baseUrl, serviceKey, ids) {
     `${baseUrl}/rest/v1/orders?id=in.(${list})`
     + '&select=id,reference,created_at,status,payment_status,payment_method,full_name,email,phone,'
     + 'address,city,state,pincode,subtotal,discount,coupon_code,shipping,total,'
-    + 'razorpay_order_id,razorpay_payment_id,note,order_items(title,size,qty,unit_price)'
+    + 'razorpay_order_id,razorpay_payment_id,note,order_items(title,size,qty,unit_price,sku)'
     + '&order=created_at.desc&limit=5000',
     { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
   )
@@ -364,6 +414,10 @@ export async function exportOrdersToSheet({
     }
   }
 
+  // A sheet that already has rows keeps its first row, so the headings of any
+  // column added since are written into it before the new rows go in.
+  const heading = await ensureSheetHeader(accessToken, sheetId, tab, SHEET_COLUMNS)
+
   const values = buildSheetValues(sending, filters, {
     includeHeaders: alreadyExported.length === 0,
   })
@@ -378,6 +432,7 @@ export async function exportOrdersToSheet({
     orders: sending.length,
     rows: values.length,
     skipped: repeated.length,
+    headingsWritten: heading?.written || 0,
     range: updates && typeof updates.updatedRange === 'string' ? updates.updatedRange : null,
     orderIds: sending.map((o) => String(o.id)),
   }

@@ -1,4 +1,4 @@
-import { copyFileSync } from 'node:fs'
+import { copyFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -14,7 +14,13 @@ const spa404 = () => {
     name: 'spa-404',
     apply: 'build',
     configResolved(config) { outDir = config.build.outDir },
-    closeBundle() { copyFileSync(resolve(outDir, 'index.html'), resolve(outDir, '404.html')) },
+    closeBundle() {
+      const index = resolve(outDir, 'index.html')
+      // When the build itself failed there is no index.html to copy — and
+      // saying so here would hide the real error behind this one.
+      if (!existsSync(index)) return
+      copyFileSync(index, resolve(outDir, '404.html'))
+    },
   }
 }
 

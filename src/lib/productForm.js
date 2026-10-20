@@ -20,7 +20,7 @@
 // row's `colour` column. The two are written together, so existing products
 // keep their exact titles and URLs.
 
-import { splitTitle } from './productGrouping.js'
+import { designDescription, splitTitle } from './productGrouping.js'
 
 export const SIZE_DEFAULT = ['S', 'M', 'L', 'XL']
 /** Every size the store may offer, in display order. Each product picks its
@@ -405,11 +405,12 @@ export const sharedFromRow = (row) => ({
 
 /** Editor form for a group of rows (one product with its colours), or a blank
  *  one for a brand-new product. The shared section is read from the lead row —
- *  the first colour of the design. */
+ *  the first colour of the design — except the description, which is read from
+ *  the first colour that actually has one. */
 export const groupForm = (rows, fallbackType) =>
   rows && rows.length
     ? {
-        shared: sharedFromRow(rows[0]),
+        shared: { ...sharedFromRow(rows[0]), desc: designDescription(rows) },
         variants: rows.map((r, i) => variantFromRow(r, `${clean(r.id) || 'row'}-${i}`)),
       }
     : { shared: blankShared(fallbackType), variants: [blankVariant('v0')] }

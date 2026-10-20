@@ -15,6 +15,7 @@
 
 import { buildXlsx } from '../lib/xlsx.js'
 import { splitTitle } from '../lib/productGrouping.js'
+import { formatShopDateTime } from '../lib/shopTime.js'
 
 const PAY_METHOD = {
   razorpay: 'Online payment (Razorpay)',
@@ -25,7 +26,11 @@ const PAY_METHOD = {
 export const EXPORT_COLUMNS = [
   'Order ID', 'Order date', 'Order status', 'Payment method', 'Payment status',
   'Customer name', 'Customer email', 'Customer phone', 'Shipping address',
-  'Product ID', 'Product', 'Colour', 'Size', 'Quantity', 'Item price', 'Item total',
+  // "Product ID" is the client's six-character code (CCPPCL) — the number they
+  // read off the product. The product's own link is kept beside it so the
+  // internal id is never lost.
+  'Product ID', 'Product link', 'Product', 'Colour', 'Size', 'Quantity',
+  'Item price', 'Item total',
   'Coupon code', 'Discount', 'Subtotal', 'Shipping', 'Order total', 'Delivery note',
 ]
 
@@ -34,12 +39,9 @@ const money = (v) => {
   return Number.isFinite(n) ? n : 0
 }
 
-const orderDate = (v) => {
-  const d = new Date(v)
-  return Number.isNaN(d.getTime())
-    ? ''
-    : d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
-}
+// The shop's own date and time — the same clock the order's ID uses, so the
+// date in the file and the date in the ID can never disagree.
+const orderDate = (v) => formatShopDateTime(v)
 
 const addressOf = (o) =>
   [o.address, o.city, o.state, o.pincode].map((p) => String(p || '').trim()).filter(Boolean).join(', ')
@@ -76,12 +78,15 @@ export function ordersToRows(orders) {
           ]
         : ['', '', '', '', '', '']
     if (!items.length) {
-      rows.push([...orderCells(true), '', '', '', '', '', '', '', ...moneyCells(true)])
+      rows.push([...orderCells(true), '', '', '', '', '', '', '', '', ...moneyCells(true)])
       continue
     }
     items.forEach((it, i) => {
       rows.push([
         ...orderCells(i === 0),
+        // The Product ID of the exact row that was bought, snapshotted onto
+        // the line when the order was placed.
+        it.sku || '',
         it.product_id || '',
         it.title || '',
         splitTitle(it.title)?.colour || '',

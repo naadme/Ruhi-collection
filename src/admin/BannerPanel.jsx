@@ -7,22 +7,36 @@
 // rows themselves live in the `banners` table, writable only by admins
 // through RLS. Nothing here changes the hero's layout, styling or animation
 // — only which photos it slides between.
+//
+// Each banner carries its OWN destination — a product page, a category page,
+// a page of the shop or an approved https:// address — and its own on/off
+// switch. The rules for a destination live in src/lib/bannerLinks.js, the same
+// module the storefront follows, so a banner can never send a shopper
+// somewhere that does not exist.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AlertTriangle, ChevronDown, ChevronUp, Link2, Loader2, Plus, Trash2, Upload,
+  AlertTriangle, ChevronDown, ChevronUp, Eye, EyeOff, Link2, Loader2, Plus, Trash2, Upload,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fetchHomeBanners, HOME_HERO_SLOT } from '../lib/banners'
+import { useCategories } from '../context/CategoriesContext'
+import { useProducts } from '../context/ProductsContext'
+import {
+  bannerLinkProblem, describeBannerDestination, SITE_DESTINATIONS,
+} from '../lib/bannerLinks.js'
+import { groupedCards } from '../lib/productGrouping.js'
 
 const bucket = 'product-images'
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function BannerRow({ row, index, total, busy, uploading, onUrl, onLink, onMove, onRemove, onUpload }) {
+function BannerRow({ row, index, total, busy, uploading, onUrl, onLink, onToggle, onMove, onRemove, onUpload }) {
   const fileRef = useRef(null)
+  const problem = bannerLinkProblem(row.link)
+  const active = row.is_active !== false
   return (
-    <li className="bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start">
+    <li className={`bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start ${active ? '' : 'opacity-70'}`}>
       <div className="w-[120px] h-[80px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
         {row.image ? (
           <img
@@ -38,7 +52,14 @@ function BannerRow({ row, index, total, busy, uploading, onUrl, onLink, onMove, 
         )}
       </div>
       <div className="flex-1 min-w-[220px] space-y-2">
-        <p className="text-[12px] font-semibold uppercase tracking-wider text-black/45">Banner {index + 1}</p>
+        <p className="text-[12px] font-semibold uppercase tracking-wider text-black/45 flex items-center gap-2">
+          Banner {index + 1}
+          <span className={`rounded-full border px-2 py-[1px] text-[11px] font-medium normal-case tracking-normal ${
+            active ? 'border-green-300 bg-green-50 text-green-800' : 'border-black/20 bg-neutral-100 text-black/55'
+          }`}>
+            {active ? 'Live on the site' : 'Hidden'}
+          </span>
+        </p>
         <div className="relative">
           <Link2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-black/35" />
           <input
@@ -55,11 +76,15 @@ function BannerRow({ row, index, total, busy, uploading, onUrl, onLink, onMove, 
             type="text"
             value={row.link}
             onChange={(e) => onLink(e.target.value)}
-            placeholder="Link — where this banner takes shoppers (e.g. /shop?type=dress)"
-            aria-label={`Link for banner ${index + 1}`}
-            className={`${inputCls} h-[40px] text-[13px]`}
+            placeholder="Destination — where this banner takes shoppers (e.g. /shop?type=dress)"
+            aria-label={`Destination for banner ${index + 1}`}
+            aria-invalid={problem ? 'true' : undefined}
+            className={`${inputCls} h-[40px] text-[13px] ${problem ? 'border-red-400' : ''}`}
           />
         </div>
+        <p className={`text-[12px] ${problem ? 'text-red-700' : 'text-black/45'}`}>
+          {problem || describeBannerDestination(row.link)}
+        </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <input
@@ -81,6 +106,16 @@ function BannerRow({ row, index, total, busy, uploading, onUrl, onLink, onMove, 
         >
           {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
           {uploading ? 'Uploading…' : 'Replace'}
+        </button>
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={busy}
+          title={active ? 'Hide this banner from the homepage' : 'Show this banner on the homepage'}
+          aria-label={active ? `Hide banner ${index + 1}` : `Show banner ${index + 1}`}
+          className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
+        >
+          {active ? <Eye size={16} /> : <EyeOff size={16} />}
         </button>
         <button
           type="button"
@@ -120,6 +155,8 @@ export default function BannerPanel({ notify }) {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(-1)
   const addRef = useRef(null)
+  const { categories } = useCategories()
+  const { products } = useProducts()
 
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true }))
@@ -172,7 +209,7 @@ export default function BannerPanel({ notify }) {
     setUploading(-2)
     try {
       const url = await uploadTo(file)
-      setRows((rows) => [...rows, { id: null, image: url, link: '' }])
+      setRows((rows) => [...rows, { id: null, image: url, link: '', is_active: true }])
       notify('success', 'Photo added below — press “Save banners” to publish it.')
     } catch (e) {
       notify('error', e?.message || 'Upload failed. Please try again.')
@@ -192,6 +229,14 @@ export default function BannerPanel({ notify }) {
       return next
     })
 
+  // The destinations the owner can pick, offered as a menu: the shop's own
+  // pages, every category, and every product. Each banner picks its own.
+  const destinations = useMemo(() => {
+    const cats = (categories || []).map((c) => ({ value: `/shop?type=${c.key}`, label: `${c.label} (category)` }))
+    const products = groupedCards(products || []).map((p) => ({ value: `/product/${p.id}`, label: `${p.title} (product)` }))
+    return [...SITE_DESTINATIONS, ...cats, ...products]
+  }, [categories, products])
+
   // Publish the draft: removed banners are deleted, kept ones are re-ordered
   // and updated, new ones inserted. Every write is checked, then the list is
   // re-read from the database — the panel always shows what the store holds.
@@ -200,6 +245,11 @@ export default function BannerPanel({ notify }) {
     const empty = rows.some((r) => !String(r.image || '').trim())
     if (empty) {
       notify('error', 'Every banner needs an image — remove the empty entry or upload a photo.')
+      return
+    }
+    const broken = rows.find((r) => bannerLinkProblem(r.link))
+    if (broken) {
+      notify('error', `The destination of one banner cannot be used: ${bannerLinkProblem(broken.link)}`)
       return
     }
     setSaving(true)
@@ -216,13 +266,14 @@ export default function BannerPanel({ notify }) {
           image: String(rows[i].image).trim(),
           link: String(rows[i].link || '').trim() || null,
           position: i,
+          is_active: rows[i].is_active !== false,
         }
         if (rows[i].id) {
           const { data, error } = await supabase
-            .from('banners').update(payload).eq('id', rows[i].id).select('id, image, link, position').single()
+            .from('banners').update(payload).eq('id', rows[i].id).select('id, image, link, position, is_active').single()
           if (error || !data?.id) throw new Error(error?.message || 'Nothing was saved — your session may have expired.')
         } else {
-          const { data, error } = await supabase.from('banners').insert(payload).select('id, image, link, position').single()
+          const { data, error } = await supabase.from('banners').insert(payload).select('id, image, link, position, is_active').single()
           if (error || !data?.id) throw new Error(error?.message || 'Nothing was saved — your session may have expired.')
         }
       }
@@ -238,7 +289,12 @@ export default function BannerPanel({ notify }) {
 
   const dirty =
     state.rows.length !== original.length ||
-    state.rows.some((r, i) => r.image !== (original[i]?.image || '') || String(r.link || '') !== (original[i]?.link || ''))
+    state.rows.some((r, i) => r.image !== (original[i]?.image || '')
+      || String(r.link || '') !== (original[i]?.link || '')
+      || (r.is_active !== false) !== (original[i]?.is_active !== false))
+
+  // The banners the site is showing right now, in the order it shows them.
+  const live = state.rows.filter((r) => r.is_active !== false)
 
   return (
     <div>
@@ -294,6 +350,35 @@ export default function BannerPanel({ notify }) {
         </div>
       )}
 
+      {/* What the site shows right now: the live banners, with the photo each
+          one uses and where it takes the shopper. */}
+      {!state.loading && state.rows.length > 0 && (
+        <section className="mt-6">
+          <h2 className="text-[13px] font-semibold uppercase tracking-wider text-black/45">
+            Active on the site ({live.length} of {state.rows.length})
+          </h2>
+          {live.length === 0 ? (
+            <p className="mt-2 text-[14px] text-black/55">
+              Every banner is hidden, so the homepage is showing its default category photos.
+            </p>
+          ) : (
+            <ul className="mt-3 grid sm:grid-cols-2 gap-3">
+              {live.map((row, i) => (
+                <li key={row.id || `live-${i}`} className="border border-black/10 bg-white rounded-xl p-3 flex gap-3">
+                  <div className="w-[92px] h-[62px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden">
+                    {row.image && <img src={row.image} alt="" className="w-full h-full object-cover" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold">Banner {i + 1}</p>
+                    <p className="text-[12px] text-black/55 break-words">{describeBannerDestination(row.link)}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {state.loading ? (
         <ul className="mt-6 space-y-3">
           {[0, 1].map((i) => (
@@ -307,23 +392,58 @@ export default function BannerPanel({ notify }) {
           ))}
         </ul>
       ) : (
-        <ul className="mt-6 space-y-3">
-          {state.rows.map((row, i) => (
-            <BannerRow
-              key={row.id || `new-${i}`}
-              row={row}
-              index={i}
-              total={state.rows.length}
-              busy={saving}
-              uploading={uploading === i}
-              onUrl={(url) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, image: url } : r)))}
-              onLink={(link) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, link } : r)))}
-              onMove={(dir) => move(i, dir)}
-              onRemove={() => removeAt(i)}
-              onUpload={(f) => replaceAt(i, f)}
-            />
-          ))}
-        </ul>
+        <>
+          {/* The destination of each banner is chosen from the shop's own
+              pages, its categories and its products — so a banner can point at
+              the product it shows without anyone having to type a URL. */}
+          <ul className="mt-6 space-y-3">
+            {state.rows.map((row, i) => (
+              <BannerRow
+                key={row.id || `new-${i}`}
+                row={row}
+                index={i}
+                total={state.rows.length}
+                busy={saving}
+                uploading={uploading === i}
+                onUrl={(url) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, image: url } : r)))}
+                onLink={(link) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, link } : r)))}
+                onToggle={() => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, is_active: r.is_active === false } : r)))}
+                onMove={(dir) => move(i, dir)}
+                onRemove={() => removeAt(i)}
+                onUpload={(f) => replaceAt(i, f)}
+              />
+            ))}
+          </ul>
+
+          {state.rows.length > 0 && destinations.length > 0 && (
+            <div className="mt-4">
+              <label className="block text-[13px] font-semibold text-black/60">
+                Choose a destination for a banner
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (!value) return
+                    const index = state.rows.findIndex((r) => !String(r.link || '').trim())
+                    const target = index >= 0 ? index : state.rows.length - 1
+                    if (target < 0) return
+                    setRows((rows) => rows.map((r, j) => (j === target ? { ...r, link: value } : r)))
+                  }}
+                  className="mt-2 block w-full max-w-[420px] border border-black/30 rounded-lg px-3 h-[42px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+                >
+                  <option value="">Pick a page, a category or a product…</option>
+                  {destinations.map((d) => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+              </label>
+              <p className="mt-2 text-[12px] text-black/45">
+                It is applied to the first banner with no destination of its own, or to the last one. You can
+                also type any path that starts with /.
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       <p className="mt-8 text-[14px] text-black/45">

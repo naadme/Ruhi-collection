@@ -21,6 +21,7 @@
 import { env, MissingConfigError, requireEnv } from './env.ts'
 import { asString, type Json } from './http.ts'
 import { serviceFetch } from './supabase.ts'
+import { orderItemColour } from './orderItems.mjs'
 
 /**
  * Resend needs a From address on a verified domain. `onboarding@resend.dev`
@@ -59,7 +60,8 @@ async function claim(orderId: string): Promise<Json | null> {
   const res = await serviceFetch(
     `/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}` +
       '&payment_status=eq.paid&confirmation_sent_at=is.null' +
-      '&select=id,reference,email,full_name,subtotal,discount,shipping,total,status',
+      '&select=id,reference,created_at,email,full_name,phone,address,city,state,pincode,'
+      + 'subtotal,discount,coupon_code,shipping,total,status,note',
     {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
@@ -96,7 +98,7 @@ async function fetchItems(orderId: string): Promise<Json[]> {
     // shopper, because it is part of the snapshot title below.
     const res = await serviceFetch(
       `/rest/v1/order_items?order_id=${encodeURIComponent(orderId)}` +
-        '&select=title,size,qty,unit_price&order=created_at.asc',
+        '&select=title,size,qty,unit_price,sku&order=created_at.asc',
     )
     if (!res.ok) {
       console.warn('[confirmation] order_items query failed:', res.status, await res.text())
@@ -117,23 +119,66 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'Cancelled',
 }
 
+/** The order's own date and time, in the shop's time zone (IST).
+ *
+ *  The store is in India and keeps no daylight saving, so the offset is fixed
+ *  and the date needs no timezone database. The date the customer reads here
+ *  is the same day the order's ID names — `01102601` is the first order of the
+ *  1st of October 2026, and this is that date. */
+function formatOrderDate(value: unknown): string {
+  const ms = value instanceof Date ? value.getTime() : new Date(String(value ?? '')).getTime()
+  if (!Number.isFinite(ms)) return ''
+  const shifted = new Date(ms + 5.60 * 60 * 60 * 1000) // +05:30
+  const p = (n: number) => String(n).padStart(2, '0')
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return (
+    `${shifted.getUTCDate()} ${months[shifted.getUTCMonth()]} ${shifted.getUTCFullYear()}` +
+    `, ${p(shifted.getUTCHours())}:${p(shifted.getUTCMinutes())} IST`
+  )
+}
+
+/** The delivery address, as the lines the customer gave. */
+function addressLines(order: Json): string[] {
+  return [
+    asString(order.address),
+    [asString(order.city), asString(order.state)].filter(Boolean).join(', '),
+    asString(order.pincode),
+  ].map((line) => line.trim()).filter(Boolean)
+}
+
 /** Plain text only — the shop's own words, never HTML from user input. */
 function buildText(order: Json, items: Json[]): string {
   const lines: string[] = [
+    'Ruhi Womens Clothing',
+    '',
     `Hello ${asString(order.full_name) || 'there'},`,
     '',
-    'Thank you for your order with Ruhi Collection.',
+    'Thank you for your order with Ruhi Womens Clothing.',
     '',
-    `Order number: ${asString(order.reference)}`,
-    `Status: ${STATUS_LABEL[asString(order.status)] || asString(order.status) || 'Received'}`,
-    '',
-    'Items',
+    `Order ID: ${asString(order.reference)}`,
   ]
 
+  const placed = formatOrderDate(order.created_at)
+  if (placed) lines.push(`Order date: ${placed}`)
+  lines.push(`Status: ${STATUS_LABEL[asString(order.status)] || asString(order.status) || 'Received'}`)
+
+  const address = addressLines(order)
+  if (address.length) {
+    lines.push('')
+    lines.push('Delivering to')
+    for (const line of address) lines.push(line)
+  }
+  if (asString(order.phone)) lines.push(`Phone: ${asString(order.phone)}`)
+
+  lines.push('')
+  lines.push('Items')
+
   for (const item of items) {
+    const colour = orderItemColour(item.title)
     const bits = [
       asString(item.size) && `Size ${asString(item.size)}`,
-      asString(item.colour) && asString(item.colour),
+      colour,
+      asString(item.sku) && `Product ID ${asString(item.sku)}`,
     ].filter(Boolean).join(', ')
     const qty = money(item.qty)
     lines.push(
@@ -144,13 +189,18 @@ function buildText(order: Json, items: Json[]): string {
 
   lines.push('')
   if (money(item0(items))) lines.push(`Subtotal: ${inr(order.subtotal)}`)
-  if (money(order.discount)) lines.push(`Discount: −${inr(order.discount)}`)
+  if (money(order.discount)) {
+    lines.push(`Discount: −${inr(order.discount)}${asString(order.coupon_code) ? ` (${asString(order.coupon_code)})` : ''}`)
+  }
   lines.push(`Shipping: ${money(order.shipping) ? inr(order.shipping) : 'Free'}`)
   lines.push(`Total paid: ${inr(order.total)}`)
   lines.push('')
   lines.push('We will let you know as soon as your order ships.')
   lines.push('')
-  lines.push('— Ruhi Collection')
+  lines.push('Any questions? Call or WhatsApp 9046651272, or write to')
+  lines.push('ruhicollections2026@gmail.com — we reply within a working day.')
+  lines.push('')
+  lines.push('— Ruhi Womens Clothing')
 
   return lines.join('\n')
 }
@@ -168,7 +218,7 @@ async function deliver(to: string, reference: string, text: string): Promise<voi
     body: JSON.stringify({
       from,
       to: [to],
-      subject: `Order confirmation — ${reference}`,
+      subject: `Your Ruhi Womens Clothing order ${reference} — confirmation`,
       text,
     }),
   })

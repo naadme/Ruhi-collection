@@ -20,6 +20,8 @@
 // With no banners saved the list is exactly the default photos, which is the
 // store's original slider, unchanged.
 
+import { bannerDestination } from './bannerLinks.js'
+
 /**
  * @param {Array} banners rows from the `banners` table, in saved order
  * @param {Array} fallback slides the hero already knew how to show
@@ -32,10 +34,16 @@ export function heroSlides(banners, fallback) {
     // these; the check is kept here too so a malformed row can never put a
     // blank photo — and therefore a dead arrow — on the homepage.
     .filter((row) => row && typeof row.image === 'string' && row.image.trim())
+    // A banner the owner has switched off is kept in the admin panel but is
+    // not shown on the site.
+    .filter((row) => row.is_active !== false)
     .map((row) => ({
       key: String(row.id ?? row.image),
       image: row.image,
-      to: row.link || '/shop',
+      // Each banner has its OWN destination. A destination that is missing or
+      // that the site cannot open falls back to the shop, so a banner can
+      // never send a shopper to a broken page.
+      to: bannerDestination(row.link),
       label: 'Shop now',
     }))
   return [...saved, ...base]

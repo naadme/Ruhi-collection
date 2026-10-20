@@ -45,6 +45,7 @@ import {
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
 const FN = 'supabase/functions/google-sheets/index.ts'
+const CONNECTION = 'supabase/functions/_shared/googleConnection.ts';
 const CALLBACK = 'supabase/functions/google-sheets-callback/index.ts'
 const MIG = 'supabase/migrations/20261020140000_google_sheets_oauth.sql'
 const PANEL = 'src/admin/GoogleSheetsPanel.jsx'
@@ -538,11 +539,17 @@ test('the browser only ever sends names and order ids', () => {
 })
 
 test('the tokens are encrypted before they touch the database', () => {
-  for (const file of [FN, CALLBACK]) {
+  // The connection handling now lives in one shared module, so every file that
+  // touches a token is checked.
+  for (const file of [FN, CALLBACK, CONNECTION]) {
     const source = read(file)
-    assert.match(source, /encryptText\(/, 'the token is encrypted')
     assert.doesNotMatch(source, /access_token:\s*tokens\.accessToken/, 'never in the clear')
     assert.doesNotMatch(source, /refresh_token:\s*tokens\.refreshToken/, 'never in the clear')
+  }
+  // The encryption itself happens where the token is written: in the shared
+  // connection module, and in the callback that first receives it.
+  for (const file of [CALLBACK, CONNECTION]) {
+    assert.match(read(file), /encryptText\(/, 'the token is encrypted')
   }
   const sql = read(MIG)
   assert.match(sql, /enable row level security/, 'and the table is closed to the browser')
@@ -550,7 +557,9 @@ test('the tokens are encrypted before they touch the database', () => {
 })
 
 test('an access token is refreshed when it expires, and only once per call', () => {
-  const fn = read(FN)
+  // The refresh lives in the shared connection module now, so the function and
+  // the module are read together.
+  const fn = `${read(FN)}\n${read(CONNECTION)}`
   assert.match(fn, /expires - Date\.now\(\) > 60_000/, 'a token is used while it is fresh')
   assert.match(fn, /refreshAccessToken/, 'and refreshed when it is not')
   assert.match(read('supabase/functions/_shared/googleOAuth.mjs'), /grant_type: 'refresh_token'/)

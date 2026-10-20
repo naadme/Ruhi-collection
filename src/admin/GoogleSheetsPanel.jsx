@@ -351,6 +351,28 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
             </p>
           )}
 
+          {/* ---- what the automatic daily sync did, and what went wrong ---- */}
+          {status?.lastSync?.at && (
+            <p className="text-[12px] text-black/50">
+              Automatic daily sync: {status.lastSync.orders ?? 0}
+              {status.lastSync.orders === 1 ? ' order' : ' orders'} sent
+              {status.lastSync.rows ? ` · ${status.lastSync.rows} rows` : ''}
+              {' · '}
+              {new Date(status.lastSync.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+            </p>
+          )}
+          {status?.lastSync?.error && (
+            <p className="text-[12px] text-amber-800" role="status">
+              The automatic sync could not finish: {status.lastSync.error}
+            </p>
+          )}
+          {!status?.lastSync?.at && status?.connected && (
+            <p className="text-[12px] text-black/50">
+              The automatic daily sync has not run yet. New orders are sent to the sheet as soon as a payment is
+              verified, and a scheduled job sends anything else the next morning.
+            </p>
+          )}
+
           {destination && (
             <button onClick={showPreview} disabled={!!busy} className={btnCls}>
               {busy === 'preview' ? <Loader2 size={15} className="animate-spin" /> : <Sheet size={15} />}

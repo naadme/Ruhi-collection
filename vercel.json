@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/google-sheets-sync",
+      "schedule": "0 6 * * *"
+    }
   ]
 }

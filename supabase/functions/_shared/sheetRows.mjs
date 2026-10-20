@@ -13,13 +13,22 @@
 //     item row, so a column of the sheet can never split an order's money
 //     away from the order it belongs to.
 
-/** The columns every export writes, in order. */
+/** The columns every export writes, in order.
+ *
+ *  The two newest columns are at the END on purpose: the export appends, so a
+ *  column inserted in the middle would shift every column to its right and
+ *  the sheet the owner already has would show the wrong headings against the
+ *  wrong data. Appending leaves the existing rows exactly where they are.
+ */
+
+import { orderItemColour } from './orderItems.mjs'
 export const SHEET_COLUMNS = [
   'Reference', 'Placed at', 'Status', 'Payment status', 'Payment method',
   'Customer', 'Email', 'Phone', 'Address', 'City', 'State', 'Pincode',
   'Item', 'Size', 'Qty', 'Unit price (₹)', 'Line total (₹)', 'Subtotal (₹)',
   'Discount (₹)', 'Coupon', 'Shipping (₹)', 'Order total (₹)',
   'Razorpay order', 'Razorpay payment', 'Note',
+  'Product ID', 'Colour',
 ]
 
 /** The tab the export writes into, and the range it appends to. */
@@ -79,7 +88,7 @@ export function orderRows(order) {
     asText(order.note),
   ]
   const items = Array.isArray(order.order_items) ? order.order_items : []
-  if (!items.length) return [[...head, '', '', '', '', '', ...tail]]
+  if (!items.length) return [[...head, '', '', '', '', '', ...tail, '', '']]
   return items.map((it) => [
     ...head,
     asText(it.title),
@@ -88,6 +97,10 @@ export function orderRows(order) {
     asNumber(it.unit_price),
     asNumber(it.qty) * asNumber(it.unit_price),
     ...tail,
+    // The Product ID of the exact product that was bought, and the colour the
+    // shopper chose, both from the line itself.
+    asText(it.sku),
+    orderItemColour(it.title),
   ])
 }
 

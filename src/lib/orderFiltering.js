@@ -10,6 +10,14 @@
 //
 // Dates always use `orders.created_at` — the moment the order was placed — and
 // never `updated_at`, which moves whenever an admin edits a status.
+//
+// The date RANGE is the shop's own day, not the browser's: the Order ID
+// `01102601` means "the first order of the 1st of October 2026 in the shop",
+// so the filter that decides which orders belong to a day has to use the same
+// clock. Otherwise an admin working from another time zone would filter by a
+// different day from the one the customer's Order ID names.
+
+import { shopDayEndExclusive, shopDayStart } from './shopTime.js'
 
 /** Fields searched by the free-text box, joined then lower-cased.
  *
@@ -23,13 +31,6 @@ export function orderSearchText(order) {
     order.reference, order.previous_reference, order.full_name, order.email, order.phone, order.city,
     order.state, order.pincode, order.razorpay_order_id, order.razorpay_payment_id,
   ].filter(Boolean).join(' ').toLowerCase()
-}
-
-/** Parse a `yyyy-mm-dd` from an <input type="date"> into a Date, or null. */
-function dayStart(value) {
-  if (!value) return null
-  const d = new Date(`${value}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? null : d
 }
 
 /**
@@ -51,21 +52,20 @@ export function filterAndSortOrders(orders, opts = {}, searchText = orderSearchT
   } = opts || {}
 
   const needle = String(query || '').trim().toLowerCase()
-  const start = dayStart(from)
-  // The end date is inclusive of the whole day, so "to = 2026-10-19" still
-  // contains an order placed at 23:59 that night.
-  const endOfDay = dayStart(to)
-  if (endOfDay) endOfDay.setDate(endOfDay.getDate() + 1)
+  // Both ends of the range are the SHOP's day: "from = 2026-10-19" starts at
+  // 00:00 in the shop, and "to = 2026-10-19" runs to the end of that same day.
+  const start = shopDayStart(from)
+  const endOfDay = shopDayEndExclusive(to)
 
   const filtered = (Array.isArray(orders) ? orders : []).filter((o) => {
     if (!o) return false
     if (status !== 'all' && o.status !== status) return false
 
-    if (start || endOfDay) {
+    if (start !== null || endOfDay !== null) {
       const t = new Date(o.created_at).getTime()
       if (!Number.isFinite(t)) return false
-      if (start && t < start.getTime()) return false
-      if (endOfDay && t >= endOfDay.getTime()) return false
+      if (start !== null && t < start) return false
+      if (endOfDay !== null && t >= endOfDay) return false
     }
 
     if (!needle) return true

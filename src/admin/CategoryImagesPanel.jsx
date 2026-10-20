@@ -16,20 +16,26 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, Trash2, Upload } from 'lucide-react'
 import { useCategories } from '../context/CategoriesContext'
 import { fetchCategories } from '../lib/categories'
-import { CATEGORY_IMAGE_OPTIONS } from '../lib/categoryImages'
+import { CATEGORY_IMAGE_OPTIONS, validateCategoryImage } from '../lib/categoryImages'
 import { saveCategoryImage, uploadCategoryImage } from '../lib/categoryImageStore'
+import { categoryFallbackImage } from '../data/products.js'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
 function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear }) {
   const fileRef = useRef(null)
+  // The picture the homepage shows for this category RIGHT NOW: the owner's
+  // own choice when there is one, and the site's default photograph when
+  // there is not. The admin always sees the real thing, never a blank box.
+  const shown = row.image || row.defaultImage || ''
+  const isDefault = !row.image
   return (
     <li className="bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start">
       <div className="w-[120px] h-[120px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
-        {row.image ? (
+        {shown ? (
           <img
-            src={row.image}
+            src={shown}
             alt=""
             className="w-full h-full object-cover"
             onError={(e) => {
@@ -37,8 +43,9 @@ function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear }) {
             }}
           />
         ) : (
-          <span className="text-[11px] text-black/35 text-center px-1">The site’s default photo</span>
+          <span className="text-[11px] text-black/35 text-center px-1">No photograph yet</span>
         )}
+        <span className="sr-only">{isDefault ? 'The site’s default photo' : 'The photo you chose'}</span>
       </div>
       <div className="flex-1 min-w-[240px] space-y-2">
         <p className="text-[15px] font-semibold">{row.label}</p>
@@ -59,8 +66,8 @@ function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear }) {
         </label>
         <p className="text-[12px] text-black/45">
           {row.image
-            ? 'This photo is used on the homepage and the Collections page.'
-            : 'No photo chosen — the site shows its default picture for this category.'}
+            ? 'Your photo — shown on the homepage and the Collections page.'
+            : 'The site’s default photo — upload one or pick one of the site’s photos to change it.'}
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -115,7 +122,14 @@ export default function CategoryImagesPanel({ notify }) {
       // no categories" — otherwise a save could write over a list this panel
       // never saw.
       const list = await fetchCategories({ strict: true })
-      const withImages = list.map((c) => ({ key: c.key, label: c.label, image: String(c.image || '') }))
+      const withImages = list.map((c) => ({
+        key: c.key,
+        label: c.label,
+        image: String(c.image || ''),
+        // The picture the site shows when the owner has chosen none, so the
+        // panel can show the real thing rather than an empty box.
+        defaultImage: categoryFallbackImage(c.key) || '',
+      }))
       setRows(withImages)
       setOriginal(withImages)
       setError('')
@@ -136,6 +150,8 @@ export default function CategoryImagesPanel({ notify }) {
   const upload = async (row, file) => {
     setUploading(row.key)
     try {
+      const problem = validateCategoryImage(file)
+      if (problem) throw new Error(problem)
       const url = await uploadCategoryImage(file)
       setImage(row.key, url)
       notify('success', `Photo uploaded for ${row.label} — press “Save category photos” to publish it.`)

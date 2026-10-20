@@ -20,9 +20,9 @@ import { groupedCards } from '../lib/productGrouping'
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function ChosenRow({ card, index, total, busy, onMove, onRemove }) {
+function ChosenRow({ card, index, total, busy, active, onMove, onRemove, onToggle }) {
   return (
-    <li className="bg-white border border-black/10 rounded-xl p-3 flex flex-wrap gap-3 items-center">
+    <li className={`bg-white border border-black/10 rounded-xl p-3 flex flex-wrap gap-3 items-center ${active ? '' : 'opacity-70'}`}>
       <div className="w-[64px] h-[80px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
         {card.image ? (
           <img src={card.image} alt="" className="w-full h-full object-cover" />
@@ -38,8 +38,23 @@ function ChosenRow({ card, index, total, busy, onMove, onRemove }) {
             ? `${card.colors.length} colours`
             : 'Single colour'}
         </p>
+        <span className={`mt-1 inline-block rounded-full border px-2 py-[1px] text-[11px] font-medium ${
+          active ? 'border-green-300 bg-green-50 text-green-800' : 'border-black/20 bg-neutral-100 text-black/55'
+        }`}>
+          {active ? 'Showing on the homepage' : 'Hidden — keeps its place'}
+        </span>
       </div>
       <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={busy}
+          title={active ? 'Hide this design from the homepage row' : 'Show this design on the homepage row'}
+          aria-label={active ? `Hide ${card.title} from the homepage` : `Show ${card.title} on the homepage`}
+          className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
+        >
+          {active ? <Eye size={16} /> : <EyeOff size={16} />}
+        </button>
         <button
           type="button"
           onClick={() => onMove(-1)}
@@ -128,9 +143,11 @@ export default function BestsellerPanel({ notify, products = [] }) {
     setState((s) => ({ ...s, loading: true }))
     try {
       const rows = await fetchBestsellers({ strict: true })
-      const ids = rows.map((r) => r.product_id)
-      setState({ loading: false, picks: ids, error: '' })
-      setOriginal(ids)
+      // The state holds the same rows the table holds: the product and whether
+      // the owner has switched it off.
+      const picks = rows.map((r) => ({ product_id: r.product_id, is_active: r.is_active !== false }))
+      setState({ loading: false, picks, error: '' })
+      setOriginal(picks)
     } catch (e) {
       // Reported, never mistaken for "nothing chosen" — otherwise the admin
       // could save an empty list over picks this panel never saw.
@@ -145,7 +162,7 @@ export default function BestsellerPanel({ notify, products = [] }) {
       notify('error', `Choose at most ${MAX_BESTSELLERS} best sellers.`)
       return
     }
-    setState((s) => ({ ...s, picks: [...s.picks, card.id] }))
+    setState((s) => ({ ...s, picks: [...s.picks, { product_id: card.id, is_active: true }] }))
   }
   // Removing drops EVERY pick that renders as this card, so it cannot survive a
   // stored duplicate or a pick recorded under one of its colour rows.
@@ -154,7 +171,7 @@ export default function BestsellerPanel({ notify, products = [] }) {
     // must never act on positions computed before the first one landed.
     const drop = new Set(locatePicks(s.picks, cards)
       .filter((entry) => entry.cardId === cardId)
-      .map((entry) => entry.pick))
+      .map((entry) => entry.product_id))
     if (!drop.size) return s
     return { ...s, picks: s.picks.filter((p) => !drop.has(p)) }
   })
@@ -177,6 +194,18 @@ export default function BestsellerPanel({ notify, products = [] }) {
     return { ...s, picks: next }
   })
 
+  // Switching a design off keeps it in the list and keeps its place in the
+  // order — it is simply not in the shop window until it is switched on again.
+  const toggle = (cardId) => setState((s) => {
+    const shown = locatePicks(s.picks, cards)
+    const at = shown.findIndex((entry) => entry.cardId === cardId)
+    if (at < 0) return s
+    const index = shown[at].index
+    const next = [...s.picks]
+    next[index] = { ...next[index], is_active: next[index]?.is_active === false }
+    return { ...s, picks: next }
+  })
+
   const save = async () => {
     setSaving(true)
     try {
@@ -193,7 +222,7 @@ export default function BestsellerPanel({ notify, products = [] }) {
     }
   }
 
-  const dirty = state.picks.join('\u0000') !== original.join('\u0000')
+  const dirty = JSON.stringify(state.picks) !== JSON.stringify(original)
 
   return (
     <div>
@@ -241,25 +270,35 @@ export default function BestsellerPanel({ notify, products = [] }) {
         </ul>
       ) : (
         <>
-          <h2 className="mt-8 text-[18px] font-bold">On the homepage ({chosen.length}/{MAX_BESTSELLERS})</h2>
+          <h2 className="mt-8 text-[18px] font-bold">
+            On the homepage ({chosen.filter((c) => (resolved.find((e) => e.cardId === c.id) || {}).active !== false).length} showing of {chosen.length} chosen, {MAX_BESTSELLERS} at most)
+          </h2>
           <ul className="mt-3 space-y-3">
-            {chosen.map((card, i) => (
-              <ChosenRow
-                key={card.id}
-                card={card}
-                index={i}
-                total={chosen.length}
-                busy={saving}
-                onMove={(dir) => move(card.id, dir)}
-                onRemove={() => remove(card.id)}
-              />
-            ))}
+            {chosen.map((card, i) => {
+              const entry = resolved.find((e) => e.cardId === card.id)
+              return (
+                <ChosenRow
+                  key={card.id}
+                  card={card}
+                  index={i}
+                  total={chosen.length}
+                  busy={saving}
+                  active={entry ? entry.active : true}
+                  onMove={(dir) => move(card.id, dir)}
+                  onRemove={() => remove(card.id)}
+                  onToggle={() => toggle(card.id)}
+                />
+              )
+            })}
           </ul>
           {!chosen.length && (
             <p className="mt-3 text-[14px] text-black/45">Nothing chosen — the homepage row is auto-selected.</p>
           )}
 
-          <h2 className="mt-10 text-[18px] font-bold">Add a design</h2>
+          <h2 className="mt-10 text-[18px] font-bold">Available designs</h2>
+          <p className="text-[14px] text-black/55 mt-1">
+            Every design in the catalogue that is not on the list above. Nothing here is chosen yet.
+          </p>
           <div className="relative mt-3 max-w-[380px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-black/35" />
             <input

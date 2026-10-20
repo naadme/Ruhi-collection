@@ -15,6 +15,7 @@ import { env } from '../_shared/env.ts'
 import { asString, fail, json, preflight, type Json } from '../_shared/http.ts'
 import { verifyWebhookSignature } from '../_shared/razorpay.ts'
 import { sendOrderConfirmation } from '../_shared/confirmation.ts'
+import { syncSheetQuietly } from '../_shared/sheetSyncTrigger.ts'
 import {
   fetchOrderByColumn,
   serviceFetch,
@@ -94,6 +95,11 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
       } catch (error) {
         console.warn('[razorpay-webhook] confirmation not sent:', String(error))
       }
+      // The payment is settled, so the owner's spreadsheet gets the order now.
+      // A failure here is logged and swallowed: the sheet is a record, not
+      // part of the payment, and the daily job sends it later.
+      const synced = await syncSheetQuietly()
+      if (synced) console.log('[razorpay-webhook] sheet:', synced)
       return
     }
     case 'payment.failed': {

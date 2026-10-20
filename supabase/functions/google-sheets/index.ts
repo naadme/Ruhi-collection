@@ -29,23 +29,24 @@ import { env } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
 import { serviceFetch } from '../_shared/supabase.ts'
 import {
-  GOOGLE_TOKEN_ENDPOINT,
   buildAuthorizeUrl,
   decryptText,
   describeGoogleError,
-  encodeRefreshForm,
-  encryptText,
   missingConfig,
   missingConfigMessage,
   parseSpreadsheetId,
   pkcePair,
   probeGoogleSetup,
   randomToken,
-  readTokenResponse,
   safeSheetTitle,
   setupLinks,
   sha256Hex,
 } from '../_shared/googleOAuth.mjs'
+import {
+  ensureToken,
+  loadConnection,
+  patchConnection,
+} from '../_shared/googleConnection.ts'
 import {
   DEFAULT_TAB,
   appendRows,
@@ -111,23 +112,6 @@ async function isAdmin(userId: string): Promise<boolean> {
 // The connection, in the database
 // ---------------------------------------------------------------------------
 
-async function loadConnection(ownerId: string): Promise<Json | null> {
-  const res = await serviceFetch(
-    `/rest/v1/google_sheets_connections?owner_id=eq.${encodeURIComponent(ownerId)}&select=*&limit=1`,
-  )
-  if (!res.ok) return null
-  const rows = (await res.json().catch(() => [])) as Json[]
-  return Array.isArray(rows) && rows.length ? rows[0] : null
-}
-
-async function patchConnection(id: string, patch: Json): Promise<void> {
-  await serviceFetch(`/rest/v1/google_sheets_connections?id=eq.${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify(patch),
-  })
-}
-
 async function deleteConnection(id: string): Promise<void> {
   await serviceFetch(`/rest/v1/google_sheets_connections?id=eq.${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -137,51 +121,6 @@ async function deleteConnection(id: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // Google
 // ---------------------------------------------------------------------------
-
-/** Swap the refresh token for a fresh access token. */
-async function refreshAccessToken(conn: Json): Promise<{ token: string; expiresAt: string } | null> {
-  const key = env('GOOGLE_TOKEN_KEY') ?? ''
-  const refreshToken = await decryptText(String(conn.refresh_token ?? ''), key)
-  if (!refreshToken) return null
-
-  const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: encodeRefreshForm({
-      refreshToken,
-      clientId: env('GOOGLE_CLIENT_ID') ?? '',
-      clientSecret: env('GOOGLE_CLIENT_SECRET') ?? '',
-    }),
-  })
-  const body = (await res.json().catch(() => null)) as Json | null
-  if (!res.ok) {
-    console.warn('[google-sheets] refresh refused:', res.status)
-    return null
-  }
-  const parsed = readTokenResponse(body)
-  if (!parsed) return null
-
-  // Google usually does not send a new refresh token when it refreshes one;
-  // the old one stays valid and is kept.
-  await patchConnection(String(conn.id), {
-    access_token: await encryptText(parsed.accessToken, key),
-    access_expires_at: parsed.expiresAt,
-    scope: parsed.scope || conn.scope || '',
-  })
-  return { token: parsed.accessToken, expiresAt: parsed.expiresAt }
-}
-
-/** A usable access token, refreshed when it has expired. */
-async function ensureToken(conn: Json): Promise<string> {
-  const key = env('GOOGLE_TOKEN_KEY') ?? ''
-  const expires = conn.access_expires_at ? new Date(String(conn.access_expires_at)).getTime() : 0
-  if (conn.access_token && expires - Date.now() > 60_000) {
-    const token = await decryptText(String(conn.access_token), key)
-    if (token) return token
-  }
-  const refreshed = await refreshAccessToken(conn)
-  return refreshed?.token ?? ''
-}
 
 // ---------------------------------------------------------------------------
 // The export lease — one export at a time
@@ -226,7 +165,7 @@ async function loadOrders(ids: string[]): Promise<Json[]> {
       + '&select=id,reference,created_at,status,payment_status,payment_method,full_name,email,phone,'
       + 'address,city,state,pincode,subtotal,discount,coupon_code,shipping,total,'
       + 'razorpay_order_id,razorpay_payment_id,note,'
-      + 'order_items(title,size,qty,unit_price)'
+      + 'order_items(title,size,qty,unit_price,sku)'
       + '&order=created_at.desc&limit=5000',
   )
   if (!res.ok) {
@@ -402,6 +341,15 @@ async function actionStatus(userId: string): Promise<Response> {
       orders: conn.last_export_orders ?? null,
       rows: conn.last_export_rows ?? null,
       range: conn.last_export_range ?? null,
+    },
+    // What the AUTOMATIC daily sync did, and what went wrong if it did not.
+    // The panel shows both, so the owner can tell "the sheet is up to date"
+    // from "the sheet has not been reached for three days".
+    lastSync: {
+      at: conn.last_sync_at ?? null,
+      orders: conn.last_sync_orders ?? null,
+      rows: conn.last_sync_rows ?? null,
+      error: conn.last_sync_error ?? null,
     },
     sheets: await listSpreadsheets(token),
   })

@@ -117,6 +117,53 @@ Also useful: the submitted address is set as `reply_to`, so replying from Gmail 
 customer directly. Set `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` as usual — no
 `VITE_` variable is added for this.
 
+### Google Sheets — the daily order sheet
+
+The owner connects their own Google account in **Admin → Orders → Google
+Sheets**. Once connected, the sheet is kept up to date **without anyone
+pressing "Export"**:
+
+- **When a payment is verified** — the moment an order is paid, the order is
+  sent to the sheet (the payment functions call the sync directly). The sheet
+  is a record of the order, not a part of the payment: a sheet that cannot be
+  reached is logged and the payment still stands.
+- **Once a day** — a scheduled job (`vercel.json` → `crons` → `/api/google-sheets-sync`,
+  06:00 UTC) asks the `google-sheets-sync` Edge Function to send anything the
+  event-driven path missed, and to update the rows whose status has changed.
+
+**No order is ever sent twice.** The ledger `public.order_sheet_exports` has
+one row per (sheet, order) and its primary key is the guard; the ledger row is
+written only after Google has accepted the rows, so a crash in between sends
+the order again rather than losing it.
+
+**The sheet keeps every row it already has.** The export only appends, and a
+column that is added later is written into the sheet's first row — the
+existing data never moves.
+
+**What the sheet holds:** Order ID, order date and time (the shop's own clock),
+status, payment status and method, the customer's name, email, phone and
+address, and then one row per line item with the product name, the Product ID,
+the colour, the size, the quantity, the item price and the line total — with
+the order's money repeated on every item row.
+
+**The admin panel shows the truth:** when the last automatic sync ran, how many
+orders it sent, and the reason if it could not finish.
+
+To set the scheduled job up, two environment variables are needed — the
+project's own secret, never in the repository:
+
+```bash
+# Supabase: the secret the scheduler proves itself with
+npx supabase secrets set --project-ref <ref> GOOGLE_SHEETS_SYNC_SECRET=<a long random string>
+
+# Vercel: the same secret, and where the Edge Function lives
+vercel env add GOOGLE_SHEETS_SYNC_SECRET production --value "<the same string>" --sensitive
+vercel env add SUPABASE_FUNCTIONS_URL production --value "https://<ref>.supabase.co" --sensitive
+```
+
+The function refuses every caller that cannot present either that secret or a
+signed-in store owner's session.
+
 ### Google sign-in and restricted product access
 
 #### Give the Ruhi client product-management access
@@ -370,6 +417,81 @@ Nothing in the browser decides price, discount, shipping, total, or whether an o
 
 ---
 
+## Order IDs
+
+Every order carries a customer-facing ID of **exactly eight digits**, in the
+format `DDMMYYNN`:
+
+| Part | Meaning | Example |
+|------|---------|---------|
+| `DD` | the day of the month | `01` |
+| `MM` | the month | `10` |
+| `YY` | the last two digits of the year | `26` |
+| `NN` | the order's number for that day, from `01` | `01` |
+
+So `01102601` is the **first** order of the **1st of October 2026**, and
+`01102602` is the second order of the same day.
+
+**Where the number comes from.** The database, in the shop's own time zone
+(`Asia/Kolkata`), from the order's own `created_at`:
+
+- `public.next_order_reference()` takes an advisory lock for that day, so two
+  orders placed at the same moment cannot be given the same number — the
+  second one waits, and reads the day's highest number *after* the lock is
+  held;
+- a BEFORE INSERT trigger (`orders_assign_reference`) assigns the number, so
+  no code path can write an order without one;
+- a unique index on `orders.reference` has the final word;
+- at 99 orders in a day the number is refused with a clear message rather than
+  a duplicate or a malformed ID;
+- the day resets at midnight **in the shop's own time zone**, which is the
+  same clock the admin panel's date filter and every displayed order date use
+  (`src/lib/shopTime.js`) — so the filter, the displayed date and the ID can
+  never disagree about which day an order belongs to.
+
+**Nothing existing was renumbered.** Orders placed before the format keep
+their old `RCH-XXXXXXXX` number in `orders.previous_reference`, and the admin
+search finds them by either number.
+
+Verify it against the live database (the checks run in rolled-back
+transactions, so no order is created):
+
+```bash
+node scripts/verify-order-ids.mjs
+```
+
+## Product IDs
+
+Every product carries a six-character display ID in the format `CCPPCL`:
+
+| Part | Meaning | Example |
+|------|---------|---------|
+| `CC` | the category's two-digit code | `01` |
+| `PP` | the product's number inside that category | `01` |
+| `CL` | the colour's two-letter code | `BU` |
+
+So `0101BU` is the first product of category 01, in the colour "Blue".
+
+**The category codes** are assigned once, in the order the categories are
+displayed, and never move: `01` Tops & T-shirts, `02` Co-ord Sets, `03`
+Dresses, `04` Trousers & Pants, `05` Night Wear, `06` Kurta Sets. Renaming a
+category changes only its label; a new category takes the next free code.
+
+**The colour codes** live in `public.colour_codes` — one stable pair of
+letters per colour, so "Blue" is always the same code forever. A colour that
+is not on file is given the first pair of its letters that nobody holds; a
+colour with **no** colour recorded is `XX`, a documented placeholder and never
+a guess.
+
+**The IDs are assigned by the database** (`products_assign_sku`), never typed
+by hand, and never reused.
+
+**The Product ID is snapshotted onto every ordered line** (`order_items.sku`),
+exactly like the title and the price, so an order always names the exact
+product that was bought — even after that product is renamed, renumbered or
+deleted. It is shown on the admin order details, in the Google Sheet, in the
+Excel download and on the order confirmation email.
+
 ## Behaviour worth knowing
 
 - **Duplicate protection.** `create_order()` refuses a second order for the same email within
@@ -391,10 +513,11 @@ Nothing in the browser decides price, discount, shipping, total, or whether an o
   real details before launch. `site.email` is `ruhicollections2026@gmail.com`, the same mailbox
   the contact form is delivered to.
 - **Categories** come from one list, `TYPES` in `src/data/products.js` (Tops & T-shirts, Co-ord
-  Sets, Dresses, Trousers & Pants). The header, footer, shop Type filter, admin selector and
-  homepage tiles all read it, so a category is added in exactly one place — the homepage hero
-  and the "Shop by Category"/Collections tiles only advertise a category once it has a live
-  product. The database accepts the same four values (`products_type_check`).
+  Sets, Dresses, Trousers & Pants, Night Wear, Kurta Sets). The header, footer, shop Type filter,
+  admin selector and homepage tiles all read it, so a category is added in exactly one place — the
+  homepage hero and the "Shop by Category"/Collections tiles only advertise a category once it has
+  a live product. The database holds the same list in `public.categories`, with a stable two-digit
+  code for each.
 - **Colour grouping** lives in `src/lib/productGrouping.js` and is shared by the storefront and
   the admin dashboard: rows group into one design when they share a category, a design name and
   a colour — either the row's `colour` column or a " - Colour" title suffix the catalogue

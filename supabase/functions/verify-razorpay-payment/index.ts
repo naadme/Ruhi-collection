@@ -13,6 +13,7 @@ import { MissingConfigError } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
 import { getRazorpayOrder, toPaise, verifyPaymentSignature } from '../_shared/razorpay.ts'
 import { sendOrderConfirmation } from '../_shared/confirmation.ts'
+import { syncSheetQuietly } from '../_shared/sheetSyncTrigger.ts'
 import { fetchOrderItems, fetchOrderByColumn, serviceFetch } from '../_shared/supabase.ts'
 
 const NOT_FOUND =
@@ -102,6 +103,12 @@ export async function handle(req: Request): Promise<Response> {
     } catch (error) {
       console.warn('[verify-razorpay-payment] confirmation not sent:', String(error))
     }
+
+    // The order is real, so the owner's spreadsheet gets it now. The sheet is
+    // a record, not a part of the payment: a failure here is logged and
+    // swallowed, and the daily job sends the order later.
+    const synced = await syncSheetQuietly()
+    if (synced) console.log('[verify-razorpay-payment] sheet:', synced)
 
     const items = await fetchOrderItems(asString(settled.id))
     return json(200, { ok: true, order: { ...settled, items } })
