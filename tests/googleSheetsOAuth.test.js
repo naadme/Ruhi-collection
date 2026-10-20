@@ -34,6 +34,7 @@ import {
   sha256Hex,
   tokenFingerprint,
 } from '../supabase/functions/_shared/googleOAuth.mjs'
+import { describeApiProblem } from '../supabase/functions/_shared/googleSheets.mjs'
 import {
   SHEET_COLUMNS,
   buildSheetValues,
@@ -329,6 +330,41 @@ test('the setup probe names the exact thing Google objects to', async () => {
   } finally {
     globalThis.fetch = realFetch
   }
+})
+
+// ---------------------------------------------------------------------------
+// 3c. Google's own answer, in the shape Google actually sends it
+// ---------------------------------------------------------------------------
+
+test('an API that is not enabled is recognised and linked', () => {
+  // This is Google's real answer, verbatim in shape: the error is an OBJECT
+  // nested under `error`, and the reason is in `details[0].reason`.
+  const body = {
+    error: {
+      code: 403,
+      message: 'Google Sheets API has not been used in project 550615952572 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=550615952572 then retry.',
+      status: 'PERMISSION_DENIED',
+      details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'SERVICE_DISABLED' }],
+    },
+  }
+  const problem = describeApiProblem(403, body, '550615952572-abc.apps.googleusercontent.com')
+  assert.equal(problem.reason, 'api_not_enabled')
+  assert.match(problem.message, /Sheets API is not enabled/i)
+  assert.match(problem.message, /550615952572/)
+  assert.match(problem.link, /sheets\.googleapis\.com/)
+  assert.match(problem.link, /project=550615952572/)
+})
+
+test('the flat OAuth error shape is read as well', () => {
+  const problem = describeApiProblem(401, { error: 'invalid_client', error_description: 'The provided client secret is invalid.' })
+  assert.equal(problem.reason, 'expired')
+  assert.match(problem.message, /rejected the access token/i)
+})
+
+test('a refusal that is neither is still a sentence, never a stack trace', () => {
+  const problem = describeApiProblem(500, { error: { code: 500, message: 'Internal error encountered.' } })
+  assert.match(problem.message, /Internal error encountered/)
+  assert.equal(problem.link, '')
 })
 
 test('the setup links point at the exact Google Cloud pages', () => {

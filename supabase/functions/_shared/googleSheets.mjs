@@ -44,9 +44,21 @@ export async function googleJson(url, accessToken, init = {}) {
  * "something went wrong" and a five-second fix.
  */
 export function describeApiProblem(status, body, clientId = '') {
-  const reason = typeof body?.error === 'string' ? body.error : ''
-  const message = typeof body?.error_description === 'string' ? body.error_description
-    : typeof body?.message === 'string' ? body.message : ''
+  // Google answers the APIs with the error NESTED inside an object:
+  //   { "error": { "code": 403, "message": "…", "status": "PERMISSION_DENIED",
+  //                "details": [ { "reason": "SERVICE_DISABLED" } ] } }
+  // and the OAuth endpoints with a flat one:
+  //   { "error": "invalid_client", "error_description": "…" }
+  // Both are read here, because missing the nested shape is what turns a
+  // precise answer into "something went wrong".
+  const nested = body && typeof body.error === 'object' && body.error ? body.error : null
+  const reason = nested
+    ? String(nested.status || (Array.isArray(nested.details) ? nested.details[0]?.reason : '') || '')
+    : (typeof body?.error === 'string' ? body.error : '')
+  const message = nested
+    ? String(nested.message || '')
+    : (typeof body?.error_description === 'string' ? body.error_description
+      : typeof body?.message === 'string' ? body.message : '')
   const project = (String(clientId).match(/^(\d+)-/) || [])[1] || ''
 
   if (reason === 'SERVICE_DISABLED' || /has not been used in project|is disabled/i.test(message)) {
@@ -57,14 +69,18 @@ export function describeApiProblem(status, body, clientId = '') {
         + `${project ? ` (${project})` : ''}, so Google refused the request.`,
       link: `https://console.cloud.google.com/apis/library/${api}.googleapis.com`
         + `${project ? `?project=${project}` : ''}`,
+      googleError: reason,
+      googleMessage: message,
     }
   }
-  if (status === 403 && /insufficient|insufficientPermissions|not authorized/i.test(`${reason} ${message}`)) {
+  if (status === 403 && /insufficient|not authorized|permission/i.test(`${reason} ${message}`)) {
     return {
       reason: 'not_permitted',
       message: 'This Google account is not allowed to do that with this connection. '
         + 'Press Connect Google Sheets again and approve the access when Google asks.',
       link: '',
+      googleError: reason,
+      googleMessage: message,
     }
   }
   if (status === 401) {
@@ -72,6 +88,8 @@ export function describeApiProblem(status, body, clientId = '') {
       reason: 'expired',
       message: 'Google rejected the access token. Press Connect Google Sheets again to renew it.',
       link: '',
+      googleError: reason,
+      googleMessage: message,
     }
   }
   if (status === 404) {
@@ -79,12 +97,16 @@ export function describeApiProblem(status, body, clientId = '') {
       reason: 'not_found',
       message: 'Google could not find that spreadsheet. It may have been deleted.',
       link: '',
+      googleError: reason,
+      googleMessage: message,
     }
   }
   return {
     reason: reason || `http_${status}`,
     message: message || `Google refused the request (HTTP ${status}).`,
     link: '',
+    googleError: reason,
+    googleMessage: message,
   }
 }
 

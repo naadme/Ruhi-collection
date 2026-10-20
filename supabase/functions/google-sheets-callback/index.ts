@@ -26,13 +26,14 @@ import { serviceFetch } from '../_shared/supabase.ts'
 import {
   GOOGLE_TOKEN_ENDPOINT,
   decodeJwtPayload,
+  decryptText,
   describeAuthorizationError,
   encodeTokenForm,
   encryptText,
   readTokenResponse,
   sha256Hex,
 } from '../_shared/googleOAuth.mjs'
-import { createSheetWithTab, describeApiProblem } from '../_shared/googleSheets.mjs'
+import { createSheetWithTab, describeApiProblem, probeGoogleApis } from '../_shared/googleSheets.mjs'
 
 const GOOGLE_USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo'
 
@@ -141,14 +142,6 @@ export async function handle(req: Request): Promise<Response> {
 
     const code = params.get('code') || ''
     const state = params.get('state') || ''
-    if (!code) {
-      return html(400, page({
-        title: 'Not connected',
-        message: 'Google did not send an authorisation code back. Please press Connect Google Sheets again.',
-        ok: false,
-        admin: adminUrl(),
-      }))
-    }
 
     // ---- the one-time state ---------------------------------------------
     const row = await findState(state)
@@ -183,6 +176,64 @@ export async function handle(req: Request): Promise<Response> {
       headers: { Prefer: 'return=minimal' },
       body: JSON.stringify({ used_at: new Date().toISOString() }),
     })
+
+    // ---- a read-only check, on request -----------------------------------
+    // Asked for with the same one-time state the sign-in uses, so it is
+    // reachable only by whoever started that sign-in. It answers one
+    // question: are the Google APIs this integration needs actually available
+    // to this connection? It changes nothing and returns no secrets.
+    if (params.get('diagnose') === '1') {
+      const connRes = await serviceFetch(
+        '/rest/v1/google_sheets_connections?select=*&limit=1',
+      )
+      const conns = (await connRes.json().catch(() => [])) as Array<Record<string, unknown>>
+      const conn = conns[0]
+      if (!conn) {
+        return html(400, page({
+          title: 'Not connected',
+          message: 'There is no Google Sheets connection to check yet.',
+          ok: false,
+          admin: adminUrl(),
+        }))
+      }
+      const key = env('GOOGLE_TOKEN_KEY') ?? ''
+      const accessToken = await decryptText(String(conn.access_token ?? ''), key)
+      if (!accessToken) {
+        return html(400, page({
+          title: 'Not connected',
+          message: 'The stored access token could not be read.',
+          ok: false,
+          admin: adminUrl(),
+        }))
+      }
+      const check = await probeGoogleApis(accessToken, env('GOOGLE_CLIENT_ID') ?? '')
+      await serviceFetch('/rest/v1/google_sheets_connections?id=eq.'
+        + encodeURIComponent(String(conn.id)), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({ api_check: check }),
+      })
+      const line = (api: Record<string, unknown>) => (api.ok
+        ? `available (HTTP ${api.status})`
+        : `NOT AVAILABLE — ${String(api.message)}`)
+      return html(200, page({
+        title: 'The Google API check',
+        message: `Google Sheets API: ${line(check.sheets as Record<string, unknown>)}. `
+          + `Google Drive API: ${line(check.drive as Record<string, unknown>)}.`,
+        ok: true,
+        admin: adminUrl(),
+      }))
+    }
+
+    // ---- a sign-in that never happened ----------------------------------
+    if (!code) {
+      return html(400, page({
+        title: 'Not connected',
+        message: 'Google did not send an authorisation code back. Please press Connect Google Sheets again.',
+        ok: false,
+        admin: adminUrl(),
+      }))
+    }
 
     // ---- the code for the tokens ----------------------------------------
     const clientId = env('GOOGLE_CLIENT_ID') ?? ''
