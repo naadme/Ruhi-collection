@@ -32,6 +32,7 @@ import {
   readTokenResponse,
   sha256Hex,
 } from '../_shared/googleOAuth.mjs'
+import { createSheetWithTab } from '../_shared/googleSheets.mjs'
 
 const GOOGLE_USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo'
 
@@ -265,10 +266,37 @@ export async function handle(req: Request): Promise<Response> {
       }),
     })
 
+    // ---- and a destination, so there is nothing left to set up -----------
+    // A spreadsheet of the owner's own, with the tab the export writes to.
+    // If this fails the owner can still create one from the panel; the
+    // connection itself is already saved either way.
+    let sheetTitle = ''
+    try {
+      const created = await createSheetWithTab(tokens.accessToken, 'Ruhi Collection — Orders')
+      if (created) {
+        sheetTitle = created.title
+        await serviceFetch('/rest/v1/google_sheets_connections?on_conflict=owner_id', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify({
+            owner_id: String(row.owner_id),
+            spreadsheet_id: created.id,
+            spreadsheet_title: created.title,
+            sheet_tab: created.tab,
+          }),
+        })
+      }
+    } catch {
+      console.warn('[google-sheets-callback] the destination spreadsheet could not be created')
+    }
+
     return html(200, page({
       title: 'Connected',
       message: `Google Sheets is now connected${profile.email ? ` to ${profile.email}` : ''}. `
-        + 'Go back to the admin panel and choose the spreadsheet the orders should go to.',
+        + (sheetTitle
+          ? `A spreadsheet called “${sheetTitle}” has been created in your Drive and set as the destination.`
+          : 'Go back to the admin panel and choose the spreadsheet the orders should go to.')
+        + ' Press “Export to Google Sheets” to send the orders on screen.',
       ok: true,
       admin: adminUrl(),
     }))

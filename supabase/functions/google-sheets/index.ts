@@ -30,8 +30,6 @@ import { asString, fail, json, preflight, readJson, type Json } from '../_shared
 import { serviceFetch } from '../_shared/supabase.ts'
 import { buildSheetValues, duplicatesAmong } from '../_shared/sheetRows.mjs'
 import {
-  GOOGLE_DRIVE_API,
-  GOOGLE_SHEETS_API,
   GOOGLE_TOKEN_ENDPOINT,
   buildAuthorizeUrl,
   decryptText,
@@ -49,10 +47,16 @@ import {
   setupLinks,
   sha256Hex,
 } from '../_shared/googleOAuth.mjs'
+import {
+  DEFAULT_TAB,
+  appendRows,
+  createSheetWithTab,
+  getSpreadsheet,
+  listSpreadsheets,
+  readRange,
+} from '../_shared/googleSheets.mjs'
 
 const GOOGLE_REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke'
-const SPREADSHEET_MIME = 'application/vnd.google-apps.spreadsheet'
-const DEFAULT_TAB = 'Orders'
 const STATE_TTL_MS = 10 * 60 * 1000
 const LEASE_MS = 5 * 60 * 1000
 const MAX_IDS = 5000
@@ -130,24 +134,6 @@ async function deleteConnection(id: string): Promise<void> {
 // Google
 // ---------------------------------------------------------------------------
 
-/** One call to Google, with the answer already parsed. */
-async function googleJson(
-  url: string,
-  accessToken: string,
-  init: RequestInit = {},
-): Promise<{ ok: boolean; status: number; body: Json | null }> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      ...((init.headers as Record<string, string>) ?? {}),
-    },
-  })
-  const body = (await res.json().catch(() => null)) as Json | null
-  return { ok: res.ok, status: res.status, body }
-}
-
 /** Swap the refresh token for a fresh access token. */
 async function refreshAccessToken(conn: Json): Promise<{ token: string; expiresAt: string } | null> {
   const key = env('GOOGLE_TOKEN_KEY') ?? ''
@@ -191,72 +177,6 @@ async function ensureToken(conn: Json): Promise<string> {
   }
   const refreshed = await refreshAccessToken(conn)
   return refreshed?.token ?? ''
-}
-
-/** The spreadsheets this app created in the owner's Drive — and only those:
- *  the `drive.file` scope cannot see the rest of their Drive. */
-async function listSpreadsheets(accessToken: string): Promise<Json[]> {
-  const query = `mimeType='${SPREADSHEET_MIME}' and trashed=false`
-  const url = `${GOOGLE_DRIVE_API}?q=${encodeURIComponent(query)}`
-    + '&fields=' + encodeURIComponent('files(id,name,modifiedTime,webViewLink)')
-    + '&pageSize=50'
-  const res = await googleJson(url, accessToken)
-  if (!res.ok) {
-    console.warn('[google-sheets] drive list refused:', res.status)
-    return []
-  }
-  const files = Array.isArray((res.body as Json | null)?.files)
-    ? ((res.body as Json).files as Json[])
-    : []
-  return files
-    .filter((f) => typeof f.id === 'string' && f.id)
-    .map((f) => ({
-      id: String(f.id),
-      title: String(f.name ?? 'Untitled spreadsheet'),
-      modified: typeof f.modifiedTime === 'string' ? f.modifiedTime : '',
-      url: `https://docs.google.com/spreadsheets/d/${f.id}`,
-    }))
-}
-
-/** Create a spreadsheet in the owner's Drive and give it an "Orders" tab. */
-async function createSpreadsheet(accessToken: string, title: string): Promise<{ id: string; tab: string } | null> {
-  const res = await googleJson(`${GOOGLE_DRIVE_API}?fields=${encodeURIComponent('id,name')}`, accessToken, {
-    method: 'POST',
-    body: JSON.stringify({ name: title, mimeType: SPREADSHEET_MIME }),
-  })
-  if (!res.ok) {
-    console.warn('[google-sheets] drive create refused:', res.status)
-    return null
-  }
-  const id = String((res.body as Json | null)?.id ?? '')
-  if (!id) return null
-
-  // A brand new spreadsheet's first tab is called "Sheet1"; the export writes
-  // to a tab called "Orders", so it is renamed here.
-  const renamed = await googleJson(
-    `${GOOGLE_SHEETS_API}/${encodeURIComponent(id)}:batchUpdate`,
-    accessToken,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        requests: [{ updateSheetProperties: { sheetId: 0, title: DEFAULT_TAB, fields: 'title' } }],
-      }),
-    },
-  )
-  return { id, tab: renamed.ok ? DEFAULT_TAB : 'Sheet1' }
-}
-
-/** Append rows to a spreadsheet. */
-async function appendRows(
-  accessToken: string,
-  sheetId: string,
-  tab: string,
-  values: unknown[][],
-): Promise<{ ok: boolean; status: number; body: Json | null }> {
-  const range = `${encodeURIComponent(tab)}!A1`
-  const url = `${GOOGLE_SHEETS_API}/${encodeURIComponent(sheetId)}/values/${range}:append`
-    + '?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS'
-  return googleJson(url, accessToken, { method: 'POST', body: JSON.stringify({ values }) })
 }
 
 // ---------------------------------------------------------------------------
@@ -460,6 +380,13 @@ async function actionStatus(userId: string): Promise<Response> {
     spreadsheet: conn.spreadsheet_id
       ? { id: conn.spreadsheet_id, title: conn.spreadsheet_title ?? '', tab: conn.sheet_tab ?? DEFAULT_TAB }
       : null,
+    // What the last export actually did, as Google confirmed it.
+    lastExport: {
+      at: conn.last_export_at ?? null,
+      orders: conn.last_export_orders ?? null,
+      rows: conn.last_export_rows ?? null,
+      range: conn.last_export_range ?? null,
+    },
     sheets: await listSpreadsheets(token),
   })
 }
@@ -495,7 +422,7 @@ async function actionCreateSheet(userId: string, body: Json): Promise<Response> 
   if (!token) return fail(401, 'Your Google connection has expired. Please connect Google Sheets again.')
 
   const title = safeSheetTitle(asString(body.name), 'Ruhi Collection — Orders')
-  const created = await createSpreadsheet(token, title)
+  const created = await createSheetWithTab(token, title)
   if (!created) {
     return fail(502, 'Google could not create the spreadsheet. Please try again.')
   }
@@ -523,15 +450,14 @@ async function actionSelectSheet(userId: string, body: Json): Promise<Response> 
   }
 
   // Prove the connection can actually open it before it is remembered.
-  const res = await googleJson(
-    `${GOOGLE_SHEETS_API}/${encodeURIComponent(sheetId)}?fields=${encodeURIComponent('spreadsheetId,title')}`,
-    token,
-  )
-  if (!res.ok) {
-    const described = describeGoogleError(res.status, res.body)
-    return json(res.status === 401 ? 401 : 400, { error: described.message, needsReconnect: described.needsReconnect })
+  const found = await getSpreadsheet(token, sheetId)
+  if (!found) {
+    return json(400, {
+      error: 'That spreadsheet could not be opened with this Google account. It may have been deleted, or it may not be shared with the account you connected.',
+      needsReconnect: false,
+    })
   }
-  const title = String((res.body as Json | null)?.title ?? 'Untitled spreadsheet')
+  const title = found.title || 'Untitled spreadsheet'
 
   await patchConnection(String(conn.id), {
     spreadsheet_id: sheetId,
@@ -541,6 +467,49 @@ async function actionSelectSheet(userId: string, body: Json): Promise<Response> 
   return json(200, {
     ok: true,
     spreadsheet: { id: sheetId, title, tab: DEFAULT_TAB },
+    url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
+  })
+}
+
+/**
+ * What is actually in the destination spreadsheet right now.
+ *
+ * The owner does not have to open Google to know whether the export worked:
+ * the sheet's own first rows are read back through the same connection and
+ * shown in the panel. Nothing secret comes back — only cell values.
+ */
+async function actionPreview(userId: string): Promise<Response> {
+  const conn = await loadConnection(userId)
+  if (!conn || !conn.refresh_token) return fail(400, 'Connect Google Sheets first.')
+  const sheetId = String(conn.spreadsheet_id ?? '')
+  if (!sheetId) return fail(400, 'Choose a spreadsheet to look at first.')
+
+  const token = await ensureToken(conn)
+  if (!token) {
+    return json(401, {
+      error: 'Your Google connection has expired. Please connect Google Sheets again.',
+      needsReconnect: true,
+    })
+  }
+
+  const tab = String(conn.sheet_tab ?? DEFAULT_TAB)
+  const values = await readRange(token, sheetId, tab)
+  if (values === null) {
+    return fail(502, 'Google would not open that spreadsheet just now. Please try again.')
+  }
+
+  return json(200, {
+    ok: true,
+    tab,
+    rows: values.length,
+    header: values[0] || [],
+    sample: values.slice(1, 11),
+    lastExport: {
+      at: conn.last_export_at ?? null,
+      orders: conn.last_export_orders ?? null,
+      rows: conn.last_export_rows ?? null,
+      range: conn.last_export_range ?? null,
+    },
     url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
   })
 }
@@ -610,6 +579,17 @@ async function actionExport(userId: string, body: Json): Promise<Response> {
       })
     }
 
+    // What Google itself said it wrote — the range and the number of rows.
+    // The panel shows it, and it is the receipt that the export really
+    // happened rather than merely being attempted.
+    const updates = (written.body as Json | null)?.updates as Json | undefined
+    await patchConnection(String(conn.id), {
+      last_export_at: new Date().toISOString(),
+      last_export_orders: sending.length,
+      last_export_rows: values.length,
+      last_export_range: typeof updates?.updatedRange === 'string' ? updates.updatedRange : null,
+    })
+
     // Only now is the order marked as exported: if Google refused the rows,
     // they must still be exportable next time.
     const batchId = crypto.randomUUID()
@@ -662,6 +642,7 @@ export async function handle(req: Request): Promise<Response> {
       case 'create-sheet': return actionCreateSheet(who.id, body)
       case 'select-sheet': return actionSelectSheet(who.id, body)
       case 'export': return actionExport(who.id, body)
+      case 'preview': return actionPreview(who.id)
       default:
         return fail(400, 'That action is not something this function does.')
     }

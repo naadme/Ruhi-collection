@@ -8,7 +8,7 @@
 // private (the client secret, the refresh token) never leaves the Edge
 // Function. This component only ever shows what the server tells it.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ExternalLink, Loader2, Link2, Plus, RefreshCw, Sheet, Unlink } from 'lucide-react'
 import { sheetsAction } from '../lib/googleSheets'
 
@@ -20,7 +20,7 @@ const btnCls =
 export default function GoogleSheetsPanel({ rows, filters, notify }) {
   // `status` is what the server knows: connected, who, and which spreadsheet.
   const [state, setState] = useState({
-    status: null, busy: '', error: '', setup: null, setupLinks: null, url: '',
+    status: null, busy: '', error: '', setup: null, setupLinks: null, url: '', preview: null,
   })
   const [sheetName, setSheetName] = useState('')
   const [sheetLink, setSheetLink] = useState('')
@@ -63,8 +63,8 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
   const busy = state.busy
 
   // ---- connect ------------------------------------------------------------
-  const connect = async () => {
-    setState((s) => ({ ...s, busy: 'connect', error: '', setup: null }))
+  const connect = useCallback(async () => {
+    setState((s) => ({ ...s, busy: 'connect', error: '', setup: null, setupLinks: null }))
     try {
       const { authorizeUrl } = await sheetsAction('start')
       // The browser leaves for Google's consent screen and comes back to the
@@ -79,7 +79,19 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
         setupLinks: e?.setupLinks ?? null,
       }))
     }
-  }
+  }, [])
+
+  // The one URL: /admin?section=orders&connect=1 goes straight to Google,
+  // so the owner never has to hunt for a button.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (autoStarted.current) return
+    if (!state.status) return                 // the status is not known yet
+    if (state.status.connected) return
+    if (new URLSearchParams(window.location.search).get('connect') !== '1') return
+    autoStarted.current = true
+    connect()
+  }, [connect, state.status])
 
   const disconnect = async () => {
     setState((s) => ({ ...s, busy: 'disconnect', error: '', setup: null }))
@@ -148,6 +160,18 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
     } catch (e) {
       setState((s) => ({ ...s, busy: '', error: e?.message || 'The export failed.', setup: e?.setup ?? null }))
       notify('error', e?.message || 'The export failed.')
+    }
+  }
+
+  // ---- what is in the sheet -------------------------------------------------
+  const showPreview = async () => {
+    if (busy) return
+    setState((s) => ({ ...s, busy: 'preview', error: '' }))
+    try {
+      const preview = await sheetsAction('preview')
+      setState((s) => ({ ...s, busy: '', preview }))
+    } catch (e) {
+      setState((s) => ({ ...s, busy: '', error: e?.message || 'Could not read the spreadsheet.' }))
     }
   }
 
@@ -297,6 +321,53 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
               </a>
               . Orders already there are skipped unless you tick the box above.
             </p>
+          )}
+
+          {/* ---- what the last export did, as Google confirmed it ---- */}
+          {status?.lastExport?.at && (
+            <p className="text-[12px] text-black/50">
+              Last export: {status.lastExport.orders} {status.lastExport.orders === 1 ? 'order' : 'orders'}
+              {status.lastExport.rows ? ` · ${status.lastExport.rows} rows` : ''}
+              {status.lastExport.range ? ` · ${status.lastExport.range}` : ''}
+              {' · '}
+              {new Date(status.lastExport.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+            </p>
+          )}
+
+          {destination && (
+            <button onClick={showPreview} disabled={!!busy} className={btnCls}>
+              {busy === 'preview' ? <Loader2 size={15} className="animate-spin" /> : <Sheet size={15} />}
+              What is in the sheet?
+            </button>
+          )}
+
+          {state.preview && (
+            <div className="border border-black/10 rounded-lg overflow-hidden">
+              <p className="px-3 py-2 bg-black/[.03] text-[12px] text-black/55">
+                {state.preview.rows} row(s) in the “{state.preview.tab}” tab
+                {state.preview.lastExport?.at
+                  ? ` · last export ${new Date(state.preview.lastExport.at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`
+                  : ''}
+              </p>
+              <div className="overflow-x-auto">
+                <table className="text-[12px] w-full">
+                  <tbody>
+                    {(state.preview.header || []).slice(0, 6).map((cell, i) => (
+                      <tr key={`h-${i}`} className="border-t border-black/10">
+                        <td className="px-3 py-1.5 font-semibold whitespace-nowrap">{cell}</td>
+                      </tr>
+                    ))}
+                    {(state.preview.sample || []).map((row, i) => (
+                      <tr key={`r-${i}`} className="border-t border-black/10">
+                        <td className="px-3 py-1.5 whitespace-nowrap font-mono">{row[0]}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap text-black/60">{row[1]}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap text-black/60">{row[4]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {state.url && (

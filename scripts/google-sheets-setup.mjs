@@ -200,8 +200,12 @@ head('4. Copying the credentials into the Edge Function')
 // ---- 6. what is left --------------------------------------------------------
 head('6. Where this leaves you')
 if (secretValid && redirectRegistered) {
-  ok('Google is ready. Open Admin → Orders and press "Connect Google Sheets".')
-  info('You will sign in with your Google account, approve access, and be back.')
+  ok('Google is ready.')
+  info('Open this one link:')
+  info('  https://www.ruhi-collections.com/admin?section=orders&connect=1')
+  info('Sign in with your Google account, approve the access, and a spreadsheet')
+  info('called “Ruhi Collection — Orders” is created for you. Then press')
+  info('“Export to Google Sheets”.')
 } else {
   info('Two things are left, and both are on pages only the account owner can open:')
   info(`  a) ${CONSOLE_CREDENTIALS} → the OAuth client → Authorised redirect URIs → Add`)

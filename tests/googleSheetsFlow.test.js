@@ -115,6 +115,7 @@ function googleJson(url, init = {}) {
   })
 
   const sheetsWrite = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+)\/values\/(.+):append$/)
+  const sheetsRead = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+)\/values\/(.+)$/)
   const sheetGet = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+)$/)
   const sheetBatch = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+):batchUpdate$/)
 
@@ -175,9 +176,10 @@ function googleJson(url, init = {}) {
   if (u.hostname === 'www.googleapis.com' && u.pathname === '/drive/v3/files') {
     if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
     if (method === 'POST') {
-      const file = { id: 'created-sheet-1', name: body.name }
+      const id = `created-sheet-${world.google.files.length + 1}`
+      const file = { id, name: body.name }
       world.google.files.push(file)
-      world.google.sheets[file.id] = { title: file.name, tab: 'Sheet1' }
+      world.google.sheets[id] = { title: file.name, tab: 'Sheet1' }
       return json(200, file)
     }
     return json(200, { files: world.google.files })
@@ -208,7 +210,17 @@ function googleJson(url, init = {}) {
     const id = decodeURIComponent(sheetsWrite[1])
     const sheet = world.google.sheets[id] || (world.google.sheets[id] = { title: 'Sheet', tab: 'Orders' })
     world.google.appended.push({ id, values: body.values })
-    return json(200, { updates: { updatedRows: body.values.length } })
+    return json(200, {
+      updates: { updatedRows: body.values.length, updatedRange: `${sheet.tab}!A1:Z${body.values.length}` },
+    })
+  }
+
+  // Reading a range back — what the "what is in the sheet" preview uses.
+  if (u.hostname === 'sheets.googleapis.com' && sheetsRead) {
+    if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
+    const id = decodeURIComponent(sheetsRead[1])
+    const values = world.google.appended.filter((a) => a.id === id).flatMap((a) => a.values)
+    return json(200, { values })
   }
 
   return json(404, { error: 'not_found' })
@@ -375,9 +387,20 @@ test('the owner approves, and the connection is stored encrypted', async () => {
   assert.notEqual(conn.refresh_token, 'refresh-token-1', 'nor the refresh token')
   assert.ok(conn.access_token.length > 20, 'but something was stored')
   assert.ok(conn.access_expires_at, 'and when it expires')
-  assert.equal(conn.spreadsheet_id, null, 'no destination yet — the owner chooses')
   assert.ok(body.authorizeUrl, 'the sign-in URL was handed over')
   assert.ok(state, 'and the state came back')
+})
+
+test('a destination spreadsheet is created for the owner, so nothing is left to set up', async () => {
+  const { done } = await connect()
+  const page = await done.text()
+  assert.match(page, /Ruhi Collection — Orders/, 'the page says which sheet was made')
+
+  const conn = readConnection()
+  assert.equal(conn.spreadsheet_id, 'created-sheet-1', 'and the connection points at it')
+  assert.equal(conn.sheet_tab, 'Orders', 'with the tab the export writes to')
+  assert.equal(world.google.files.length, 1, 'exactly one file was created in Drive')
+  assert.deepEqual(world.google.renames[0], { id: 'created-sheet-1', title: 'Orders' })
 })
 
 test('a sign-in link cannot be used twice, and it expires', async () => {
@@ -394,23 +417,24 @@ test('the panel shows who is connected and which spreadsheets the app owns', asy
   const body = await res.json()
   assert.equal(body.connected, true)
   assert.equal(body.email, 'owner@gmail.com')
-  assert.deepEqual(body.sheets, [], 'no spreadsheets yet')
-  assert.equal(body.spreadsheet, null)
+  assert.equal(body.sheets.length, 1, 'the sheet the app created is listed')
+  assert.equal(body.spreadsheet.id, 'created-sheet-1', 'and it is already the destination')
+  assert.equal(body.spreadsheet.tab, 'Orders')
 })
 
 test('the owner creates a spreadsheet, and it becomes the destination', async () => {
   await connect()
-  const res = await post('create-sheet', { name: 'Ruhi Collection — Orders' })
+  const res = await post('create-sheet', { name: 'Weekly orders' })
   assert.equal(res.status, 200)
   const body = await res.json()
-  assert.equal(body.spreadsheet.id, 'created-sheet-1')
+  assert.equal(body.spreadsheet.id, 'created-sheet-2', 'a second sheet, beside the automatic one')
   assert.equal(body.spreadsheet.tab, 'Orders', 'the first tab is renamed so the export has somewhere to go')
 
-  assert.equal(world.google.files.length, 1, 'one file was created in Drive')
+  assert.equal(world.google.files.length, 2, 'the automatic one and the new one')
   assert.deepEqual(world.google.renames[0], { id: 'created-sheet-1', title: 'Orders' })
 
   const conn = readConnection()
-  assert.equal(conn.spreadsheet_id, 'created-sheet-1')
+  assert.equal(conn.spreadsheet_id, 'created-sheet-2')
   assert.equal(conn.sheet_tab, 'Orders')
 })
 
@@ -430,8 +454,8 @@ test('a spreadsheet the connection cannot open is refused, in plain words', asyn
   const res = await post('select-sheet', { spreadsheetId: 'a-sheet-that-does-not-exist-at-all' })
   assert.equal(res.status, 400)
   const body = await res.json()
-  assert.match(body.error, /could not be found/i)
-  assert.equal(readConnection().spreadsheet_id, null, 'and it is not remembered')
+  assert.match(body.error, /could not be opened/i)
+  assert.equal(readConnection().spreadsheet_id, 'created-sheet-1', 'and the destination is left alone')
 })
 
 test('the export writes headers and one row per item', async () => {
@@ -444,7 +468,7 @@ test('the export writes headers and one row per item', async () => {
   assert.equal(body.ok, true)
   assert.equal(body.orders, 1)
   assert.equal(body.skipped, 0)
-  assert.match(body.url, /docs\.google\.com\/spreadsheets\/d\/created-sheet-1/)
+  assert.match(body.url, /docs\.google\.com\/spreadsheets\/d\/created-sheet-2/)
 
   assert.equal(world.google.appended.length, 1)
   const values = world.google.appended[0].values
@@ -509,6 +533,9 @@ test('a grant Google has taken back asks the owner to connect again', async () =
 
 test('an export with no destination is refused before anything is sent', async () => {
   await connect()
+  // The destination is created for the owner when they connect; this is the
+  // case where it could not be, so the export has nowhere to go.
+  readConnection().spreadsheet_id = null
   const res = await post('export', { ids: ['aaaaaaaa-1111-1111-1111-111111111111'] })
   assert.equal(res.status, 400)
   assert.match((await res.json()).error, /Choose a spreadsheet/i)
@@ -590,4 +617,24 @@ test('two exports cannot run at the same time', async () => {
   const res = await post('export', { ids: ['aaaaaaaa-1111-1111-1111-111111111111'] })
   assert.equal(res.status, 409)
   assert.match((await res.json()).error, /already running/i)
+})
+
+test('the panel can show what is actually in the sheet, and the receipt of the export', async () => {
+  await connect()
+  await post('export', { ids: ['aaaaaaaa-1111-1111-1111-111111111111'] })
+
+  const res = await post('preview')
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.header[0], 'Reference', 'the header row is there')
+  assert.equal(body.rows >= 2, true, 'and the order below it')
+  assert.equal(body.sample[0][0], 'RCH-0001', 'the order is in there')
+  assert.match(body.url, /docs\.google\.com\/spreadsheets\/d\/created-sheet-1/)
+
+  // The receipt, written only after Google accepted the rows.
+  const conn = readConnection()
+  assert.equal(conn.last_export_orders, 1)
+  assert.equal(conn.last_export_rows, 2, 'the header and the order')
+  assert.match(conn.last_export_range, /A1/)
+  assert.ok(conn.last_export_at, 'and when it happened')
 })
