@@ -86,11 +86,18 @@ export function selectStatusChanges(orders, ledger) {
 }
 
 /**
- * The sheet rows that hold these orders, by their Order ID.
+ * The sheet rows that hold an order, by the Order ID the sheet carries.
  *
  * The Order ID is the first column, so one narrow read finds where every
  * order lives. A row that is not an order (the filter banner the manual
  * export writes) is simply not in the map.
+ *
+ * An order with several line items has SEVERAL rows, and the status is
+ * written on every one of them, so the map holds all of them.
+ *
+ * A sheet written before the order IDs changed carries the OLD ID, so an
+ * order is found by its current ID *or* by the one it had before — the row
+ * is the same order either way.
  */
 export function mapOrderRows(references, referenceColumn = 0) {
   const map = new Map()
@@ -99,7 +106,9 @@ export function mapOrderRows(references, referenceColumn = 0) {
     const cell = Array.isArray(row) ? row[referenceColumn] : row
     const value = String(cell ?? '').trim()
     if (!value) return
-    map.set(value, index + 1) // spreadsheets count from 1
+    const rows = map.get(value) || []
+    rows.push(index + 1) // spreadsheets count from 1
+    map.set(value, rows)
   })
   return map
 }
@@ -128,7 +137,7 @@ export async function loadSyncOrders(baseUrl, serviceKey, limit = SYNC_LOOKBACK_
   if (!baseUrl || !serviceKey) return []
   const res = await fetch(
     `${baseUrl}/rest/v1/orders`
-      + `?select=id,reference,created_at,status,payment_status,payment_method,full_name,email,phone,`
+      + `?select=id,reference,previous_reference,created_at,status,payment_status,payment_method,full_name,email,phone,`
       + 'address,city,state,pincode,subtotal,discount,coupon_code,shipping,total,'
       + 'razorpay_order_id,razorpay_payment_id,note,'
       + 'order_items(title,size,qty,unit_price,sku)'

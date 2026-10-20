@@ -74,6 +74,10 @@ export async function runSync(): Promise<Json> {
   const orders = await loadSyncOrders(baseUrl(), serviceKey)
 
   const { fresh } = selectNewOrders(orders, exportedIds)
+  const where = new Map<string, number[]>()
+  let sheetRowsRead = 0
+  let referencesFound = 0
+  let updateError = ''
 
   // The headings of any column added since the sheet was created are written
   // into its first row — whether or not there is anything new to send, so the
@@ -100,29 +104,61 @@ export async function runSync(): Promise<Json> {
     await recordExports(baseUrl(), serviceKey, sheetId, fresh)
   }
 
-  // The rows whose status changed are updated where they already are.
-  let updated = 0
+  // The sheet is read once: its first column says which order each row is.
+  const referenceRows = await readRange(token, sheetId, tab, 'A1:A2000')
+  sheetRowsRead = Array.isArray(referenceRows) ? referenceRows.length : 0
+  const found = mapOrderRows(referenceRows)
+  referencesFound = found.size
+  for (const [key, value] of found) where.set(key, value)
+
+  // Two things can be out of date in a row that is already there: the STATUS,
+  // and the ORDER ID itself. Both are brought up to date where the row is —
+  // never by adding another row for the same order.
   const changes = selectStatusChanges(orders, ledger)
-  if (changes.length) {
-    const referenceRows = await readRange(token, sheetId, tab, 'A1:A2000')
-    const where = mapOrderRows(referenceRows)
-    for (const change of changes) {
-      const row = where.get(String(change.order.reference ?? ''))
-      if (!row) continue
-      const res = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}`
-          + `/values/${encodeURIComponent(`${tab}!C${row}:D${row}`)}`,
-        {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ values: [[change.now, change.nowPayment]] }),
-        },
-      )
-      if (!res.ok) continue
-      updated += 1
-    }
-    if (updated) await recordStatusUpdates(baseUrl(), serviceKey, sheetId, changes)
+  let updated = 0
+  let renamed = 0
+
+  /** Write one range of the sheet. */
+  const write = async (range, values) => {
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}`
+        + `/values/${encodeURIComponent(`${tab}!${range}`)}?valueInputOption=RAW`,
+      {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values }),
+      },
+    )
+    if (res.ok) return true
+    const why = (await res.text().catch(() => '')).slice(0, 300)
+    console.warn('[google-sheets-sync] could not update a row:', res.status, why)
+    updateError = updateError || `HTTP ${res.status}: ${why}`
+    return false
   }
+
+  for (const order of orders) {
+    // The rows of this order — found by the ID the sheet carries, which may be
+    // the one the order had before its IDs were regenerated.
+    const reference = String(order.reference ?? '')
+    const previous = String(order.previous_reference ?? '')
+    const rows = [...(where.get(reference) || []), ...(where.get(previous) || [])]
+    if (!rows.length) continue
+
+    // The Order ID the row carries: the order's current one.
+    const current = String(order.reference ?? '')
+    if (previous && where.get(previous)?.length && current !== previous) {
+      for (const row of where.get(previous) || []) {
+        if (await write(`A${row}:A${row}`, [[current]])) renamed += 1
+      }
+    }
+
+    const change = changes.find((c) => String(c.order.id) === String(order.id))
+    if (!change) continue
+    for (const row of rows) {
+      if (await write(`C${row}:D${row}`, [[change.now, change.nowPayment]])) updated += 1
+    }
+  }
+  if (updated || renamed) await recordStatusUpdates(baseUrl(), serviceKey, sheetId, changes)
 
   await recordOutcome(connId, {
     last_sync_at: new Date().toISOString(),
@@ -136,6 +172,14 @@ export async function runSync(): Promise<Json> {
     orders: written,
     rows,
     updated,
+    // How many orders the sheet was out of date about, and how many rows of
+    // the sheet were read to find them — so a sheet that cannot be read is
+    // visible as such rather than as "nothing to do".
+    statusChanges: changes.length,
+    sheetRows: sheetRowsRead,
+    sheetReferences: referencesFound,
+    renamed,
+    updateError: updateError || null,
     headingsWritten: heading?.written || 0,
     considered: orders.length,
     message: written || updated

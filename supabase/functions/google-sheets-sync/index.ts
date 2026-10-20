@@ -84,7 +84,9 @@ export async function handle(req: Request): Promise<Response> {
     return json(result.ok ? 200 : 503, result)
   } catch (error) {
     console.warn('[google-sheets-sync] failed:', String(error))
-    return fail(500, 'The sync did not finish.')
+    // The reason is returned to the caller (the owner or the scheduler) so a
+    // failure is never a silent one.
+    return fail(500, `The sync did not finish: ${String(error && error.message ? error.message : error)}`)
   }
 }
 

@@ -311,7 +311,11 @@ export async function readRange(accessToken, sheetId, tab, range = 'A1:Z50') {
 
 /** Write a range of values — used to name the columns a sheet is missing. */
 export async function updateRange(accessToken, sheetId, tab, range, values) {
+  // Google refuses an update that does not say what to do with the value.
+  // RAW writes the text exactly as given — a status is never run through a
+  // formula.
   const url = `${SHEETS_API}/${encodeURIComponent(sheetId)}/values/${encodeURIComponent(`${tab}!${range}`)}`
+    + '?valueInputOption=RAW'
   return googleJson(url, accessToken, { method: 'PUT', body: JSON.stringify({ values }) })
 }
 

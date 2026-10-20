@@ -82,9 +82,45 @@ test('the sheet rows are found by the Order ID in the first column', () => {
     ['01102602', '2026-10-01'],
   ]
   const where = mapOrderRows(rows)
-  assert.equal(where.get('01102601'), 2, 'spreadsheets count from 1')
-  assert.equal(where.get('01102602'), 3)
+  assert.deepEqual(where.get('01102601'), [2], 'spreadsheets count from 1')
+  assert.deepEqual(where.get('01102602'), [3])
   assert.equal(where.get('missing'), undefined)
+})
+
+test('an order with several line items has a row for each of them', () => {
+  const rows = [
+    ['01102601'],
+    ['01102601'],
+    ['01102602'],
+  ]
+  const where = mapOrderRows(rows)
+  assert.deepEqual(where.get('01102601'), [1, 2], 'both rows are found')
+  assert.deepEqual(where.get('01102602'), [3])
+})
+
+test('a sheet written before the order IDs changed is found by the old ID too', () => {
+  // The sheet carries the ID an order had before the DDMMYYNN format. The row
+  // is the same order, so the sync finds it by either number and brings the
+  // row up to date.
+  const sheet = [['RCH-80D880BB'], ['01102602']]
+  const where = mapOrderRows(sheet)
+  const order = { id: 'o1', reference: '05102601', previous_reference: 'RCH-80D880BB' }
+  const rows = [...(where.get(order.reference) || []), ...(where.get(order.previous_reference) || [])]
+  assert.deepEqual(rows, [1], 'the row is found by the ID the sheet carries')
+  // A sheet that already carries the current ID is found by that one.
+  const current = { id: 'o2', reference: '01102602', previous_reference: 'RCH-9E9FF270' }
+  const rows2 = [...(where.get(current.reference) || []), ...(where.get(current.previous_reference) || [])]
+  assert.deepEqual(rows2, [2], 'and by the current one when it has it')
+})
+
+test('the sync writes the order\'s current ID into the sheet', () => {
+  const sync = read('supabase/functions/_shared/sheetSyncRun.ts')
+  assert.match(sync, /write\(`A\$\{row\}:A\$\{row\}`, \[\[current\]\]\)/,
+    'the Order ID column is brought up to date')
+  assert.match(sync, /valueInputOption=RAW/, 'and Google is told what to do with the value')
+  // Google's own refusal: an update without it is answered with a 400.
+  const sheets = read('supabase/functions/_shared/googleSheets.mjs')
+  assert.match(sheets, /valueInputOption=RAW/, 'the same for the column headings')
 })
 
 test('the sync is reachable from the payment path and from a schedule', () => {
