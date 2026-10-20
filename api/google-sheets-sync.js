@@ -33,7 +33,11 @@ export default async function handler(req, res) {
       body: JSON.stringify({ source: 'schedule' }),
     })
     const body = await response.json().catch(() => ({}))
-    res.status(response.ok ? 200 : 502).json({ ok: !!body?.ok, ...body })
+    // The detail goes to the log, not to the caller: this endpoint is public
+    // (Vercel's scheduled job cannot add a secret), and what it does — send
+    // the sheet whatever it is missing — is safe to trigger at any time.
+    console.log('[sheet-sync]', JSON.stringify(body))
+    res.status(response.ok ? 200 : 502).json({ ok: !!body?.ok })
   } catch (error) {
     res.status(502).json({ ok: false, error: String(error && error.message ? error.message : error) })
   }
