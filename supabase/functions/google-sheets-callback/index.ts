@@ -32,7 +32,7 @@ import {
   readTokenResponse,
   sha256Hex,
 } from '../_shared/googleOAuth.mjs'
-import { createSheetWithTab } from '../_shared/googleSheets.mjs'
+import { createSheetWithTab, describeApiProblem } from '../_shared/googleSheets.mjs'
 
 const GOOGLE_USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo'
 
@@ -273,7 +273,13 @@ export async function handle(req: Request): Promise<Response> {
     let sheetTitle = ''
     try {
       const created = await createSheetWithTab(tokens.accessToken, 'Ruhi Collection — Orders')
-      if (created) {
+      if (created?.error) {
+        // The spreadsheet could not be made (usually: the Google Sheets API is
+        // not enabled on the project). The connection is saved either way, and
+        // the panel can create the sheet once the API is on.
+        const problem = describeApiProblem(created.error.status, created.error.body, env('GOOGLE_CLIENT_ID') ?? '')
+        console.warn('[google-sheets-callback] the destination could not be created:', created.error.status, problem.reason)
+      } else if (created) {
         sheetTitle = created.title
         await serviceFetch('/rest/v1/google_sheets_connections?on_conflict=owner_id', {
           method: 'POST',

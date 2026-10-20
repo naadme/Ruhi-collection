@@ -185,6 +185,32 @@ function googleJson(url, init = {}) {
     return json(200, { files: world.google.files })
   }
 
+  // The Sheets API refuses everything when it is not enabled on the project.
+  if (u.hostname === 'sheets.googleapis.com' && world.google.sheetsApiDisabled) {
+    if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
+    return json(403, {
+      error: 'SERVICE_DISABLED',
+      error_description: 'Google Sheets API has not been used in project 550615952572 before or it is disabled. Enable it by visiting https://console.developer.google.com/apis/api/sheets.googleapis.com/overview?project=550615952572',
+      status: 'PERMISSION_DENIED',
+      details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'SERVICE_DISABLED' }],
+    })
+  }
+
+  // Creating a spreadsheet goes through the SHEETS API, so it needs nothing
+  // beyond the `spreadsheets` scope the connection already carries.
+  if (u.hostname === 'sheets.googleapis.com' && u.pathname === '/v4/spreadsheets' && method === 'POST') {
+    if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
+    const id = `created-sheet-${world.google.files.length + 1}`
+    const title = body?.properties?.title || 'Untitled'
+    world.google.files.push({ id, name: title })
+    world.google.sheets[id] = { title, tab: 'Sheet1' }
+    return json(200, {
+      spreadsheetId: id,
+      properties: { title },
+      sheets: [{ properties: { sheetId: 0, title: 'Sheet1' } }],
+    })
+  }
+
   if (u.hostname === 'sheets.googleapis.com' && sheetBatch) {
     if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
     const id = decodeURIComponent(sheetBatch[1])
@@ -231,7 +257,7 @@ const ENV = {
   SUPABASE_URL,
   SUPABASE_ANON_KEY: 'anon-key',
   SUPABASE_SERVICE_ROLE_KEY: 'service-key',
-  GOOGLE_CLIENT_ID: 'client-id.apps.googleusercontent.com',
+  GOOGLE_CLIENT_ID: '550615952572-testclient.apps.googleusercontent.com',
   GOOGLE_CLIENT_SECRET: 'client-secret',
   GOOGLE_TOKEN_KEY: TOKEN_KEY,
   GOOGLE_ADMIN_URL: 'https://www.ruhi-collections.com/admin?section=orders',
@@ -325,6 +351,7 @@ const reset = () => {
     failNextAppend: 0,
     failNextAppendWith: 0,
     refreshFails: false,
+    sheetsApiDisabled: false,
     registeredRedirects: [`${SUPABASE_URL}/functions/v1/google-sheets-callback`],
   }
 }
@@ -354,7 +381,7 @@ test('pressing Connect sends the owner to Google with the right request', async 
 
   const url = new URL(body.authorizeUrl)
   assert.equal(url.hostname, 'accounts.google.com')
-  assert.equal(url.searchParams.get('client_id'), 'client-id.apps.googleusercontent.com')
+  assert.equal(url.searchParams.get('client_id'), '550615952572-testclient.apps.googleusercontent.com')
   assert.equal(url.searchParams.get('redirect_uri'), `${SUPABASE_URL}/functions/v1/google-sheets-callback`)
   assert.equal(url.searchParams.get('response_type'), 'code')
   assert.equal(url.searchParams.get('access_type'), 'offline')
@@ -617,6 +644,37 @@ test('two exports cannot run at the same time', async () => {
   const res = await post('export', { ids: ['aaaaaaaa-1111-1111-1111-111111111111'] })
   assert.equal(res.status, 409)
   assert.match((await res.json()).error, /already running/i)
+})
+
+test('an API that is not enabled is reported with the link that fixes it', async () => {
+  await connect()
+  world.google.sheetsApiDisabled = true
+
+  const res = await post('create-sheet', { name: 'Orders' })
+  assert.equal(res.status, 501, 'not a generic failure: the owner is told what is wrong')
+  const body = await res.json()
+  assert.equal(body.reason, 'api_not_enabled')
+  assert.match(body.error, /not enabled/i)
+  assert.ok(body.setupLinks && body.setupLinks.length, 'with the page to open')
+  assert.match(body.setupLinks[0].url, /console\.cloud\.google\.com/)
+  assert.match(body.setupLinks[0].url, /project=550615952572/)
+  assert.equal(readConnection().spreadsheet_id, 'created-sheet-1', 'and the connection is untouched')
+})
+
+test('the status says which Google API is missing, and keeps the answer', async () => {
+  await connect()
+  world.google.sheetsApiDisabled = true
+
+  const res = await post('status')
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.apiCheck.sheets.ok, false, 'the Sheets API is the one that is off')
+  assert.equal(body.apiCheck.sheets.reason, 'api_not_enabled')
+  assert.match(body.apiCheck.sheets.message, /not enabled/i)
+  assert.match(body.apiCheck.sheets.link, /sheets\.googleapis\.com/)
+  assert.match(body.apiCheck.sheets.link, /project=550615952572/)
+  assert.equal(body.apiCheck.drive.ok, true, 'the Drive API is fine')
+  assert.ok(readConnection().api_check, 'and the answer is kept on the connection')
 })
 
 test('the panel can show what is actually in the sheet, and the receipt of the export', async () => {

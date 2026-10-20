@@ -241,6 +241,29 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
 
       {connected && (
         <div className="mt-4 space-y-3">
+          {/* ---- which Google API is missing, if any ---- */}
+          {status?.apiCheck && !(status.apiCheck.sheets?.ok && status.apiCheck.drive?.ok) && (
+            <div role="alert" className="border border-amber-200 bg-amber-50 text-amber-900 rounded-lg px-3 py-2.5">
+              <p className="text-[13px] font-semibold">Google is missing something</p>
+              <ul className="mt-1.5 space-y-1.5 text-[13px]">
+                {[status.apiCheck.sheets, status.apiCheck.drive]
+                  .filter((api) => api && !api.ok)
+                  .map((api) => (
+                    <li key={api.reason}>
+                      {api.message}
+                      {api.link ? (
+                        <>
+                          {' '}
+                          <a href={api.link} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">
+                            Turn it on
+                          </a>
+                        </>
+                      ) : null}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
           {/* ---- where the orders go ---- */}
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] items-end">
             <label className="block min-w-0">

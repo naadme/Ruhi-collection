@@ -51,8 +51,10 @@ import {
   DEFAULT_TAB,
   appendRows,
   createSheetWithTab,
+  describeApiProblem,
   getSpreadsheet,
   listSpreadsheets,
+  probeGoogleApis,
   readRange,
 } from '../_shared/googleSheets.mjs'
 
@@ -372,10 +374,22 @@ async function actionStatus(userId: string): Promise<Response> {
     })
   }
 
+  // A read-only check of the two Google APIs this integration needs, kept on
+  // the connection so the panel (and whoever is looking after the site) can
+  // see exactly which one is missing, instead of a generic failure.
+  let apiCheck = conn.api_check ?? null
+  try {
+    apiCheck = await probeGoogleApis(token, env('GOOGLE_CLIENT_ID') ?? '')
+    await patchConnection(String(conn.id), { api_check: apiCheck })
+  } catch {
+    /* the check is a convenience; never let it break the panel */
+  }
+
   return json(200, {
     ok: true,
     connected: true,
     configured: true,
+    apiCheck,
     email: conn.google_email ?? '',
     spreadsheet: conn.spreadsheet_id
       ? { id: conn.spreadsheet_id, title: conn.spreadsheet_title ?? '', tab: conn.sheet_tab ?? DEFAULT_TAB }
@@ -423,8 +437,25 @@ async function actionCreateSheet(userId: string, body: Json): Promise<Response> 
 
   const title = safeSheetTitle(asString(body.name), 'Ruhi Collection — Orders')
   const created = await createSheetWithTab(token, title)
-  if (!created) {
-    return fail(502, 'Google could not create the spreadsheet. Please try again.')
+  if (created.error) {
+    // Google's own reason, in a sentence the owner can act on. The usual one
+    // is an API that is not enabled on the Google Cloud project — Google
+    // answers 403 SERVICE_DISABLED and names the project, and the fix is one
+    // click on a link.
+    const problem = describeApiProblem(created.error.status, created.error.body, env('GOOGLE_CLIENT_ID') ?? '')
+    console.warn('[google-sheets] could not create the spreadsheet:', created.error.status, problem.reason)
+    return json(problem.reason === 'api_not_enabled' ? 501 : 502, {
+      error: problem.message,
+      reason: problem.reason,
+      setup: problem.link ? [problem.message, `Enable it here: ${problem.link}`] : null,
+      setupLinks: problem.link
+        ? [{
+          label: 'Enable the Google API',
+          url: problem.link,
+          hint: 'Press “Enable”, wait a minute for it to take effect, then press “Create spreadsheet” again.',
+        }]
+        : null,
+    })
   }
   await patchConnection(String(conn.id), {
     spreadsheet_id: created.id,
