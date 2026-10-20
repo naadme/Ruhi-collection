@@ -123,12 +123,14 @@ test('the hero guards an empty slide list instead of dereferencing undefined', (
   assert.match(SECTIONS, /const at = slideAt\(atRaw, n\)/, 'the index is wrapped by the shared guard')
   assert.match(SECTIONS, /const cur = at === null \? null : slides\[at\]/,
     'nothing is wrapped when there is nothing to wrap')
-  // The markup must not touch `cur` unconditionally.
-  assert.match(SECTIONS, /\{cur && \(/, 'the hero image is rendered only when a slide exists')
-  assert.ok(!/key=\{cur\.key\}/.test(SECTIONS.split('{cur && (')[0].split('const cur')[1] ?? ''),
+  // The markup must not touch `cur` unconditionally. The guard also waits for
+  // the owner's banner to be known, so the full-size fallback photograph is
+  // not downloaded and then thrown away.
+  assert.match(SECTIONS, /\{cur && bannersKnown && \(/, 'the hero image is rendered only when a slide exists')
+  assert.ok(!/key=\{cur\.key\}/.test(SECTIONS.split('{cur && bannersKnown && (')[0].split('const cur')[1] ?? ''),
     'no unconditional read of cur.key above the guard')
   // Static half must NOT be behind the guard — the copy has to stay on screen.
-  const heroCopy = SECTIONS.split('{cur && (')[0]
+  const heroCopy = SECTIONS.split('{cur && bannersKnown && (')[0]
   assert.ok(heroCopy.includes("Ruhi Women's"), 'the static hero copy is unaffected by the guard')
   assert.ok(heroCopy.includes('SHOP NOW'), 'the SHOP OUT button is unaffected by the guard')
 })

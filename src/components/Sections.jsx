@@ -44,15 +44,29 @@ export const Hero = () => {
   // "none saved" (or Supabase unreachable) — the hero then keeps its original
   // category-photo slider, so the page always renders something meaningful.
   const [banners, setBanners] = useState([])
+  // Whether the banner list is known yet.
+  //
+  // The hero must not show a fallback photograph before that: the fallback is
+  // a full-size photograph, and showing it first means every visitor
+  // downloads it in full and then throws it away the moment the owner's
+  // banner arrives. The fallback is still used when the owner really has no
+  // banner — and when the read does not come back, so the hero can never be
+  // left empty.
+  const [bannersKnown, setBannersKnown] = useState(false)
   const { products } = useProducts()
   const { categories } = useCategories()
   useEffect(() => {
     let alive = true
-    fetchHomeBanners().then((rows) => {
-      if (alive) setBanners(rows)
-    })
+    const settle = () => { if (alive) setBannersKnown(true) }
+    // A read that never answers must not leave the hero empty: after two
+    // seconds the fallback photograph is used whatever the answer was.
+    const timer = setTimeout(settle, 2000)
+    fetchHomeBanners()
+      .then((rows) => { if (alive) setBanners(rows); settle() })
+      .catch(settle)
     return () => {
       alive = false
+      clearTimeout(timer)
     }
   }, [])
   // The hero slides the admin's saved banners FIRST — in the order they were
@@ -111,7 +125,7 @@ export const Hero = () => {
           can never also follow the category link. At 44px they match the
           touch target the wishlist button already uses. */}
       <div className="relative overflow-hidden h-[380px] md:h-auto">
-        {cur && (
+        {cur && bannersKnown && (
           <Link key={cur.key} to={cur.to} className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none">
               <Img src={cur.image} alt={cur.label} loading="eager" className="absolute inset-0 w-full h-full object-cover" />
           </Link>

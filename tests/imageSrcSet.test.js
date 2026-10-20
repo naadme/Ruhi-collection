@@ -84,5 +84,17 @@ test('a failed smaller copy falls back to the original photograph', () => {
   // picture has to be retried from the original rather than left broken.
   const img = read('src/components/Img.jsx')
   assert.match(img, /if \(srcSet && !original\) setOriginal\(true\)/)
-  assert.match(img, /const srcSet = sizes && !original \? imageSrcSet\(src\) : undefined/)
+  assert.match(img, /const srcSet = copy && !original \? copy\.srcset : undefined/)
+})
+
+test('the picture\'s own src is the smaller copy, not the original', () => {
+  // A browser fetches `src` before it reads the `srcset`. Naming the
+  // full-size photograph there means every phone downloads it in full and
+  // then downloads the smaller copy as well.
+  const img = read('src/components/Img.jsx')
+  assert.match(img, /const shown = copy && !original \? copy\.small : src/)
+  assert.match(img, /src=\{shown\}/)
+  // …and the original is still offered to a screen that needs it.
+  const lib = read('src/lib/imageSrcSet.js')
+  assert.match(lib, /srcset: `\$\{src\.replace[\s\S]*?\} \$\{copy\.small\}w, \$\{src\} \$\{copy\.original\}w`/)
 })

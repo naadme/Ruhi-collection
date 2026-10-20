@@ -16,12 +16,26 @@ import derivatives from './imageDerivatives.js'
 export const IMAGE_SIZES = { small: 640, logo: 320 }
 
 /**
+ * The copies of one bundled photograph: the smaller one and the original.
+ *
+ * `null` when the photograph has no smaller copy — an uploaded photo, or one
+ * that was added to the folder without running the copy script.
+ */
+export function imageCopy(src) {
+  if (typeof src !== 'string') return null
+  const copy = derivatives[src]
+  if (!copy) return null
+  return {
+    small: src.replace(/\.jpe?g$/i, `-${copy.small}.jpg`),
+    original: src,
+    srcset: `${src.replace(/\.jpe?g$/i, `-${copy.small}.jpg`)} ${copy.small}w, ${src} ${copy.original}w`,
+  }
+}
+
+/**
  * The `srcset` for a bundled photograph, or undefined when there is no
  * smaller copy to offer.
  */
 export function imageSrcSet(src) {
-  if (typeof src !== 'string') return undefined
-  const copy = derivatives[src]
-  if (!copy) return undefined
-  return `${src.replace(/\.jpe?g$/i, '')}-${copy.small}.jpg ${copy.small}w, ${src} ${copy.original}w`
+  return imageCopy(src)?.srcset
 }

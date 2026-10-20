@@ -78,6 +78,17 @@ test('a visitor with no banners gets the original category slider, never an erro
   assert.match(HERO, /stockedCategoryTiles\(categories, products\)/, 'the fallback is still the stocked categories');
 });
 
+test('the hero does not show a fallback photograph before the banner is known', () => {
+  // The fallback photograph is a full-size photograph. Showing it first means
+  // every visitor downloads it in full and then throws it away the moment the
+  // owner's banner arrives — the hero waits for the answer instead.
+  assert.match(HERO, /bannersKnown/);
+  assert.match(HERO, /\{cur && bannersKnown && \(/);
+  // ...but it can never be left empty: a read that does not come back falls
+  // back to the photograph after two seconds.
+  assert.match(HERO, /setTimeout\(settle, 2000\)/);
+});
+
 test('the admin panel asks for the strict answer, and reports a real failure', () => {
   // `strict` is what separates "the table does not exist yet" (an error the
   // admin must see) from "there are no banners" (an empty, editable list).
