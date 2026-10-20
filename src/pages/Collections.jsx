@@ -38,8 +38,12 @@ export default function Collections() {
   const tiles = [
     ...collectionTiles.map((c) => {
       const key = new URLSearchParams(c.to.split('?')[1] || '').get('type')
-      const chosen = String(byKey.get(key)?.image ?? '').trim()
-      return { ...c, image: chosen || c.image }
+      const category = byKey.get(key)
+      const chosen = String(category?.image ?? '').trim()
+      // The owner's own name for the category wins, so a rename in the admin
+      // panel is seen here as well — and the same category can never appear
+      // under two different names on two different screens.
+      return { ...c, title: category?.label || c.title, image: chosen || c.image }
     }),
     ...extra,
   ]
@@ -54,13 +58,12 @@ export default function Collections() {
           // A tile only advertises a collection the store actually stocks, so
           // a newly added (still empty) category never promises a shopper
           // something the shop does not have. The shop's own Type filter and
-          // the shop's own Type filter and the header/footer links, generated
-          // from the client's own category list, show every category
-          // regardless. With an empty catalogue nothing can be judged, so all
-          // tiles are shown.
+          // the header/footer links, generated from the client's own category
+          // list, show every category regardless. With an empty catalogue
+          // nothing can be judged, so all tiles are shown.
           .filter(({ n }) => n > 0 || products.length === 0)
           .map(({ c, n }) => (
-            <Link key={c.title} to={c.to} className="group relative block aspect-[4/3] overflow-hidden bg-neutral-200">
+            <Link key={c.to} to={c.to} className="group relative block aspect-[4/3] overflow-hidden bg-neutral-200">
               <Img src={c.image} alt={c.title} loading="eager" sizes="(max-width: 640px) 100vw, 400px" className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               <div className="absolute bottom-0 p-6 md:p-8 text-white">

@@ -152,6 +152,22 @@ test('the Collections page reads the same tiles', () => {
   assert.match(collections, /categoryShopUrl\(c\.key\)/)
 })
 
+test('the same category is never shown under two different names', () => {
+  // The Collections page used to carry its own hardcoded name for a category
+  // ("Tops & Shirts") while every other screen used the owner's name
+  // ("Tops & T-shirts"), and a rename in the admin panel never reached it.
+  const collections = read('src/pages/Collections.jsx')
+  assert.match(collections, /title: category\?\.label \|\| c\.title/,
+    'the tile takes the owner\'s name for the category')
+  const seed = read('src/data/products.js')
+  const labels = [...seed.matchAll(/^\s*\{ key: '([a-z-]+)', label: '([^']+)' \}/gm)].map((m) => m[2])
+  assert.ok(labels.includes('Tops & T-shirts'), 'the category list names it "Tops & T-shirts"')
+  assert.ok(!/\{ title: 'Tops & Shirts'/.test(seed),
+    'and the Collections tile no longer carries a second name for it')
+  assert.match(seed, /title: typeLabel\('tops'\)/,
+    'the bundled tile takes its name from the category list itself')
+})
+
 test('the admin panel can change a category photo, and the storefront reads it', () => {
   const lib = read('src/lib/categoryImageStore.js')
   assert.match(lib, /from\('categories'\)[\s\S]*?\.update\(\{ image: value \}\)[\s\S]*?\.eq\('key', key\)/,

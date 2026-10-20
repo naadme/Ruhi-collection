@@ -153,8 +153,12 @@ export const reviews = [
 // tile falls back to its category photo instead of crashing the page.
 const tileImg = (id, fallback) => getProduct(id)?.image || fallback
 export const collectionTiles = [
-  { title: 'Tops & Shirts', text: 'Denim shirts and panda tees', image: tileImg('denim-shirt-blue', img.catTops), to: '/shop?type=tops' },
-  { title: 'Co-ord Sets', text: 'Shirt and pant sets in every colour', image: tileImg('shirt-pant-coord-set-neon-green', img.catCoord), to: '/shop?type=coord' },
-  { title: 'Dresses', text: 'Denim and striped dresses', image: tileImg('stripes-dress-yellow', img.catDress), to: '/shop?type=dress' },
-  { title: 'Trousers & Pants', text: 'Everyday trousers and pants', image: img.catTrousers, to: '/shop?type=trousers' },
+  // The tile's name comes from the category list above, so a category can
+  // never be shown under two different names — the bundled fallback, the
+  // Collections page, the shop filter and the owner's own label in the admin
+  // panel are all one name.
+  { title: typeLabel('tops'), text: 'Denim shirts and panda tees', image: tileImg('denim-shirt-blue', img.catTops), to: '/shop?type=tops' },
+  { title: typeLabel('coord'), text: 'Shirt and pant sets in every colour', image: tileImg('shirt-pant-coord-set-neon-green', img.catCoord), to: '/shop?type=coord' },
+  { title: typeLabel('dress'), text: 'Denim and striped dresses', image: tileImg('stripes-dress-yellow', img.catDress), to: '/shop?type=dress' },
+  { title: typeLabel('trousers'), text: 'Everyday trousers and pants', image: img.catTrousers, to: '/shop?type=trousers' },
 ]
