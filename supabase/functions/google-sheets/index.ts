@@ -42,9 +42,11 @@ import {
   missingConfigMessage,
   parseSpreadsheetId,
   pkcePair,
+  probeGoogleSetup,
   randomToken,
   readTokenResponse,
   safeSheetTitle,
+  setupLinks,
   sha256Hex,
 } from '../_shared/googleOAuth.mjs'
 
@@ -327,9 +329,10 @@ async function loadExportedOrderIds(sheetId: string): Promise<string[]> {
 
 async function actionStart(userId: string, email: string): Promise<Response> {
   const clientId = env('GOOGLE_CLIENT_ID') ?? ''
+  const clientSecret = env('GOOGLE_CLIENT_SECRET') ?? ''
   const missing = missingConfig({
     GOOGLE_CLIENT_ID: clientId,
-    GOOGLE_CLIENT_SECRET: env('GOOGLE_CLIENT_SECRET'),
+    GOOGLE_CLIENT_SECRET: clientSecret,
     GOOGLE_TOKEN_KEY: env('GOOGLE_TOKEN_KEY'),
   })
   if (missing.length) {
@@ -337,6 +340,30 @@ async function actionStart(userId: string, email: string): Promise<Response> {
       error: 'Google Sheets is not set up on this project yet.',
       missing,
       setup: missingConfigMessage(missing),
+      setupLinks: setupLinks(clientId),
+    })
+  }
+
+  // Before the owner is sent to a consent screen, check the two things that
+  // would otherwise only fail at the very last step: the client secret, and
+  // whether this callback URL is registered for the client. One wasted
+  // consent click is a poor trade for a sentence.
+  const probe = await probeGoogleSetup({
+    clientId,
+    clientSecret,
+    redirectUri: callbackUrl(),
+  })
+  if (!probe.ok) {
+    return json(501, {
+      error: probe.reason === 'invalid_secret'
+        ? 'This project’s Google Client secret is not valid, so Google would refuse the sign-in.'
+        : probe.reason === 'redirect_not_registered'
+          ? 'This project’s Google OAuth client does not accept the Sheets callback URL yet.'
+          : 'Google could not be reached, so the sign-in cannot be started.',
+      missing: [],
+      reason: probe.reason,
+      setup: missingConfigMessage([], { reason: probe.reason, redirectUri: callbackUrl() }),
+      setupLinks: setupLinks(clientId),
     })
   }
 
@@ -375,19 +402,38 @@ async function actionStart(userId: string, email: string): Promise<Response> {
 }
 
 async function actionStatus(userId: string): Promise<Response> {
+  const clientId = env('GOOGLE_CLIENT_ID') ?? ''
+  const clientSecret = env('GOOGLE_CLIENT_SECRET') ?? ''
   const missing = missingConfig({
-    GOOGLE_CLIENT_ID: env('GOOGLE_CLIENT_ID'),
-    GOOGLE_CLIENT_SECRET: env('GOOGLE_CLIENT_SECRET'),
+    GOOGLE_CLIENT_ID: clientId,
+    GOOGLE_CLIENT_SECRET: clientSecret,
     GOOGLE_TOKEN_KEY: env('GOOGLE_TOKEN_KEY'),
   })
   const conn = await loadConnection(userId)
   if (!conn || !conn.refresh_token) {
+    // Not connected yet: say what is actually missing, rather than a list of
+    // everything that could be.
+    let reason = ''
+    let setup = missing.length ? missingConfigMessage(missing) : null
+    if (!missing.length) {
+      const probe = await probeGoogleSetup({
+        clientId,
+        clientSecret,
+        redirectUri: callbackUrl(),
+      })
+      if (!probe.ok) {
+        reason = probe.reason
+        setup = missingConfigMessage([], { reason, redirectUri: callbackUrl() })
+      }
+    }
     return json(200, {
       ok: true,
       connected: false,
       configured: missing.length === 0,
       missing,
-      setup: missing.length ? missingConfigMessage(missing) : null,
+      reason,
+      setup,
+      setupLinks: setupLinks(clientId),
       sheets: [],
     })
   }

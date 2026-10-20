@@ -45,6 +45,7 @@ export async function sheetsAction(action, body = {}) {
       || 'Google Sheets did not respond. Please try again.',
     )
     failure.setup = Array.isArray(detail?.setup) ? detail.setup : null
+    failure.setupLinks = Array.isArray(detail?.setupLinks) ? detail.setupLinks : null
     failure.needsReconnect = detail?.needsReconnect === true
     throw failure
   }

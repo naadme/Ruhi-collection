@@ -13,6 +13,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {
   GOOGLE_SCOPES,
+  SETUP_SCOPES,
   buildAuthorizeUrl,
   decodeJwtPayload,
   decryptText,
@@ -25,9 +26,11 @@ import {
   missingConfigMessage,
   parseSpreadsheetId,
   pkcePair,
+  probeGoogleSetup,
   randomToken,
   readTokenResponse,
   safeSheetTitle,
+  setupLinks,
   sha256Hex,
   tokenFingerprint,
 } from '../supabase/functions/_shared/googleOAuth.mjs'
@@ -272,11 +275,79 @@ test('the setup message names the variables and never a value', () => {
   )
   const text = missingConfigMessage(['GOOGLE_CLIENT_ID']).join('\n')
   assert.match(text, /Google Sheets API/)
+  assert.match(text, /Google Drive API/)
   assert.match(text, /consent screen/i)
-  assert.match(text, /redirect URI/i)
   assert.match(text, /GOOGLE_CLIENT_ID/)
-  assert.match(text, /Press "Connect Google Sheets"/)
+  assert.match(text, /Excel download keeps working/)
   assert.doesNotMatch(text, /BEGIN PRIVATE KEY|client_secret\s*[:=]/i, 'no secret is ever shown')
+})
+
+// ---------------------------------------------------------------------------
+// 3b. Finding out what is wrong BEFORE the owner is sent to Google
+// ---------------------------------------------------------------------------
+
+test('the setup probe names the exact thing Google objects to', async () => {
+  const realFetch = globalThis.fetch
+  const json = (body, status) => new Response(JSON.stringify(body), {
+    status, headers: { 'Content-Type': 'application/json' },
+  })
+  try {
+    // 1. a secret that does not belong to the client
+    globalThis.fetch = async () => json({ error: 'invalid_client', error_description: 'The provided client secret is invalid.' }, 401)
+    const bad = await probeGoogleSetup({ clientId: 'x', clientSecret: 'y', redirectUri: 'https://z/callback' })
+    assert.equal(bad.ok, false)
+    assert.equal(bad.reason, 'invalid_secret')
+    assert.equal(bad.secretValid, false)
+
+    // 2. a callback URL Google does not know — it answers with a redirect to
+    //    its own error page, where the reason is base64 in `authError`
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('oauth2/v2/auth')) {
+        const encoded = Buffer.from('redirect_uri_mismatch').toString('base64url')
+        return new Response(null, {
+          status: 302,
+          headers: { location: `https://accounts.google.com/signin/oauth/error?authError=${encoded}` },
+        })
+      }
+      return json({ error: 'invalid_grant' }, 400)
+    }
+    const mismatch = await probeGoogleSetup({ clientId: 'x', clientSecret: 'y', redirectUri: 'https://z/callback' })
+    assert.equal(mismatch.reason, 'redirect_not_registered')
+    assert.equal(mismatch.secretValid, true, 'the secret was fine — only the URL was wrong')
+
+    // 3. everything in order
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('oauth2/v2/auth')) {
+        return new Response(null, { status: 302, headers: { location: 'https://accounts.google.com/v3/signin/identifier' } })
+      }
+      return json({ error: 'invalid_grant' }, 400)
+    }
+    const good = await probeGoogleSetup({ clientId: 'x', clientSecret: 'y', redirectUri: 'https://z/callback' })
+    assert.equal(good.ok, true)
+    assert.equal(good.secretValid, true)
+    assert.equal(good.redirectRegistered, true)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('the setup links point at the exact Google Cloud pages', () => {
+  const links = setupLinks('550615952572-abc.apps.googleusercontent.com')
+  assert.ok(links.length >= 2)
+  for (const link of links) {
+    assert.match(link.url, /^https:\/\/console\.cloud\.google\.com\//, 'a real console page')
+    assert.ok(link.label.length > 5, 'and something to read')
+  }
+  assert.ok(links.some((l) => l.url.includes('/apis/credentials')), 'the OAuth client page')
+  assert.ok(links.some((l) => l.url.includes('/auth/branding')), 'the consent screen page')
+  assert.ok(links.some((l) => l.hint.includes('550615952572')), 'and it names the client to open')
+})
+
+test('the consent screen is told to allow exactly the scopes the app asks for', () => {
+  assert.deepEqual(SETUP_SCOPES, GOOGLE_SCOPES)
+  const text = missingConfigMessage([], { reason: 'redirect_not_registered', redirectUri: 'https://z/callback' }).join('\n')
+  for (const scope of SETUP_SCOPES) assert.ok(text.includes(scope), `${scope} is listed`)
+  assert.match(text, /https:\/\/z\/callback/, 'and the exact URL to register')
 })
 
 // ---------------------------------------------------------------------------

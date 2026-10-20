@@ -345,18 +345,40 @@ export function decodeJwtPayload(token) {
   }
 }
 
-/** The setup an owner needs when the Google side is not configured yet. */export function missingConfigMessage(missing) {
+/**
+ * The setup an owner needs, in the order they will meet it.
+ *
+ * `context.reason` comes from {@link probeGoogleSetup} and says exactly what
+ * Google found wrong, so the owner is never sent to a console page that has
+ * nothing to do with their problem.
+ */
+export function missingConfigMessage(missing, context = {}) {
+  const { redirectUri = '', reason = '' } = context
   const names = (Array.isArray(missing) ? missing : []).filter(Boolean)
-  return [
-    'Google Sheets is not connected to this project yet.',
-    names.length ? `Still missing: ${names.join(', ')}.` : '',
-    '1. In Google Cloud, create a project and enable the Google Sheets API and the Google Drive API.',
-    '2. Configure the OAuth consent screen (add yourself as a test user) and create an OAuth client of type "Web application".',
-    '3. Add the authorised redirect URI: <the callback URL shown on the Connect button>.',
-    '4. Set the project secrets: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
-    '5. Press "Connect Google Sheets" and approve access with your own Google account.',
-    'The Excel download keeps working in the meantime.',
-  ].filter(Boolean)
+  const lines = []
+
+  if (reason === 'invalid_secret') {
+    lines.push('Google does not accept the Client secret this project is using, so it would refuse the sign-in.')
+    lines.push('1. Google Cloud \u2192 Credentials \u2192 open the "Web application" client \u2192 copy its CURRENT Client secret.')
+    lines.push('2. Supabase \u2192 Authentication \u2192 Sign In \u2192 Google \u2192 paste it as the Client Secret and save.')
+    lines.push('   (The Edge Function picks it up from there \u2014 it never has to be typed anywhere else.)')
+  } else if (reason === 'redirect_not_registered') {
+    lines.push('This callback URL is not registered for the OAuth client, so Google would refuse the sign-in.')
+    lines.push('1. Google Cloud \u2192 Credentials \u2192 open the "Web application" client.')
+    lines.push('2. Under "Authorised redirect URIs" \u2192 Add \u2192 paste exactly:')
+    lines.push(`      ${redirectUri}`)
+  } else {
+    lines.push('Google Sheets is not connected to this project yet.')
+    if (names.length) lines.push(`Still missing: ${names.join(', ')}.`)
+    lines.push('1. Google Cloud \u2192 create a project and enable the Google Sheets API and the Google Drive API.')
+    lines.push('2. Configure the OAuth consent screen (Branding + Audience) and create a Web application OAuth client.')
+  }
+
+  lines.push('The consent screen must allow these scopes:')
+  for (const scope of SETUP_SCOPES) lines.push(`      ${scope}`)
+
+  lines.push('The Excel download keeps working in the meantime.')
+  return lines
 }
 
 /** Which of the settings the function needs are absent. */
@@ -366,3 +388,118 @@ export function missingConfig(env, keys = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SE
     return typeof v !== 'string' || v.trim().length === 0
   })
 }
+
+/**
+ * Check the Google side BEFORE the owner is sent to a consent screen.
+ *
+ * Two things can be wrong, and both are invisible until the very last step:
+ *   * the client secret does not belong to the client id — Google then
+ *     refuses the code exchange with `invalid_client`;
+ *   * the callback URL is not an authorised redirect URI for that client —
+ *     Google then refuses the sign-in with `redirect_uri_mismatch`.
+ *
+ * Both are checked here, so the admin is told what is actually missing
+ * instead of clicking through Google's consent screen and then being
+ * refused.
+ */
+export async function probeGoogleSetup({ clientId, clientSecret, redirectUri }) {
+  const result = {
+    ok: false,
+    secretValid: false,
+    redirectRegistered: false,
+    reason: '',
+    detail: '',
+  }
+
+  // ---- the credential pair ------------------------------------------------
+  try {
+    const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: 'ruhi-collection-setup-probe',
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+      }),
+    })
+    const body = await res.json().catch(() => null)
+    const error = typeof body?.error === 'string' ? body.error : ''
+    if (error === 'invalid_client') {
+      result.reason = 'invalid_secret'
+      result.detail = 'Google does not accept this Client ID with this Client secret.'
+      return result
+    }
+    // "invalid_grant" is what a made-up code earns from a valid client —
+    // which is exactly the answer we want.
+    result.secretValid = true
+  } catch {
+    result.reason = 'unreachable'
+    result.detail = 'Google could not be reached.'
+    return result
+  }
+
+  // ---- the redirect URI ---------------------------------------------------
+  try {
+    const url = new URL(GOOGLE_AUTH_ENDPOINT)
+    url.searchParams.set('client_id', clientId)
+    url.searchParams.set('redirect_uri', redirectUri)
+    url.searchParams.set('response_type', 'code')
+    url.searchParams.set('scope', 'openid email')
+    const res = await fetch(url, { redirect: 'manual' })
+    const location = res.headers.get('location') || ''
+    // Google answers a bad redirect URI with a redirect to its own error
+    // page, where the reason travels base64-encoded in `authError`.
+    const encoded = location.match(/[?&]authError=([^&]+)/)
+    let reason = ''
+    if (encoded) {
+      try { reason = atob(decodeURIComponent(encoded[1]).replace(/-/g, '+').replace(/_/g, '/')) } catch { reason = '' }
+    }
+    if (/redirect_uri_mismatch|invalid_request/i.test(reason) || /redirect_uri_mismatch/i.test(location)) {
+      result.reason = 'redirect_not_registered'
+      result.detail = 'This callback URL is not an authorised redirect URI for that client.'
+      return result
+    }
+    result.redirectRegistered = true
+    result.ok = true
+    return result
+  } catch {
+    result.reason = 'unreachable'
+    result.detail = 'Google could not be reached.'
+    return result
+  }
+}
+
+/**
+ * The pages the owner has to open, with the exact place to click. The links
+ * are the Google Cloud pages themselves — no guessing.
+ */
+export function setupLinks(clientId = '') {
+  const project = clientId.split('-')[0] || ''
+  return [
+    {
+      label: 'Add the callback URL to the OAuth client',
+      url: 'https://console.cloud.google.com/apis/credentials',
+      hint: `Open the "Web application" client whose id starts ${project || 'the same project number'} → "Authorised redirect URIs" → Add.`,
+    },
+    {
+      label: 'Check the consent screen and its scopes',
+      url: 'https://console.cloud.google.com/auth/branding',
+      hint: 'Branding → the app name and your email; Audience → External, and add yourself as a test user; Data Access → the scopes below.',
+    },
+    {
+      label: 'Copy the Client ID and Client secret',
+      url: 'https://console.cloud.google.com/apis/credentials',
+      hint: 'The secret is needed to finish the setup: paste it into Supabase → Authentication → Sign In → Google → Client Secret, and it is copied into the Edge Function automatically.',
+    },
+  ]
+}
+
+/** The exact scopes the consent screen has to allow. */
+export const SETUP_SCOPES = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.file',
+  'openid',
+  'email',
+]

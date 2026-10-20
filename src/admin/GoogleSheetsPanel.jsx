@@ -19,7 +19,9 @@ const btnCls =
 
 export default function GoogleSheetsPanel({ rows, filters, notify }) {
   // `status` is what the server knows: connected, who, and which spreadsheet.
-  const [state, setState] = useState({ status: null, busy: '', error: '', setup: null, url: '' })
+  const [state, setState] = useState({
+    status: null, busy: '', error: '', setup: null, setupLinks: null, url: '',
+  })
   const [sheetName, setSheetName] = useState('')
   const [sheetLink, setSheetLink] = useState('')
   const [includeExported, setIncludeExported] = useState(false)
@@ -27,9 +29,20 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
   const load = useCallback(async () => {
     try {
       const status = await sheetsAction('status')
-      setState((s) => ({ ...s, status, error: '', setup: status?.setup ?? null }))
+      setState((s) => ({
+        ...s,
+        status,
+        error: '',
+        setup: status?.setup ?? null,
+        setupLinks: status?.setupLinks ?? null,
+      }))
     } catch (e) {
-      setState((s) => ({ ...s, error: e?.message || 'Could not read the Google Sheets status.', setup: e?.setup ?? null }))
+      setState((s) => ({
+        ...s,
+        error: e?.message || 'Could not read the Google Sheets status.',
+        setup: e?.setup ?? null,
+        setupLinks: e?.setupLinks ?? null,
+      }))
     }
   }, [])
 
@@ -63,6 +76,7 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
         busy: '',
         error: e?.message || 'Could not start the Google sign-in.',
         setup: e?.setup ?? null,
+        setupLinks: e?.setupLinks ?? null,
       }))
     }
   }
@@ -177,10 +191,27 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
 
       {state.setup && (
         <div role="alert" className="mt-3 border border-amber-200 bg-amber-50 text-amber-900 rounded-lg px-3 py-2.5">
-          <p className="text-[13px] font-semibold">Google Sheets is not set up on this project yet</p>
+          <p className="text-[13px] font-semibold">Google Sheets is not ready yet</p>
           <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[13px]">
             {state.setup.map((step) => <li key={step}>{step}</li>)}
           </ul>
+          {Array.isArray(state.setupLinks) && state.setupLinks.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {state.setupLinks.map((link) => (
+                <p key={link.url + link.label} className="text-[13px]">
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold underline underline-offset-2"
+                  >
+                    {link.label}
+                  </a>
+                  {link.hint ? <span className="text-amber-800/80"> — {link.hint}</span> : null}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

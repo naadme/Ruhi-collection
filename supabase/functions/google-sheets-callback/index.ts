@@ -211,9 +211,15 @@ export async function handle(req: Request): Promise<Response> {
     const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
     if (!res.ok) {
       console.warn('[google-sheets-callback] the token exchange was refused:', res.status)
+      const reason = typeof body?.error === 'string' ? body.error : ''
+      const message = reason === 'invalid_client'
+        ? 'This project’s Google Client secret is not valid, so Google refused the sign-in. The secret has to be updated before connecting.'
+        : reason === 'redirect_uri_mismatch'
+          ? 'Google does not accept this callback URL for the OAuth client, so the sign-in was refused. The callback URL has to be registered first.'
+          : 'Google did not accept the sign-in. Please press Connect Google Sheets and try again.'
       return html(400, page({
         title: 'Not connected',
-        message: 'Google did not accept the sign-in. Please press Connect Google Sheets and try again.',
+        message,
         ok: false,
         admin: adminUrl(),
       }))
