@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
 import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
-import { categoryFallbackImage, reviews } from '../data/products'
+import { reviews } from '../data/products'
+import { extraCategoryTiles, stockedCategoryTiles } from '../lib/categoryTiles'
 import { site } from '../data/site'
 import { img } from '../data/images'
 import { useProducts } from '../context/ProductsContext'
@@ -14,51 +15,12 @@ import Img from './Img'
 import ProductGrid from './ProductGrid'
 const icons = { Truck, Headset, IndianRupee }
 
-// The client's own category list, as homepage tiles. The four launch
-// categories keep the photographs they were given; a category the client
-// created later is pictured with the first product photo it actually has, and
-// one with no photograph at all is left out rather than shown as a broken
-// circle. Everything else — label, link — comes straight from the row, so the
-// homepage can never disagree with the shop's Type filter.
-const tilesOf = (list, products) =>
-  list
-    .map((c) => ({
-      key: c.key,
-      label: c.label,
-      image: categoryFallbackImage(c.key)
-        || products.find((p) => p.type === c.key && p.image)?.image
-        || null,
-      to: `/shop?type=${c.key}`,
-    }))
-    .filter((t) => t.image)
-
-// Categories the store actually stocks, in catalogue order. The homepage hero
-// and the "Shop by Category" row only advertise a category that has at least
-// one live product, so a newly added (still empty) category can never promise
-// a shopper something the shop does not have. The header, footer and shop
-// filter list every category regardless. With an empty catalogue nothing can
-// be judged, so every pictured category is shown — the same rule the
-// Collections page applies to its tiles.
-const stocked = (list, products) => {
-  const withStock = tilesOf(list, products).filter((t) => products.some((p) => p.type === t.key))
-  return withStock.length ? withStock : tilesOf(list, products)
-}
-
-/** Every category with a product in it, in catalogue order, whether or not it
- *  is one the client's list still offers — the same gap `withTypeOption`
- *  covers in the pickers. A category that still holds products has to stay
- *  reachable from the homepage; `stocked` above keeps the curated four
- *  leading and the empty ones out, and this supplies what it would miss. */
-const stockedTypes = (list, products) => {
-  const known = new Set(tilesOf(list, products).map((t) => t.key))
-  const extra = []
-  for (const p of products) {
-    if (known.has(p.type) || !p.image || extra.some((c) => c.key === p.type)) continue
-    known.add(p.type)
-    extra.push({ key: p.type, label: p.type, image: p.image, to: `/shop?type=${p.type}` })
-  }
-  return extra
-}
+// The homepage's category tiles — the photo each one shows and the shop page
+// it points at — are built by src/lib/categoryTiles.js, so the homepage, the
+// Collections page and the shop's own Type filter can never disagree about
+// where a category goes or which picture represents it. The owner can change
+// the picture from the admin panel; until they do, the default photographs
+// below are used.
 
 export const Hero = () => {
   // Two halves, side by side from `md` up: the cream poster on the left and
@@ -98,7 +60,7 @@ export const Hero = () => {
   // the END of the list. Keeping them is what stops the arrows from vanishing
   // the moment a banner is saved (see src/lib/heroSlider.js). With no banners
   // saved the list is exactly the original category slider.
-  const slides = heroSlides(banners, stocked(categories, products).map((c) => ({
+  const slides = heroSlides(banners, stockedCategoryTiles(categories, products).map((c) => ({
     key: c.key, image: c.image, to: c.to, label: c.label,
   })))
   const n = slides.length
@@ -176,8 +138,21 @@ export const Categories = () => {
   return (
     <section className="max-w-[1300px] mx-auto px-4 pt-16 pb-10">
       <h2 className="text-center text-[34px] tracking-wide">Shop by Category</h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mt-8">{[...stocked(categories, products), ...stockedTypes(categories, products)].map((c) => (
-        <Link key={c.key} to={c.to} className="text-center"><Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover" /><p className="mt-4 text-[17px]">{c.label}</p></Link>))}</div>
+      {/* The whole card — the photograph and the name under it — is one link to
+          that category's own page in the shop, so a tap anywhere on the card
+          lands on the products of the category that was pictured. The link is
+          built by src/lib/categoryTiles.js, the same place the Collections
+          page and the shop filter read it from, so the three can never
+          disagree about where a category goes. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-8 mt-8">{[...stockedCategoryTiles(categories, products), ...extraCategoryTiles(categories, products)].map((c) => (
+        <Link
+          key={c.key}
+          to={c.to}
+          className="text-center group block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
+        >
+          <Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover transition group-hover:scale-[1.03]" />
+          <p className="mt-4 text-[17px] group-hover:underline underline-offset-4">{c.label}</p>
+        </Link>))}</div>
     </section>
   )
 }

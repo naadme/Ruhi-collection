@@ -1,0 +1,52 @@
+// Storing the photo a category shows.
+//
+// The file goes into the same public storage bucket the product editor and
+// the homepage banners use (`product-images`), and the chosen photo is
+// written to the `categories` row itself — so it is a value, not a code
+// change: it survives a reload, a redeployment and a fresh checkout of the
+// repository, and the storefront picks it up on its next read.
+//
+// Writes to `categories` are gated on is_admin() by the table's own RLS, so
+// this can never be done by a signed-in visitor.
+
+import { supabase } from './supabase.js'
+import { CATEGORY_IMAGE_BUCKET, validateCategoryImage } from './categoryImages.js'
+
+/**
+ * Upload a photograph to the store's image storage and return its public
+ * address. The file name carries a timestamp so an upload can never
+ * overwrite another category's picture.
+ */
+export const uploadCategoryImage = async (file) => {
+  const problem = validateCategoryImage(file)
+  if (problem) throw new Error(problem)
+  const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+  const path = `category-${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from(CATEGORY_IMAGE_BUCKET).upload(path, file, {
+    contentType: file.type,
+    upsert: false,
+  })
+  if (error) throw error
+  const { data } = supabase.storage.from(CATEGORY_IMAGE_BUCKET).getPublicUrl(path)
+  if (!data?.publicUrl) throw new Error('The photo was uploaded but its address could not be read.')
+  return data.publicUrl
+}
+
+/**
+ * Save the photo for one category. An empty value means "use the site's
+ * default photograph for this category" — the storefront then falls back to
+ * the picture it has always used.
+ */
+export const saveCategoryImage = async (key, image) => {
+  const value = String(image ?? '').trim() || null
+  const { data, error } = await supabase
+    .from('categories')
+    .update({ image: value })
+    .eq('key', key)
+    .select('key, label, image')
+    .single()
+  if (error || !data?.key) {
+    throw new Error(error?.message || 'Nothing was saved — your session may have expired.')
+  }
+  return data
+}

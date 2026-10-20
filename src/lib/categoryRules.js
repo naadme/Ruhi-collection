@@ -20,7 +20,7 @@ export const MAX_CATEGORY_LABEL = 60
 
 /** The four categories the store launched with, in their original order and
  *  with their original labels — "Trousers & Pants" included, verbatim. */
-export const SEED_CATEGORIES = TYPES.map((t, i) => ({ key: t.key, label: t.label, position: i }))
+export const SEED_CATEGORIES = TYPES.map((t, i) => ({ key: t.key, label: t.label, position: i, image: null }))
 
 /** A label as the store stores it: internal runs of space collapsed, trimmed,
  *  capped at the column's length. */
@@ -122,7 +122,15 @@ export const mergeCategories = (rows, seed = SEED_CATEGORIES) => {
     if (seenKeys.has(key) || seenLabels.has(labelKey)) return
     seenKeys.add(key)
     seenLabels.add(labelKey)
-    out.push({ key, label, position: Number.isFinite(pos) ? pos : 99 })
+    // The photo the owner chose for this category travels with it — it is
+    // part of the category, so the storefront's tiles and the admin panel
+    // always see the same one. A row with no photo keeps the default.
+    out.push({
+      key,
+      label,
+      position: Number.isFinite(pos) ? pos : 99,
+      image: String(r?.image ?? '').trim() || null,
+    })
   }
   for (const r of (Array.isArray(rows) ? rows : []).concat(Array.isArray(seed) ? seed : [])) push(r)
   return out.sort((a, b) => a.position - b.position)

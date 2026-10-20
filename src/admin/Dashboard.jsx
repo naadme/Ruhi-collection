@@ -14,6 +14,7 @@ import ProductEditor from './ProductEditor'
 import { ProductRow, GroupCard } from './ProductList'
 import OrdersPanel from './OrdersPanel'
 import BannerPanel from './BannerPanel'
+import CategoryImagesPanel from './CategoryImagesPanel'
 import BestsellerPanel from './BestsellerPanel'
 import CouponsPanel from './CouponsPanel'
 
@@ -104,7 +105,8 @@ const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
 // the homepage is a shop-window decision, not a catalogue edit.
 const SECTIONS = [
   ['products', 'Products'], ['orders', 'Orders'], ['banners', 'Banners'],
-  ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'],
+  ['category-images', 'Category images'], ['bestsellers', 'Bestsellers'],
+  ['coupons', 'Coupons'],
 ]
 
 function SectionSwitch({ value, onChange, showOrders }) {
@@ -389,6 +391,7 @@ export default function Dashboard({ showOrders }) {
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'orders' && <OrdersPanel notify={notify} />}
           {section === 'banners' && <BannerPanel notify={notify} />}
+          {section === 'category-images' && <CategoryImagesPanel notify={notify} />}
           {section === 'bestsellers' && <BestsellerPanel notify={notify} products={all} />}
           {section === 'coupons' && <CouponsPanel notify={notify} />}
         </div>

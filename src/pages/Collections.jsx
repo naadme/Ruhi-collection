@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import Img from '../components/Img'
-import { categoryFallbackImage, collectionTiles } from '../data/products'
+import { collectionTiles } from '../data/products'
+import { categoryImage, categoryShopUrl } from '../lib/categoryTiles'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import usePageTitle from '../hooks/usePageTitle'
@@ -22,15 +23,26 @@ export default function Collections() {
   const { categories } = useCategories()
   const curated = new Set(collectionTiles.map((c) => c.to))
   const extra = categories
-    .filter((c) => !curated.has(`/shop?type=${c.key}`))
+    .filter((c) => !curated.has(categoryShopUrl(c.key)))
     .map((c) => ({
       title: c.label,
       text: 'New in this collection',
-      image: categoryFallbackImage(c.key) || products.find((p) => p.type === c.key && p.image)?.image || null,
-      to: `/shop?type=${c.key}`,
+      image: categoryImage(c, products),
+      to: categoryShopUrl(c.key),
     }))
     .filter((c) => c.image)
-  const tiles = [...collectionTiles, ...extra]
+  // The photo the owner chose for a category wins here too, so a change made
+  // in the admin panel is seen on the homepage AND on this page. A category
+  // with no chosen photo keeps the curated photograph below.
+  const byKey = new Map(categories.map((c) => [c.key, c]))
+  const tiles = [
+    ...collectionTiles.map((c) => {
+      const key = new URLSearchParams(c.to.split('?')[1] || '').get('type')
+      const chosen = String(byKey.get(key)?.image ?? '').trim()
+      return { ...c, image: chosen || c.image }
+    }),
+    ...extra,
+  ]
 
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-14">
