@@ -61,34 +61,50 @@ const ROUTES = ['/', '/shop', '/shop?type=coord', '/collections', '/product/soli
 
 let bad = 0
 for (const route of ROUTES) {
-  // Settle the previous page first. A navigation cancels whatever that page
-  // still had in flight, and those cancellations belong to the page that was
-  // left behind — counting them against the next route would report a failure
-  // that never happened. The counters are cleared after the settle, so only
-  // this route's own requests are judged.
-  await send('Page.navigate', { url: 'about:blank' })
-  await sleep(500)
-  consoleErrors.length = 0
-  failed.length = 0
-  await send('Page.navigate', { url: BASE + route })
-  await sleep(2600)
-  const state = await send('Runtime.evaluate', {
-    expression: `({ title: document.title, h1: document.querySelector('h1')?.textContent.trim() || '',
-      error: /Something went wrong|Cannot read|is not a function|undefined is not/i.test(document.body.innerText) })`,
-    returnByValue: true,
-  })
-  const s = state.result.value
-  const problems = []
-  if (s.error) problems.push('rendered an error')
-  if (consoleErrors.length) problems.push(`${consoleErrors.length} console message(s)`)
-  if (failed.length) problems.push(`${failed.length} failed request(s)`)
+  // A network hiccup — the document request timing out — is the machine's
+  // connection, not the site: the same page answers in well under a second
+  // on the next attempt. Such a route is tried again once, and the retry is
+  // what is reported.
+  let problems = []
+  let heading = ''
+  let retried = false
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    // Settle the previous page first. A navigation cancels whatever that page
+    // still had in flight, and those cancellations belong to the page that was
+    // left behind — counting them against the next route would report a
+    // failure that never happened. The counters are cleared after the settle,
+    // so only this route's own requests are judged.
+    await send('Page.navigate', { url: 'about:blank' })
+    await sleep(500)
+    consoleErrors.length = 0
+    failed.length = 0
+    await send('Page.navigate', { url: BASE + route })
+    await sleep(2600)
+    const state = await send('Runtime.evaluate', {
+      expression: `({ title: document.title, h1: document.querySelector('h1')?.textContent.trim() || '',
+        error: /Something went wrong|Cannot read|is not a function|undefined is not/i.test(document.body.innerText) })`,
+      returnByValue: true,
+    })
+    const s = state.result.value
+    heading = s.h1 || s.title
+    problems = []
+    if (s.error) problems.push('rendered an error')
+    if (consoleErrors.length) problems.push(`${consoleErrors.length} console message(s)`)
+    if (failed.length) problems.push(`${failed.length} failed request(s)`)
+    // Only a request that never reached the site is worth a second try.
+    const onlyATimeout = problems.length === 1
+      && failed.every((f) => /ERR_TIMED_OUT/.test(f))
+    if (!problems.length || !onlyATimeout) break
+    retried = true
+    console.log(`  … ${route.padEnd(34)} the connection dropped; trying again`)
+  }
   if (problems.length) {
     bad += 1
     console.log(`  ✗ ${route.padEnd(34)} ${problems.join('; ')}`)
     for (const c of consoleErrors.slice(0, 3)) console.log(`      ${c.slice(0, 160)}`)
     for (const f of failed.slice(0, 3)) console.log(`      ${f.slice(0, 160)}`)
   } else {
-    console.log(`  ✓ ${route.padEnd(34)} “${(s.h1 || s.title).slice(0, 44)}”`)
+    console.log(`  ✓ ${route.padEnd(34)} “${heading.slice(0, 44)}”${retried ? '  (after a retry)' : ''}`)
   }
 }
 console.log(bad ? `\n${bad} route(s) with problems.` : '\nNo route reported a console error, an exception or a failed request.')
