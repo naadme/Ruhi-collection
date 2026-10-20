@@ -8,3 +8,4 @@ dist-debug/
 # Dependencies
 node_modules/
 .env
+.vercel
