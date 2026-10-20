@@ -87,11 +87,21 @@ async function release(orderId: string): Promise<void> {
 /** The order's lines, as stored — never computed in the browser. */
 async function fetchItems(orderId: string): Promise<Json[]> {
   try {
+    // Select ONLY columns `public.order_items` actually has. It carries no
+    // `colour` column — colour lives inside `products.colour` and inside the
+    // title that `create_order()` snapshots (e.g. "Korean Pants - Black").
+    // Asking PostgREST for `colour` answers 400, this function then returned
+    // `[]`, and every confirmation email went out with an empty "Items" block
+    // and no subtotal line at all. The colour is still readable by the
+    // shopper, because it is part of the snapshot title below.
     const res = await serviceFetch(
-      `/rest/v1/order_items?order_id=eq.${encodeURIComponent(orderId)}` +
-        '&select=title,colour,size,qty,unit_price&order=created_at.asc',
+      `/rest/v1/order_items?order_id=${encodeURIComponent(orderId)}` +
+        '&select=title,size,qty,unit_price&order=created_at.asc',
     )
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.warn('[confirmation] order_items query failed:', res.status, await res.text())
+      return []
+    }
     const rows = (await res.json().catch(() => [])) as Json[]
     return Array.isArray(rows) ? rows : []
   } catch {

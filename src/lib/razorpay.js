@@ -37,6 +37,17 @@ function loadScript() {
     const UNREACHABLE = 'We could not open the payment window. Please check your connection and try again.'
     let done = false
     let timer
+    // A script element that has already failed never fires `load` or `error`
+    // again, and the `existing` lookup above would hand the very same dead
+    // element straight back on the next attempt — so the browser would never
+    // re-fetch, every retry would hang until the timeout, and the shopper
+    // could never pay without a full page reload. Detaching it on the way out
+    // is what makes a retry an actual retry. (Removing an element does not
+    // cancel a fetch already in flight, so a slow-but-arriving script still
+    // lands and `window.Razorpay` is still honoured above.)
+    const detach = () => {
+      if (el.parentNode) el.parentNode.removeChild(el)
+    }
     // Named so `finish` can detach them: the element is reused across retries
     // and can outlive the promise (already loaded, or a timeout that rejected
     // while the script was still in flight), which otherwise leaves handlers
@@ -44,6 +55,7 @@ function loadScript() {
     const onLoad = () => finish(resolve)
     const onError = () => {
       scriptPromise = null
+      detach()
       finish(reject, new CheckoutUnavailable(UNREACHABLE))
     }
     const finish = (fn, value) => {
@@ -57,6 +69,7 @@ function loadScript() {
     timer = setTimeout(() => {
       if (!window.Razorpay) {
         scriptPromise = null
+        detach()
         finish(reject, new CheckoutUnavailable(UNREACHABLE))
       }
     }, SCRIPT_TIMEOUT_MS)

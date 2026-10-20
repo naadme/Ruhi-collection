@@ -123,3 +123,74 @@ test('there is no public endpoint that could be turned into a mail relay', () =>
   assert.equal(fs.existsSync(path.join(process.cwd(), 'supabase/functions/send-order-confirmation')), false);
   assert.doesNotMatch(CONFIRM, /serve\(handle\)/, 'the module is not a served function');
 });
+
+// ---- the item query must only ask for columns the table actually has --------
+//
+// Regression: `fetchItems` used to select `title,colour,size,qty,unit_price`.
+// `public.order_items` has no `colour` column, so PostgREST answered 400,
+// `fetchItems` swallowed it and returned [], and every confirmation went out
+// with an empty "Items" block — plus no Subtotal line, because that line is
+// guarded on `item0(items)` being non-zero. Colour is reachable for the shopper
+// only through the snapshot title, so dropping it from the query loses nothing.
+
+const ITEMS_TABLE_SQL = read('supabase/migrations/20260928181500_orders_and_checkout.sql');
+
+/** Column names declared by `create table public.order_items (...)`. */
+function orderItemsColumns(sql) {
+  const start = sql.indexOf('create table if not exists public.order_items');
+  assert.ok(start !== -1, 'order_items table definition is present in the migrations');
+  const body = sql.slice(start, sql.indexOf(');', start));
+  const cols = [];
+  for (const raw of body.split('\n').slice(1)) {
+    const line = raw.trim();
+    if (!line || /^(constraint|primary|foreign|unique|check)/i.test(line)) continue;
+    const m = line.match(/^([a-z_]+)\s+(text|integer|uuid|timestamptz|boolean|jsonb|numeric)/);
+    if (m) cols.push(m[1]);
+  }
+  return cols;
+}
+
+test('the schema really has no colour column, so colour must not be selected', () => {
+  const cols = orderItemsColumns(ITEMS_TABLE_SQL);
+  assert.ok(cols.length >= 8, `parsed order_items columns: ${JSON.stringify(cols)}`);
+  assert.ok(cols.includes('title') && cols.includes('size') && cols.includes('qty') && cols.includes('unit_price'),
+    'the columns the email needs are all real');
+  assert.ok(!cols.includes('colour'), 'order_items carries no colour column — confirmed');
+  // Colour for the email is readable only from the snapshot title.
+  assert.ok(cols.includes('title'));
+});
+
+test('fetchItems selects only columns order_items actually has', () => {
+  const cols = orderItemsColumns(ITEMS_TABLE_SQL);
+  // The URL is built with string concatenation across two lines, so match the
+  // select clause itself rather than the whole URL on one line.
+  const m = CONFIRM.match(/&select=([a-z_,]+)&order=created_at\.asc/);
+  assert.ok(m, 'fetchItems issues a select against order_items');
+  const selected = m[1].split(',');
+  for (const col of selected) {
+    assert.ok(cols.includes(col),
+      `"${col}" is not a column of public.order_items — PostgREST would answer 400 and the email would lose its items`);
+  }
+  assert.ok(selected.includes('title'), 'the item names are still shown');
+  assert.ok(selected.includes('qty') && selected.includes('unit_price'), 'quantities and prices are still shown');
+});
+
+test('a failed item query is reported instead of failing silently', () => {
+  // The old code returned [] with no trace, which is why this shipped.
+  const at = CONFIRM.indexOf('order_items query failed');
+  assert.ok(at !== -1, 'fetchItems logs its own failure');
+  const block = CONFIRM.slice(CONFIRM.indexOf('async function fetchItems'), CONFIRM.indexOf('const STATUS_LABEL'));
+  assert.match(block, /if \(!res\.ok\) \{/, 'the non-200 is detected');
+  assert.ok(block.indexOf('order_items query failed') < block.indexOf('return []'),
+    'the failure is logged BEFORE the list is treated as empty');
+});
+
+test('an empty item list still produces a readable email (no dangling header)', () => {
+  // buildText is a local function, so exercise the same guard it uses.
+  const guard = CONFIRM.match(/const item0 = .*/);
+  assert.ok(guard, 'item0 is defined in the module');
+  assert.match(CONFIRM, /if \(money\(item0\(items\)\)\) lines\.push/,
+    'the subtotal line is conditional, so an empty list never prints a bogus ₹0 subtotal');
+  assert.match(CONFIRM, /lines\.push\(''\)\s*\n\s*if \(money\(item0/,
+    'an empty list still closes the block cleanly');
+});
