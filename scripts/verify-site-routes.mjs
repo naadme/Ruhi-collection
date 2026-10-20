@@ -23,6 +23,8 @@ const ROUTES = [
   ['/account', 'the account page (sign in)'],
   ['/admin', 'the admin entry (sign in)'],
   ['/checkout', 'the checkout'],
+  ['/order/05102601', 'an order page (a new-format order ID)'],
+  ['/order/RCH-80D880BB', 'an order page (an old-format reference)'],
 ]
 
 const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox',
