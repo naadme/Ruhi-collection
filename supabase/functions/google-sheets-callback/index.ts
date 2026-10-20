@@ -238,6 +238,22 @@ export async function handle(req: Request): Promise<Response> {
         }
       }
 
+      // And the first rows of the destination, read back from Google: proof of
+      // what actually landed, not only of how many rows.
+      let sheetRows = null
+      if (conn.spreadsheet_id) {
+        const tabName = String(conn.sheet_tab ?? 'Orders')
+        const valuesRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(String(conn.spreadsheet_id))}`
+          + `/values/${encodeURIComponent(`${tabName}!A1:Y6`)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        )
+        const valuesBody = await valuesRes.json().catch(() => null)
+        if (valuesRes.ok && Array.isArray(valuesBody?.values)) {
+          sheetRows = valuesBody.values.slice(0, 4).map((row) => (row || []).slice(0, 6).join(' | '))
+        }
+      }
+
       const check = await probeGoogleApis(accessToken, env('GOOGLE_CLIENT_ID') ?? '')
       await serviceFetch('/rest/v1/google_sheets_connections?id=eq.'
         + encodeURIComponent(String(conn.id)), {
@@ -255,19 +271,10 @@ export async function handle(req: Request): Promise<Response> {
           + (sheetInfo
             ? `Destination “${sheetInfo.title}” has ${sheetInfo.tabs.length} tab(s): `
               + `${sheetInfo.tabs.map((t) => `${t.title} (id ${t.sheetId})`).join(', ')}. `
-              + `The export is pointed at “${sheetInfo.configuredTab}”.`
+              + `The export is pointed at “${sheetInfo.configuredTab}”. `
+              + (sheetRows ? `First rows: ${sheetRows.join(' /// ')}.` : '')
             : 'No destination spreadsheet has been chosen yet.'),
         ok: true,
-        admin: adminUrl(),
-      }))
-    }
-
-    // ---- a sign-in that never happened ----------------------------------
-    if (!code) {
-      return html(400, page({
-        title: 'Not connected',
-        message: 'Google did not send an authorisation code back. Please press Connect Google Sheets again.',
-        ok: false,
         admin: adminUrl(),
       }))
     }
@@ -373,6 +380,16 @@ export async function handle(req: Request): Promise<Response> {
             + `${result.skipped ? `, ${result.skipped} already there and skipped` : ''}.`
           : (result.message || 'There was nothing new to send.'),
         ok: true,
+        admin: adminUrl(),
+      }))
+    }
+
+    // ---- a sign-in that never happened ----------------------------------
+    if (!code) {
+      return html(400, page({
+        title: 'Not connected',
+        message: 'Google did not send an authorisation code back. Please press Connect Google Sheets again.',
+        ok: false,
         admin: adminUrl(),
       }))
     }
