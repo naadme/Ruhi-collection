@@ -26,7 +26,7 @@ export const uploadCategoryImage = async (file) => {
     contentType: file.type,
     upsert: false,
   })
-  if (error) throw error
+  if (error) throw new Error(error.message || 'The photo could not be uploaded. Please try again.')
   const { data } = supabase.storage.from(CATEGORY_IMAGE_BUCKET).getPublicUrl(path)
   if (!data?.publicUrl) throw new Error('The photo was uploaded but its address could not be read.')
   return data.publicUrl
