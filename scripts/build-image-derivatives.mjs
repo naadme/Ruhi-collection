@@ -31,6 +31,11 @@ const MAX = 640
 const LOGO_MAX = 320
 
 const sips = (file, out, max) => {
+  // `sips` will not overwrite an existing output: it writes "name 2.jpg"
+  // beside it instead, which would leave a stray copy of every photograph in
+  // the folder (and publish it). The target is removed first, so a re-run
+  // always produces exactly the same set of files.
+  try { fs.rmSync(out, { force: true }) } catch { /* nothing to remove */ }
   execFileSync('/usr/bin/sips', ['-s', 'formatOptions', '82', '-Z', String(max), file, '--out', out], { stdio: 'ignore' })
 }
 
@@ -46,7 +51,12 @@ let saved = 0
 const manifest = {}
 
 for (const name of fs.readdirSync(PRODUCTS)) {
-  if (!/\.jpe?g$/i.test(name) || /-\d+\.jpe?g$/i.test(name)) continue
+  if (!/\.jpe?g$/i.test(name)) continue
+  // Already a smaller copy: "-640.jpg".
+  if (/-\d+\.jpe?g$/i.test(name)) continue
+  // A stray duplicate — "name 2.jpg" — left by an earlier copy. It is not a
+  // photograph of the client's and must never be given a copy of its own.
+  if (/\s\d+\.jpe?g$/i.test(name)) continue
   const from = path.join(PRODUCTS, name)
   const to = path.join(PRODUCTS, name.replace(/\.jpe?g$/i, `-${MAX}.jpg`))
   const before = fs.statSync(from).size

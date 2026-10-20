@@ -62,6 +62,23 @@ test('the cards and the tiles ask for the size they are shown at', () => {
   assert.match(img, /sizes=\{srcSet \? sizes : undefined\}/)
 })
 
+test('the photographs folder holds no stray duplicates', () => {
+  // `sips` will not overwrite an existing file: it writes "name 2.jpg"
+  // beside it instead. A re-run of the copy script must therefore leave the
+  // folder exactly as it found it — no duplicates, no missing photographs.
+  const dir = path.join(process.cwd(), 'public/images/products')
+  const files = fs.readdirSync(dir)
+  const strays = files.filter((f) => /\s\d+\.jpe?g$/i.test(f))
+  assert.deepEqual(strays, [], `stray copies in the photographs folder: ${strays.join(', ')}`)
+  const originals = files.filter((f) => /\.jpe?g$/i.test(f) && !/-\d+\.jpe?g$/i.test(f))
+  for (const photo of originals) {
+    assert.ok(
+      files.includes(photo.replace(/\.jpe?g$/i, `-${IMAGE_SIZES.small}.jpg`)),
+      `${photo} has its smaller copy`,
+    )
+  }
+})
+
 test('a failed smaller copy falls back to the original photograph', () => {
   // The browser picks one candidate and stops: if that file is not there, the
   // picture has to be retried from the original rather than left broken.
