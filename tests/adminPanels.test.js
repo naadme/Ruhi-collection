@@ -108,7 +108,9 @@ test('an upload that the storage refuses is reported, not swallowed', () => {
 // ---- the order confirmation email ------------------------------------------
 
 test('the confirmation email carries everything the client asked for', () => {
-  const mail = read('supabase/functions/_shared/confirmation.ts')
+  // The body is built by the shared module, which the test suite drives
+  // directly (tests/orderEmail.test.js).
+  const mail = read('supabase/functions/_shared/orderEmail.mjs')
   assert.match(mail, /Order ID: /, 'the Order ID')
   assert.match(mail, /Order date: /, 'the order date and time')
   assert.match(mail, /Product ID /, 'the Product ID of each item')
@@ -117,6 +119,9 @@ test('the confirmation email carries everything the client asked for', () => {
   assert.match(mail, /Total paid: /, 'the total')
   assert.match(mail, /Status: /, 'the order status')
   assert.match(mail, /ruhicollections2026@gmail\.com/, 'the contact route the site already uses')
+  // The sending itself is still guarded in the Edge Function.
+  const confirm = read('supabase/functions/_shared/confirmation.ts')
+  assert.match(confirm, /buildConfirmationText/, 'and the function sends exactly that body')
 })
 
 test('the confirmation email is sent once and only for a paid order', () => {

@@ -86,10 +86,13 @@ test('the Excel download carries the Product ID', () => {
 
 test('the confirmation email carries the Product ID', () => {
   const confirmation = read('supabase/functions/_shared/confirmation.ts')
-  assert.match(confirmation, /Product ID \$\{asString\(item\.sku\)\}/,
-    'the Product ID is in the item line')
   assert.match(confirmation, /select=title,size,qty,unit_price,sku/,
-    'and it is read from the line')
+    'the Product ID is read from the line')
+  // The body itself lives in the shared module, which the test suite drives
+  // directly (tests/orderEmail.test.js).
+  const body = read('supabase/functions/_shared/orderEmail.mjs')
+  assert.match(body, /Product ID \$\{asText\(item\.sku\)\}/,
+    'and it is in the item line')
 })
 
 test('the colour of an ordered line is read from the title it snapshotted', () => {

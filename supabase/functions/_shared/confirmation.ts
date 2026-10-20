@@ -21,7 +21,7 @@
 import { env, MissingConfigError, requireEnv } from './env.ts'
 import { asString, type Json } from './http.ts'
 import { serviceFetch } from './supabase.ts'
-import { orderItemColour } from './orderItems.mjs'
+import { buildConfirmationSubject, buildConfirmationText } from './orderEmail.mjs'
 
 /**
  * Resend needs a From address on a verified domain. `onboarding@resend.dev`
@@ -35,13 +35,6 @@ const DEFAULT_FROM = 'Ruhi Collection <onboarding@resend.dev>'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-const money = (v: unknown) => {
-  const n = Number(v)
-  return Number.isFinite(n) ? n : 0
-}
-
-/** ₹1,234 — the same shape the storefront shows. */
-const inr = (v: unknown) => `₹${money(v).toLocaleString('en-IN')}`
 
 export type ConfirmationOutcome =
   | { sent: true; reference: string }
@@ -111,101 +104,6 @@ async function fetchItems(orderId: string): Promise<Json[]> {
   }
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Received',
-  confirmed: 'Confirmed',
-  shipped: 'Shipped',
-  delivered: 'Delivered',
-  cancelled: 'Cancelled',
-}
-
-/** The order's own date and time, in the shop's time zone (IST).
- *
- *  The store is in India and keeps no daylight saving, so the offset is fixed
- *  and the date needs no timezone database. The date the customer reads here
- *  is the same day the order's ID names — `01102601` is the first order of the
- *  1st of October 2026, and this is that date. */
-function formatOrderDate(value: unknown): string {
-  const ms = value instanceof Date ? value.getTime() : new Date(String(value ?? '')).getTime()
-  if (!Number.isFinite(ms)) return ''
-  const shifted = new Date(ms + 5.60 * 60 * 60 * 1000) // +05:30
-  const p = (n: number) => String(n).padStart(2, '0')
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  return (
-    `${shifted.getUTCDate()} ${months[shifted.getUTCMonth()]} ${shifted.getUTCFullYear()}` +
-    `, ${p(shifted.getUTCHours())}:${p(shifted.getUTCMinutes())} IST`
-  )
-}
-
-/** The delivery address, as the lines the customer gave. */
-function addressLines(order: Json): string[] {
-  return [
-    asString(order.address),
-    [asString(order.city), asString(order.state)].filter(Boolean).join(', '),
-    asString(order.pincode),
-  ].map((line) => line.trim()).filter(Boolean)
-}
-
-/** Plain text only — the shop's own words, never HTML from user input. */
-function buildText(order: Json, items: Json[]): string {
-  const lines: string[] = [
-    'Ruhi Womens Clothing',
-    '',
-    `Hello ${asString(order.full_name) || 'there'},`,
-    '',
-    'Thank you for your order with Ruhi Womens Clothing.',
-    '',
-    `Order ID: ${asString(order.reference)}`,
-  ]
-
-  const placed = formatOrderDate(order.created_at)
-  if (placed) lines.push(`Order date: ${placed}`)
-  lines.push(`Status: ${STATUS_LABEL[asString(order.status)] || asString(order.status) || 'Received'}`)
-
-  const address = addressLines(order)
-  if (address.length) {
-    lines.push('')
-    lines.push('Delivering to')
-    for (const line of address) lines.push(line)
-  }
-  if (asString(order.phone)) lines.push(`Phone: ${asString(order.phone)}`)
-
-  lines.push('')
-  lines.push('Items')
-
-  for (const item of items) {
-    const colour = orderItemColour(item.title)
-    const bits = [
-      asString(item.size) && `Size ${asString(item.size)}`,
-      colour,
-      asString(item.sku) && `Product ID ${asString(item.sku)}`,
-    ].filter(Boolean).join(', ')
-    const qty = money(item.qty)
-    lines.push(
-      `- ${asString(item.title)}${bits ? ` (${bits})` : ''}` +
-        ` × ${qty}${item.unit_price ? ` — ${inr(money(item.unit_price) * qty)}` : ''}`,
-    )
-  }
-
-  lines.push('')
-  if (money(item0(items))) lines.push(`Subtotal: ${inr(order.subtotal)}`)
-  if (money(order.discount)) {
-    lines.push(`Discount: −${inr(order.discount)}${asString(order.coupon_code) ? ` (${asString(order.coupon_code)})` : ''}`)
-  }
-  lines.push(`Shipping: ${money(order.shipping) ? inr(order.shipping) : 'Free'}`)
-  lines.push(`Total paid: ${inr(order.total)}`)
-  lines.push('')
-  lines.push('We will let you know as soon as your order ships.')
-  lines.push('')
-  lines.push('Any questions? Call or WhatsApp 9046651272, or write to')
-  lines.push('ruhicollections2026@gmail.com — we reply within a working day.')
-  lines.push('')
-  lines.push('— Ruhi Womens Clothing')
-
-  return lines.join('\n')
-}
-
-const item0 = (items: Json[]) => items[0] && money(items[0].qty) * money(items[0].unit_price)
 
 /** Send via Resend. Throws MissingConfigError on a bad key. */
 async function deliver(to: string, reference: string, text: string): Promise<void> {
@@ -218,7 +116,7 @@ async function deliver(to: string, reference: string, text: string): Promise<voi
     body: JSON.stringify({
       from,
       to: [to],
-      subject: `Your Ruhi Womens Clothing order ${reference} — confirmation`,
+      subject: buildConfirmationSubject(reference),
       text,
     }),
   })
@@ -260,7 +158,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<Confirmati
 
   try {
     const items = await fetchItems(orderId)
-    await deliver(email, reference, buildText(order, items))
+    await deliver(email, reference, buildConfirmationText(order, items))
     return { sent: true, reference }
   } catch (error) {
     // A refused or failed send must not permanently silence this order.

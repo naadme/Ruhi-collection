@@ -1,6 +1,7 @@
 // The smaller copies of the client's photographs the browser is offered.
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { IMAGE_SIZES, imageSrcSet } from '../src/lib/imageSrcSet.js'
@@ -79,13 +80,19 @@ test('the photographs folder holds no stray duplicates', () => {
   }
 })
 
-test('the built site holds no stray duplicates either', () => {
+test('the published folder holds no stray duplicates either', () => {
   // The same stray copies used to reach the published folder, where a static
-  // host would have served them.
-  const dir = path.join(process.cwd(), 'dist/images/products')
-  if (!fs.existsSync(dir)) return // the site has not been built here
-  const strays = fs.readdirSync(dir).filter((f) => /\s\d+\.jpe?g$/i.test(f))
+  // host would have served them. The COMMITTED folder is what is published, so
+  // that is what is checked — a file dropped into the working copy by hand is
+  // not part of the site.
+  const listed = execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD', 'dist/images/products'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  })
+  const strays = listed.split('\n').filter((f) => /\s\d+\.jpe?g$/i.test(f))
   assert.deepEqual(strays, [], `stray copies in the published folder: ${strays.join(', ')}`)
+  const photos = listed.split('\n').filter(Boolean)
+  assert.ok(photos.length > 100, `the published folder holds the photographs: ${photos.length} files`)
 })
 
 test('a failed smaller copy falls back to the original photograph', () => {

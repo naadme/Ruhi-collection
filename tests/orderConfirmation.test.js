@@ -204,11 +204,11 @@ test('a failed item query is reported instead of failing silently', () => {
 });
 
 test('an empty item list still produces a readable email (no dangling header)', () => {
-  // buildText is a local function, so exercise the same guard it uses.
-  const guard = CONFIRM.match(/const item0 = .*/);
-  assert.ok(guard, 'item0 is defined in the module');
-  assert.match(CONFIRM, /if \(money\(item0\(items\)\)\) lines\.push/,
+  // The body is built by the shared module now, so the guard it uses is read
+  // from there — and the body itself is exercised in tests/orderEmail.test.js.
+  const body = read('supabase/functions/_shared/orderEmail.mjs');
+  assert.match(body, /if \(orderItems\.length && money\(orderItems\[0\]\.qty\)/,
     'the subtotal line is conditional, so an empty list never prints a bogus ₹0 subtotal');
-  assert.match(CONFIRM, /lines\.push\(''\)\s*\n\s*if \(money\(item0/,
+  assert.match(body, /lines\.push\(''\)\s*\n\s*if \(orderItems\.length/,
     'an empty list still closes the block cleanly');
 });
