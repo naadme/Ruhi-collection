@@ -53,7 +53,12 @@ test('the migration only adds a column, and can be taken back', () => {
   assert.doesNotMatch(sql, /create policy/i, 'the existing admin-only RLS is left exactly as it is')
 })
 
-test('the migration is the newest one', () => {
+test('the category-images migration is additive, and later migrations do not undo it', () => {
   const files = fs.readdirSync(path.join(process.cwd(), 'supabase/migrations')).sort()
-  assert.equal(files[files.length - 1], '20261020180000_category_images.sql')
+  assert.ok(files.includes('20261020180000_category_images.sql'))
+  for (const file of files.filter((f) => f > '20261020180000_category_images.sql')) {
+    const later = read(`supabase/migrations/${file}`)
+    assert.doesNotMatch(later, /drop column\s+if exists\s+categories\.image/i,
+      `${file} never removes the category photo`)
+  }
 })

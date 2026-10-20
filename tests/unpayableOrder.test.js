@@ -60,8 +60,22 @@ test('this migration sorts AFTER the one that last defined create_order', () => 
     .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8')
       .includes('create or replace function public.create_order(payload json)'))
     .sort();
-  assert.equal(definers[definers.length - 1], NEW_FILE,
-    'this must be the newest migration defining create_order');
+  assert.ok(definers[definers.length - 1] >= NEW_FILE,
+    'the newest migration defining create_order must be this one or a later one');
+});
+
+test('the guard survives in the newest definition of create_order', () => {
+  // A later migration may copy create_order to change something else — the
+  // order ID, say. The guard that refuses an order nobody could pay for has
+  // to travel with it, or it would be lost from the live database.
+  const dir = path.join(process.cwd(), 'supabase/migrations');
+  const definers = fs.readdirSync(dir)
+    .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8')
+      .includes('create or replace function public.create_order(payload json)'))
+    .sort();
+  const newest = fs.readFileSync(path.join(dir, definers[definers.length - 1]), 'utf8');
+  assert.match(newest, /if coalesce\(v_order\.total, 0\) < 1 then/,
+    `${definers[definers.length - 1]} still refuses an order that comes to nothing`);
 });
 
 // ---- the body is otherwise the shipped function ---------------------------

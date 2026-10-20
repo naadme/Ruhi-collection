@@ -30,7 +30,7 @@ const POLICIES = {
         'Working days are Monday to Saturday, excluding public holidays.'],
       ],
       ['Tracking your order', [
-        'As soon as your order is placed you get an order reference such as RCH-A1B2C3D4, and the same reference appears on your order confirmation page and in your account.',
+        'As soon as your order is placed you get an order ID such as 01102601, and the same ID appears on your order confirmation page and in your account.',
         'Our delivery partner calls the phone number on your order before arriving, so please keep that number reachable.'],
       ],
       ['Delayed or missing orders', [

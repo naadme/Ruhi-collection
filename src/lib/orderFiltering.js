@@ -11,11 +11,16 @@
 // Dates always use `orders.created_at` — the moment the order was placed — and
 // never `updated_at`, which moves whenever an admin edits a status.
 
-/** Fields searched by the free-text box, joined then lower-cased. */
+/** Fields searched by the free-text box, joined then lower-cased.
+ *
+ *  The order's PREVIOUS reference is searched too: orders placed before the
+ *  DDMMYYNN format keep their old "RCH-XXXXXXXX" number beside the new one,
+ *  and a customer who still has that number written down must be able to find
+ *  their order with it. */
 export function orderSearchText(order) {
   if (!order) return ''
   return [
-    order.reference, order.full_name, order.email, order.phone, order.city,
+    order.reference, order.previous_reference, order.full_name, order.email, order.phone, order.city,
     order.state, order.pincode, order.razorpay_order_id, order.razorpay_payment_id,
   ].filter(Boolean).join(' ').toLowerCase()
 }
