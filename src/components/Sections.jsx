@@ -150,7 +150,7 @@ export const Categories = () => {
           to={c.to}
           className="text-center group block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-black/30"
         >
-          <Img src={c.image} alt={c.label} className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover transition group-hover:scale-[1.03]" />
+          <Img src={c.image} alt={c.label} sizes="(max-width: 768px) 45vw, 272px" className="w-full max-w-[272px] mx-auto aspect-square rounded-full object-cover transition group-hover:scale-[1.03]" />
           <p className="mt-4 text-[17px] group-hover:underline underline-offset-4">{c.label}</p>
         </Link>))}</div>
     </section>

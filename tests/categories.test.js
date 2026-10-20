@@ -29,7 +29,7 @@ import { TYPES, typeLabel } from '../src/data/products.js'
 // The seed is the list the store shipped with — nothing may drift.
 // ---------------------------------------------------------------------------
 
-test('the seed is the four original categories, in order, with their exact labels', () => {
+test('the seed is the six categories the client asked for, in order, with their exact labels', () => {
   assert.deepEqual(
     SEED_CATEGORIES.map((c) => [c.key, c.label]),
     [
@@ -37,9 +37,11 @@ test('the seed is the four original categories, in order, with their exact label
       ['coord', 'Co-ord Sets'],
       ['dress', 'Dresses'],
       ['trousers', 'Trousers & Pants'],
+      ['night-wear', 'Night Wear'],
+      ['kurta-sets', 'Kurta Sets'],
     ],
   )
-  assert.deepEqual(SEED_CATEGORIES.map((c) => c.position), [0, 1, 2, 3])
+  assert.deepEqual(SEED_CATEGORIES.map((c) => c.position), [0, 1, 2, 3, 4, 5])
 })
 
 test('the seed matches the bundled TYPES, so the fallback store cannot disagree with the shop', () => {
@@ -203,13 +205,15 @@ test('an empty database answer still yields the four seeded categories', () => {
 test('a full database answer wins over the seed and is not doubled up', () => {
   const fromDb = LIST.map((c) => ({ ...c, label: `${c.label}!` }))
   const merged = mergeCategories(fromDb)
-  assert.equal(merged.length, 4)
+  assert.equal(merged.length, SEED_CATEGORIES.length)
   assert.equal(merged.find((c) => c.key === 'tops').label, 'Tops & T-shirts!')
 })
 
 test('a category the database has is added to the seed without losing any', () => {
   const merged = mergeCategories([{ key: 'kurtis', label: 'Kurtis', position: 4 }])
-  assert.deepEqual(merged.map((c) => c.key), ['tops', 'coord', 'dress', 'trousers', 'kurtis'])
+  // "kurtis" sits at position 4, where Night Wear also sits, and the
+  // database's own answer comes first in a tie — so it leads them.
+  assert.deepEqual(merged.map((c) => c.key), ['tops', 'coord', 'dress', 'trousers', 'kurtis', 'night-wear', 'kurta-sets'])
 })
 
 test('"Trousers & Pants" survives every merge untouched', () => {
@@ -223,7 +227,7 @@ test('merging is ordered by position, seed order breaking ties', () => {
     { key: 'kurtis', label: 'Kurtis', position: -1 },
     { key: 'shawls', label: 'Shawls', position: 10 },
   ])
-  assert.deepEqual(merged.map((c) => c.key), ['kurtis', 'tops', 'coord', 'dress', 'trousers', 'shawls'])
+  assert.deepEqual(merged.map((c) => c.key), ['kurtis', ...SEED_CATEGORIES.map((c) => c.key), 'shawls'])
 })
 
 test('a malformed database row is ignored rather than blanking the storefront', () => {
@@ -309,14 +313,24 @@ test('a non-array answer cannot crash the storefront', () => {
 
 const SQL_FILE = new URL('../supabase/migrations/20261019130000_client_editable_categories.sql', import.meta.url)
 
-test('the migration exists and seeds all four categories with their current labels', async () => {
+test('the migrations exist and seed every category with its current label', async () => {
   const sql = await readFile(SQL_FILE, 'utf8')
-  for (const [key, label] of SEED_CATEGORIES.map((c) => [c.key, c.label])) {
+  for (const [key, label] of SEED_CATEGORIES.slice(0, 4).map((c) => [c.key, c.label])) {
     assert.ok(sql.includes(`'${key}'`), `seeds the ${key} key`)
     assert.ok(sql.includes(`'${label}'`), `seeds the ${label} label`)
   }
   // The three originals plus trousers must all still be present verbatim.
   assert.ok(sql.includes(`'Trousers & Pants'`), 'Trousers & Pants is preserved')
+
+  // The two the client asked for by name come from their own migration.
+  const added = await readFile(
+    new URL('../supabase/migrations/20261020200000_night_wear_and_kurta_sets.sql', import.meta.url),
+    'utf8',
+  )
+  for (const [key, label] of SEED_CATEGORIES.slice(4).map((c) => [c.key, c.label])) {
+    assert.ok(added.includes(`'${key}'`), `seeds the ${key} key`)
+    assert.ok(added.includes(`'${label}'`), `seeds the ${label} label`)
+  }
 })
 
 test('the categories table is public to read and admin-only to write', async () => {

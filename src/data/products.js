@@ -13,6 +13,11 @@ export const TYPES = [
   { key: 'coord', label: 'Co-ord Sets' },
   { key: 'dress', label: 'Dresses' },
   { key: 'trousers', label: 'Trousers & Pants' },
+  // The two the client asked for by name. Their keys are what the admin
+  // panel's own key derivation produces for those labels, so a category
+  // created there and one created here are the same category.
+  { key: 'night-wear', label: 'Night Wear' },
+  { key: 'kurta-sets', label: 'Kurta Sets' },
 ]
 export const typeLabel = (key) => TYPES.find((t) => t.key === key)?.label || key
 

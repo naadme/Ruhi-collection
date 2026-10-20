@@ -17,6 +17,8 @@ export default function Logo({ light }) {
     <Link to="/" aria-label="Ruhi Womens Clothing — home" className="leading-none shrink-0 block">
       <img
         src="/images/ruhi-logo.jpg"
+        srcSet="/images/ruhi-logo-320.jpg 320w, /images/ruhi-logo.jpg 968w"
+        sizes="160px"
         alt="Ruhi Womens Clothing"
         width={968}
         height={628}
