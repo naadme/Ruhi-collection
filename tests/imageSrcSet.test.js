@@ -79,6 +79,15 @@ test('the photographs folder holds no stray duplicates', () => {
   }
 })
 
+test('the built site holds no stray duplicates either', () => {
+  // The same stray copies used to reach the published folder, where a static
+  // host would have served them.
+  const dir = path.join(process.cwd(), 'dist/images/products')
+  if (!fs.existsSync(dir)) return // the site has not been built here
+  const strays = fs.readdirSync(dir).filter((f) => /\s\d+\.jpe?g$/i.test(f))
+  assert.deepEqual(strays, [], `stray copies in the published folder: ${strays.join(', ')}`)
+})
+
 test('a failed smaller copy falls back to the original photograph', () => {
   // The browser picks one candidate and stops: if that file is not there, the
   // picture has to be retried from the original rather than left broken.
