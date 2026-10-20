@@ -202,29 +202,48 @@ function googleJson(url, init = {}) {
     if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
     const id = `created-sheet-${world.google.files.length + 1}`
     const title = body?.properties?.title || 'Untitled'
+    // Google does NOT always hand out the tab id 0 — this is the id the real
+    // sheet in the owner's Drive came back with, and the reason a rename
+    // aimed at 0 did nothing.
+    const tabId = 1318175855 + world.google.files.length
     world.google.files.push({ id, name: title })
-    world.google.sheets[id] = { title, tab: 'Sheet1' }
+    world.google.sheets[id] = { title, tab: 'Sheet1', tabId }
     return json(200, {
       spreadsheetId: id,
       properties: { title },
-      sheets: [{ properties: { sheetId: 0, title: 'Sheet1' } }],
+      sheets: [{ properties: { sheetId: tabId, title: 'Sheet1' } }],
     })
   }
 
   if (u.hostname === 'sheets.googleapis.com' && sheetBatch) {
     if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
     const id = decodeURIComponent(sheetBatch[1])
-    const title = body.requests?.[0]?.updateSheetProperties?.title
-    world.google.renames.push({ id, title })
-    if (world.google.sheets[id]) world.google.sheets[id].tab = title
+    const update = body.requests?.[0]?.updateSheetProperties
+    const title = update?.title
+    const tabSheetId = update?.sheetId
+    world.google.renames.push({ id, title, sheetId: tabSheetId })
+    const sheet = world.google.sheets[id]
+    // Google refuses a rename aimed at a tab that does not exist.
+    if (!sheet || sheet.tabId !== tabSheetId) {
+      return json(400, { error: { code: 400, message: 'No sheet with id: ' + tabSheetId, status: 'INVALID_ARGUMENT' } })
+    }
+    sheet.tab = title
     return json(200, { spreadsheetId: id })
   }
 
   if (u.hostname === 'sheets.googleapis.com' && sheetGet) {
     if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
     const id = decodeURIComponent(sheetGet[1])
-    if (!world.google.sheets[id]) return json(404, { error: 'not_found' })
-    return json(200, { spreadsheetId: id, title: world.google.sheets[id].title })
+    const sheet = world.google.sheets[id]
+    if (!sheet) return json(404, { error: 'not_found' })
+    return json(200, {
+      spreadsheetId: id,
+      // The real API answers `title` at the top level when it is asked for,
+      // and `properties.title` when it is asked for that instead.
+      title: sheet.title,
+      properties: { title: sheet.title },
+      sheets: [{ properties: { sheetId: sheet.tabId, title: sheet.tab } }],
+    })
   }
 
   if (u.hostname === 'sheets.googleapis.com' && sheetsWrite) {
@@ -427,7 +446,12 @@ test('a destination spreadsheet is created for the owner, so nothing is left to 
   assert.equal(conn.spreadsheet_id, 'created-sheet-1', 'and the connection points at it')
   assert.equal(conn.sheet_tab, 'Orders', 'with the tab the export writes to')
   assert.equal(world.google.files.length, 1, 'exactly one file was created in Drive')
-  assert.deepEqual(world.google.renames[0], { id: 'created-sheet-1', title: 'Orders' })
+  assert.equal(world.google.renames[0].title, 'Orders')
+  assert.equal(
+    world.google.renames[0].sheetId,
+    world.google.sheets['created-sheet-1'].tabId,
+    'the rename is aimed at the tab id Google actually gave, not at 0',
+  )
 })
 
 test('a sign-in link cannot be used twice, and it expires', async () => {
@@ -458,7 +482,12 @@ test('the owner creates a spreadsheet, and it becomes the destination', async ()
   assert.equal(body.spreadsheet.tab, 'Orders', 'the first tab is renamed so the export has somewhere to go')
 
   assert.equal(world.google.files.length, 2, 'the automatic one and the new one')
-  assert.deepEqual(world.google.renames[0], { id: 'created-sheet-1', title: 'Orders' })
+  assert.equal(world.google.renames[0].title, 'Orders')
+  assert.equal(
+    world.google.renames[0].sheetId,
+    world.google.sheets['created-sheet-1'].tabId,
+    'the rename is aimed at the tab id Google actually gave, not at 0',
+  )
 
   const conn = readConnection()
   assert.equal(conn.spreadsheet_id, 'created-sheet-2')
@@ -467,13 +496,15 @@ test('the owner creates a spreadsheet, and it becomes the destination', async ()
 
 test('the owner can point it at a spreadsheet they already have', async () => {
   await connect()
-  world.google.sheets['their-own-sheet'] = { title: 'Weekly orders', tab: 'Sheet1' }
+  world.google.sheets['their-own-sheet'] = { title: 'Weekly orders', tab: 'Data', tabId: 4242 }
   const res = await post('select-sheet', { spreadsheetId: 'https://docs.google.com/spreadsheets/d/their-own-sheet/edit' })
   assert.equal(res.status, 200)
   const body = await res.json()
   assert.equal(body.spreadsheet.id, 'their-own-sheet')
   assert.equal(body.spreadsheet.title, 'Weekly orders')
+  assert.equal(body.spreadsheet.tab, 'Data', 'the tab the sheet really has, not one we invented')
   assert.equal(readConnection().spreadsheet_id, 'their-own-sheet')
+  assert.equal(readConnection().sheet_tab, 'Data')
 })
 
 test('a spreadsheet the connection cannot open is refused, in plain words', async () => {
@@ -675,6 +706,54 @@ test('the status says which Google API is missing, and keeps the answer', async 
   assert.match(body.apiCheck.sheets.link, /project=550615952572/)
   assert.equal(body.apiCheck.drive.ok, true, 'the Drive API is fine')
   assert.ok(readConnection().api_check, 'and the answer is kept on the connection')
+})
+
+test('the tab is renamed with the id Google actually gave it', async () => {
+  await connect()
+  await post('create-sheet', { name: 'Orders' })
+  const conn = readConnection()
+  assert.equal(conn.sheet_tab, 'Orders', 'the export is pointed at a tab that exists')
+  const rename = world.google.renames[world.google.renames.length - 1]
+  assert.equal(rename.title, 'Orders')
+  assert.equal(rename.sheetId, world.google.sheets[conn.spreadsheet_id].tabId)
+  assert.notEqual(rename.sheetId, 0, 'and never at a made-up id')
+})
+
+test('creating the same spreadsheet twice reuses it instead of making a second', async () => {
+  await connect()
+  const first = await post('create-sheet', { name: 'Weekly orders' })
+  const second = await post('create-sheet', { name: 'Weekly orders' })
+  const a = await first.json()
+  const b = await second.json()
+  assert.equal(a.reused, false, 'the first one is made')
+  assert.equal(b.reused, true, 'the second press reuses it')
+  assert.equal(b.spreadsheet.id, a.spreadsheet.id)
+  assert.equal(
+    world.google.files.filter((f) => f.name === 'Weekly orders').length,
+    1,
+    'and there is exactly one spreadsheet with that name',
+  )
+})
+
+test('the export writes to a tab that exists, even one the owner named', async () => {
+  await connect()
+  world.google.sheets['their-own-sheet'] = { title: 'Weekly orders', tab: 'Data', tabId: 4242 }
+  await post('select-sheet', {
+    spreadsheetId: 'https://docs.google.com/spreadsheets/d/their-own-sheet/edit',
+  })
+
+  const res = await post('export', { ids: ['aaaaaaaa-1111-1111-1111-111111111111'] })
+  assert.equal(res.status, 200, 'the export did not fail on a missing tab')
+  assert.equal(world.google.appended.length, 1)
+  assert.equal(readConnection().sheet_tab, 'Data', 'and the connection follows the sheet')
+})
+
+test('signing in again does not make a second spreadsheet', async () => {
+  await connect()
+  const before = world.google.files.length
+  await connect()
+  assert.equal(world.google.files.length, before, 'the destination is kept, not replaced')
+  assert.equal(readConnection().spreadsheet_id, 'created-sheet-1')
 })
 
 test('the panel can show what is actually in the sheet, and the receipt of the export', async () => {

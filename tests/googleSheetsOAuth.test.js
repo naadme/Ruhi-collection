@@ -568,10 +568,19 @@ test('an export takes the lease, so two clicks cannot write the same orders twic
 
 test('the export only records an order as sent once Google has taken the rows', () => {
   const fn = read(FN)
-  const append = fn.indexOf('appendRows(token')
+  const append = fn.indexOf('exportOrdersToSheet({')
   const record = fn.indexOf('resolution=merge-duplicates,return=minimal')
   assert.ok(append > 0 && record > append, 'the ledger is written after the append, never before')
   assert.match(fn, /if \(!written\.ok\)[\s\S]{0,400}return/, 'a refusal never marks the orders as sent')
+  // And the shared export only reports success when Google said so.
+  const shared = read('supabase/functions/_shared/googleSheets.mjs')
+  const exportFn = shared.slice(shared.indexOf('export async function exportOrdersToSheet'))
+  const sharedAppend = exportFn.indexOf('await appendRows(accessToken, sheetId, tab, values)')
+  const sharedCheck = exportFn.indexOf('if (!written.ok)')
+  const sharedOk = exportFn.indexOf('range: updates &&')
+  assert.ok(sharedAppend > 0, 'the rows are written')
+  assert.ok(sharedCheck > sharedAppend, 'the answer is read')
+  assert.ok(sharedOk > sharedCheck, 'and success is only reported after the answer was checked')
 })
 
 test('the admin panel can connect, disconnect, choose and create', () => {

@@ -15,6 +15,8 @@
 // which is a convenience: if the Drive API is not enabled on the project, the
 // list is simply empty and everything else still works.
 
+import { buildSheetValues, duplicatesAmong } from './sheetRows.mjs'
+
 export const SPREADSHEET_MIME = 'application/vnd.google-apps.spreadsheet'
 export const DEFAULT_TAB = 'Orders'
 
@@ -156,21 +158,31 @@ export async function probeGoogleApis(accessToken, clientId = '') {
  * Drive API is unavailable, the panel still works.
  */
 export async function listSpreadsheets(accessToken) {
+  const out = []
   const query = `mimeType='${SPREADSHEET_MIME}' and trashed=false`
-  const url = `${DRIVE_API}?q=${encodeURIComponent(query)}`
-    + '&fields=' + encodeURIComponent('files(id,name,modifiedTime,webViewLink)')
-    + '&pageSize=50'
-  const res = await googleJson(url, accessToken)
-  if (!res.ok) return []
-  const files = Array.isArray(res.body?.files) ? res.body.files : []
-  return files
-    .filter((f) => typeof f.id === 'string' && f.id)
-    .map((f) => ({
-      id: String(f.id),
-      title: String(f.name ?? 'Untitled spreadsheet'),
-      modified: typeof f.modifiedTime === 'string' ? f.modifiedTime : '',
-      url: `https://docs.google.com/spreadsheets/d/${f.id}`,
-    }))
+  let pageToken = ''
+  // The list is paged by Google; a sheet on the second page must not be
+  // invisible, so every page is followed (up to a thousand sheets).
+  for (let page = 0; page < 10; page += 1) {
+    const url = `${DRIVE_API}?q=${encodeURIComponent(query)}`
+      + '&fields=' + encodeURIComponent('files(id,name,modifiedTime,webViewLink),nextPageToken')
+      + '&pageSize=100'
+      + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+    const res = await googleJson(url, accessToken)
+    if (!res.ok) return out
+    const files = Array.isArray(res.body?.files) ? res.body.files : []
+    out.push(...files
+      .filter((f) => typeof f.id === 'string' && f.id)
+      .map((f) => ({
+        id: String(f.id),
+        title: String(f.name ?? 'Untitled spreadsheet'),
+        modified: typeof f.modifiedTime === 'string' ? f.modifiedTime : '',
+        url: `https://docs.google.com/spreadsheets/d/${f.id}`,
+      })))
+    pageToken = String(res.body?.nextPageToken ?? '')
+    if (!pageToken) break
+  }
+  return out
 }
 
 /**
@@ -182,15 +194,21 @@ export async function listSpreadsheets(accessToken) {
 export async function createSpreadsheet(accessToken, title) {
   const res = await googleJson(SHEETS_API, accessToken, {
     method: 'POST',
-    body: JSON.stringify({
-      properties: { title },
-      sheets: [{ properties: { tabColor: { red: 0.9, green: 0.7, blue: 0.6 } } }],
-    }),
+    body: JSON.stringify({ properties: { title } }),
   })
   if (!res.ok) return { error: res }
   const id = String(res.body?.spreadsheetId ?? '')
   if (!id) return { error: { status: 502, body: { error: 'no_id' } } }
-  return { id, title: String(res.body?.properties?.title ?? title) }
+  // The first tab, exactly as Google made it. Its id is NOT always 0 — when a
+  // spreadsheet is created with an explicit tab, Google assigns an id of its
+  // own, and a rename aimed at 0 silently does nothing.
+  const first = (Array.isArray(res.body?.sheets) ? res.body.sheets : [])[0]
+  return {
+    id,
+    title: String(res.body?.properties?.title ?? title),
+    firstSheetId: Number(first?.properties?.sheetId ?? 0),
+    firstTabTitle: String(first?.properties?.title ?? 'Sheet1'),
+  }
 }
 
 /**
@@ -199,26 +217,66 @@ export async function createSpreadsheet(accessToken, title) {
  * A brand new spreadsheet's first tab is called "Sheet1"; the export writes
  * to a tab called "Orders", so it is renamed straight away.
  */
-export async function renameFirstTab(accessToken, sheetId, title = DEFAULT_TAB) {
+export async function renameFirstTab(accessToken, sheetId, title = DEFAULT_TAB, tabSheetId = 0) {
   const res = await googleJson(
     `${SHEETS_API}/${encodeURIComponent(sheetId)}:batchUpdate`,
     accessToken,
     {
       method: 'POST',
       body: JSON.stringify({
-        requests: [{ updateSheetProperties: { sheetId: 0, title, fields: 'title' } }],
+        requests: [{ updateSheetProperties: { sheetId: tabSheetId, title, fields: 'title' } }],
       }),
     },
   )
-  return res.ok ? title : 'Sheet1'
+  return { ok: res.ok, title: res.ok ? title : null, error: res.ok ? null : res }
 }
 
 /** Create a spreadsheet and give it the tab the export writes to. */
 export async function createSheetWithTab(accessToken, title) {
   const created = await createSpreadsheet(accessToken, title)
   if (created.error) return { error: created.error }
-  const tab = await renameFirstTab(accessToken, created.id, DEFAULT_TAB)
-  return { id: created.id, title: created.title, tab }
+  // Aim the rename at the tab Google really created, and if the rename is
+  // refused, fall back to the name that tab already has — the export then
+  // writes there, rather than to a tab that does not exist.
+  const renamed = await renameFirstTab(accessToken, created.id, DEFAULT_TAB, created.firstSheetId)
+  return {
+    id: created.id,
+    title: created.title,
+    tab: renamed.ok ? DEFAULT_TAB : created.firstTabTitle,
+    tabRenamed: renamed.ok,
+  }
+}
+
+/**
+ * The tabs a spreadsheet has, with the ids Google gave them.
+ */
+export async function getSheetStructure(accessToken, sheetId) {
+  const res = await googleJson(
+    `${SHEETS_API}/${encodeURIComponent(sheetId)}`
+    + `?fields=${encodeURIComponent('spreadsheetId,properties.title,sheets.properties')}`,
+    accessToken,
+  )
+  if (!res.ok) return null
+  return {
+    title: String(res.body?.properties?.title ?? ''),
+    tabs: (Array.isArray(res.body?.sheets) ? res.body.sheets : []).map((s) => ({
+      sheetId: Number(s?.properties?.sheetId ?? 0),
+      title: String(s?.properties?.title ?? ''),
+    })),
+  }
+}
+
+/**
+ * The tab to write to: the one that was asked for if the sheet has it, and
+ * otherwise the first tab there is. A spreadsheet the owner made themselves
+ * may well call its only tab something else entirely, and the export must
+ * still find somewhere to write.
+ */
+export function pickTab(structure, preferred) {
+  const tabs = structure && Array.isArray(structure.tabs) ? structure.tabs : []
+  if (!tabs.length) return null
+  const wanted = tabs.find((t) => t.title === preferred)
+  return wanted || tabs[0]
 }
 
 /** Does the connection actually have this spreadsheet? */
@@ -248,4 +306,79 @@ export async function readRange(accessToken, sheetId, tab, range = 'A1:Z50') {
   if (!res.ok) return null
   const values = Array.isArray(res.body?.values) ? res.body.values : []
   return values
+}
+
+
+/**
+ * The orders, with their line items, as the export needs them.
+ *
+ * `baseUrl` and `serviceKey` are passed in rather than read from the
+ * environment here, so this module stays free of the Deno runtime and can be
+ * imported by the test suite as it is.
+ */
+export async function loadOrdersForExport(baseUrl, serviceKey, ids) {
+  if (!baseUrl || !serviceKey || !Array.isArray(ids) || !ids.length) return []
+  const list = ids.map((id) => encodeURIComponent(String(id))).join(',')
+  const res = await fetch(
+    `${baseUrl}/rest/v1/orders?id=in.(${list})`
+    + '&select=id,reference,created_at,status,payment_status,payment_method,full_name,email,phone,'
+    + 'address,city,state,pincode,subtotal,discount,coupon_code,shipping,total,'
+    + 'razorpay_order_id,razorpay_payment_id,note,order_items(title,size,qty,unit_price)'
+    + '&order=created_at.desc&limit=5000',
+    { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+  )
+  if (!res.ok) return []
+  const rows = await res.json().catch(() => [])
+  return Array.isArray(rows) ? rows : []
+}
+
+/**
+ * Write the orders to a spreadsheet.
+ *
+ * One row per line item, the order's money repeated on every item row, the
+ * header row only with the first export, and the orders that are already in
+ * the sheet left out unless the owner asks for them again.
+ *
+ * Nothing is reported as done unless Google accepted the rows: the answer
+ * carries the range and the row count Google itself confirmed.
+ */
+export async function exportOrdersToSheet({
+  accessToken,
+  sheetId,
+  tab,
+  orders,
+  alreadyExported = [],
+  includeExported = false,
+  filters = {},
+}) {
+  const { fresh, repeated } = duplicatesAmong(orders, alreadyExported)
+  const sending = includeExported ? orders : fresh
+
+  if (!sending.length) {
+    return {
+      ok: true,
+      orders: 0,
+      rows: 0,
+      skipped: repeated.length,
+      message: 'Every order in this view is already in that spreadsheet.',
+    }
+  }
+
+  const values = buildSheetValues(sending, filters, {
+    includeHeaders: alreadyExported.length === 0,
+  })
+  const written = await appendRows(accessToken, sheetId, tab, values)
+  if (!written.ok) {
+    return { ok: false, status: written.status, body: written.body }
+  }
+
+  const updates = written.body && written.body.updates
+  return {
+    ok: true,
+    orders: sending.length,
+    rows: values.length,
+    skipped: repeated.length,
+    range: updates && typeof updates.updatedRange === 'string' ? updates.updatedRange : null,
+    orderIds: sending.map((o) => String(o.id)),
+  }
 }

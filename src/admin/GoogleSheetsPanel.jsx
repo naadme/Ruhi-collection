@@ -26,6 +26,37 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
   const [sheetLink, setSheetLink] = useState('')
   const [includeExported, setIncludeExported] = useState(false)
 
+  const status = state.status
+  const connected = status?.connected === true
+  const sheets = Array.isArray(status?.sheets) ? status.sheets : []
+  const destination = status?.spreadsheet || null
+  const busy = state.busy
+
+  /**
+   * Every action goes through here, so the spinner ALWAYS goes away —
+   * whether the call succeeded, failed, timed out or was cancelled. A
+   * panel that keeps spinning after the work is done is a panel that looks
+   * broken, and the owner has no way to tell it apart from one that is
+   * genuinely still working.
+   */
+  const run = useCallback(async (name, work) => {
+    setState((s) => ({ ...s, busy: name, error: '', setup: null, setupLinks: null }))
+    try {
+      await work()
+    } catch (e) {
+      const message = e?.message || 'Something went wrong. Please try again.'
+      setState((s) => ({
+        ...s,
+        error: message,
+        setup: e?.setup ?? null,
+        setupLinks: e?.setupLinks ?? null,
+      }))
+      notify('error', message)
+    } finally {
+      setState((s) => ({ ...s, busy: '' }))
+    }
+  }, [notify])
+
   const load = useCallback(async () => {
     try {
       const status = await sheetsAction('status')
@@ -56,30 +87,13 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
     return () => window.removeEventListener('focus', onFocus)
   }, [load])
 
-  const status = state.status
-  const connected = status?.connected === true
-  const sheets = Array.isArray(status?.sheets) ? status.sheets : []
-  const destination = status?.spreadsheet || null
-  const busy = state.busy
-
   // ---- connect ------------------------------------------------------------
-  const connect = useCallback(async () => {
-    setState((s) => ({ ...s, busy: 'connect', error: '', setup: null, setupLinks: null }))
-    try {
-      const { authorizeUrl } = await sheetsAction('start')
-      // The browser leaves for Google's consent screen and comes back to the
-      // function's callback, which stores the connection.
-      window.location.assign(authorizeUrl)
-    } catch (e) {
-      setState((s) => ({
-        ...s,
-        busy: '',
-        error: e?.message || 'Could not start the Google sign-in.',
-        setup: e?.setup ?? null,
-        setupLinks: e?.setupLinks ?? null,
-      }))
-    }
-  }, [])
+  const connect = useCallback(() => run('connect', async () => {
+    const { authorizeUrl } = await sheetsAction('start')
+    // The browser leaves for Google's consent screen and comes back to the
+    // function's callback, which stores the connection.
+    window.location.assign(authorizeUrl)
+  }), [run])
 
   // The one URL: /admin?section=orders&connect=1 goes straight to Google,
   // so the owner never has to hunt for a button.
@@ -93,87 +107,64 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
     connect()
   }, [connect, state.status])
 
-  const disconnect = async () => {
-    setState((s) => ({ ...s, busy: 'disconnect', error: '', setup: null }))
-    try {
-      await sheetsAction('disconnect')
-      setState((s) => ({ ...s, busy: '', status: { connected: false, sheets: [] } }))
-      notify('success', 'Google Sheets disconnected.')
-    } catch (e) {
-      setState((s) => ({ ...s, busy: '', error: e?.message || 'Could not disconnect.' }))
-      notify('error', e?.message || 'Could not disconnect.')
-    }
-  }
+  const disconnect = () => run('disconnect', async () => {
+    await sheetsAction('disconnect')
+    setState((s) => ({ ...s, status: { connected: false, sheets: [] } }))
+    notify('success', 'Google Sheets disconnected.')
+  })
 
   // ---- the destination spreadsheet ----------------------------------------
-  const createSheet = async () => {
-    setState((s) => ({ ...s, busy: 'create', error: '', setup: null }))
-    try {
-      const result = await sheetsAction('create-sheet', { name: sheetName })
-      setSheetName('')
-      await load()
-      notify('success', `Created “${result.spreadsheet?.title}”. Orders will go there from now on.`)
-    } catch (e) {
-      setState((s) => ({ ...s, busy: '', error: e?.message || 'Could not create the spreadsheet.', setup: e?.setup ?? null }))
-      notify('error', e?.message || 'Could not create the spreadsheet.')
-    }
-  }
+  const createSheet = () => run('create', async () => {
+    const result = await sheetsAction('create-sheet', { name: sheetName })
+    setSheetName('')
+    await load()
+    notify(
+      'success',
+      result.reused
+        ? `“${result.spreadsheet?.title}” was already there — it is now the destination.`
+        : `Created “${result.spreadsheet?.title}”. Orders will go there from now on.`,
+    )
+  })
 
-  const selectSheet = async (spreadsheetId) => {
+  const selectSheet = (spreadsheetId) => {
     if (!spreadsheetId) return
-    setState((s) => ({ ...s, busy: 'select', error: '', setup: null }))
-    try {
+    return run('select', async () => {
       await sheetsAction('select-sheet', { spreadsheetId })
       await load()
       notify('success', 'Destination spreadsheet updated.')
-    } catch (e) {
-      setState((s) => ({ ...s, busy: '', error: e?.message || 'Could not use that spreadsheet.', setup: e?.setup ?? null }))
-      notify('error', e?.message || 'Could not use that spreadsheet.')
-    }
+    })
   }
 
-  const useLink = async () => {
+  const useLink = () => {
     if (!sheetLink.trim()) return
-    await selectSheet(sheetLink.trim())
+    const link = sheetLink.trim()
     setSheetLink('')
+    return selectSheet(link)
   }
 
   // ---- the export ---------------------------------------------------------
-  const exportToSheets = async () => {
-    if (busy || !rows.length) return
-    setState((s) => ({ ...s, busy: 'export', error: '', setup: null, url: '' }))
-    try {
-      const result = await sheetsAction('export', {
-        ids: rows.map((o) => o.id),
-        filters,
-        includeExported,
-      })
-      setState((s) => ({ ...s, busy: '', url: result.url || '' }))
-      const skipped = Number(result.skipped || 0)
-      notify(
-        'success',
-        result.orders
-          ? `Sent ${result.orders} ${result.orders === 1 ? 'order' : 'orders'} to Google Sheets`
-            + `${skipped ? ` (${skipped} already there, skipped)` : ''}.`
-          : (result.message || 'There was nothing new to send.'),
-      )
-    } catch (e) {
-      setState((s) => ({ ...s, busy: '', error: e?.message || 'The export failed.', setup: e?.setup ?? null }))
-      notify('error', e?.message || 'The export failed.')
-    }
-  }
+  const exportToSheets = () => run('export', async () => {
+    const result = await sheetsAction('export', {
+      ids: rows.map((o) => o.id),
+      filters,
+      includeExported,
+    })
+    setState((s) => ({ ...s, url: result.url || '' }))
+    const skipped = Number(result.skipped || 0)
+    notify(
+      'success',
+      result.orders
+        ? `Sent ${result.orders} ${result.orders === 1 ? 'order' : 'orders'} to Google Sheets`
+          + `${skipped ? ` (${skipped} already there, skipped)` : ''}.`
+        : (result.message || 'There was nothing new to send.'),
+    )
+  })
 
-  // ---- what is in the sheet -------------------------------------------------
-  const showPreview = async () => {
-    if (busy) return
-    setState((s) => ({ ...s, busy: 'preview', error: '' }))
-    try {
-      const preview = await sheetsAction('preview')
-      setState((s) => ({ ...s, busy: '', preview }))
-    } catch (e) {
-      setState((s) => ({ ...s, busy: '', error: e?.message || 'Could not read the spreadsheet.' }))
-    }
-  }
+  // ---- what is in the sheet ------------------------------------------------
+  const showPreview = () => run('preview', async () => {
+    const preview = await sheetsAction('preview')
+    setState((s) => ({ ...s, preview }))
+  })
 
   // ---- what to draw -------------------------------------------------------
   return (
@@ -186,7 +177,9 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
           <p className="text-[13px] text-black/55 mt-1">
             {connected
               ? <>Connected to <strong className="text-black/75">{status?.email || 'your Google account'}</strong>.</>
-              : 'Not connected. Sign in with your own Google account to send orders to a spreadsheet.'}
+              : status?.needsReconnect
+                ? 'Your Google connection has expired. Connect it again to keep sending orders.'
+                : 'Not connected. Sign in with your own Google account to send orders to a spreadsheet.'}
           </p>
         </div>
 
@@ -264,6 +257,7 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
               </ul>
             </div>
           )}
+
           {/* ---- where the orders go ---- */}
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] items-end">
             <label className="block min-w-0">

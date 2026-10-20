@@ -35,14 +35,21 @@ async function readErrorBody(error) {
 export async function sheetsAction(action, body = {}) {
   const { data, error } = await supabase.functions.invoke(SHEETS_FUNCTION, {
     body: { action, ...body },
+    // A request that never answers must not leave the panel spinning for
+    // ever: after this long it is called off, and the owner is told what
+    // happened rather than being left with a spinner.
+    timeout: 45000,
   })
 
   const detail = await readErrorBody(error)
   if (error || !data?.ok) {
+    const timedOut = /abort|timeout/i.test(String(error?.message || ''))
     const failure = new Error(
-      detail?.error
-      || error?.message
-      || 'Google Sheets did not respond. Please try again.',
+      timedOut
+        ? 'Google did not answer in time. Please try again.'
+        : detail?.error
+          || error?.message
+          || 'Google Sheets did not respond. Please try again.',
     )
     failure.setup = Array.isArray(detail?.setup) ? detail.setup : null
     failure.setupLinks = Array.isArray(detail?.setupLinks) ? detail.setupLinks : null

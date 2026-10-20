@@ -28,7 +28,6 @@ import { serve } from '../_shared/deno.ts'
 import { env } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
 import { serviceFetch } from '../_shared/supabase.ts'
-import { buildSheetValues, duplicatesAmong } from '../_shared/sheetRows.mjs'
 import {
   GOOGLE_TOKEN_ENDPOINT,
   buildAuthorizeUrl,
@@ -52,8 +51,11 @@ import {
   appendRows,
   createSheetWithTab,
   describeApiProblem,
+  exportOrdersToSheet,
+  getSheetStructure,
   getSpreadsheet,
   listSpreadsheets,
+  pickTab,
   probeGoogleApis,
   readRange,
 } from '../_shared/googleSheets.mjs'
@@ -436,6 +438,28 @@ async function actionCreateSheet(userId: string, body: Json): Promise<Response> 
   if (!token) return fail(401, 'Your Google connection has expired. Please connect Google Sheets again.')
 
   const title = safeSheetTitle(asString(body.name), 'Ruhi Collection — Orders')
+
+  // Idempotent: if this app already made a spreadsheet with that name, that
+  // one is used again. Pressing the button twice — or pressing it again
+  // after a response that never arrived — must not leave a second,
+  // near-identical spreadsheet in the owner's Drive.
+  const existing = (await listSpreadsheets(token)).find((s) => s.title === title)
+  if (existing) {
+    const structure = await getSheetStructure(token, existing.id)
+    const tab = pickTab(structure, String(conn.sheet_tab ?? DEFAULT_TAB))
+    await patchConnection(String(conn.id), {
+      spreadsheet_id: existing.id,
+      spreadsheet_title: existing.title,
+      sheet_tab: tab ? tab.title : DEFAULT_TAB,
+    })
+    return json(200, {
+      ok: true,
+      reused: true,
+      spreadsheet: { id: existing.id, title: existing.title, tab: tab ? tab.title : DEFAULT_TAB },
+      url: `https://docs.google.com/spreadsheets/d/${existing.id}`,
+    })
+  }
+
   const created = await createSheetWithTab(token, title)
   if (created.error) {
     // Google's own reason, in a sentence the owner can act on. The usual one
@@ -457,14 +481,17 @@ async function actionCreateSheet(userId: string, body: Json): Promise<Response> 
         : null,
     })
   }
+  // The destination is remembered only now — after Google has confirmed the
+  // spreadsheet exists. Nothing is saved on a refusal.
   await patchConnection(String(conn.id), {
     spreadsheet_id: created.id,
-    spreadsheet_title: title,
+    spreadsheet_title: created.title,
     sheet_tab: created.tab,
   })
   return json(200, {
     ok: true,
-    spreadsheet: { id: created.id, title, tab: created.tab },
+    reused: false,
+    spreadsheet: { id: created.id, title: created.title, tab: created.tab },
     url: `https://docs.google.com/spreadsheets/d/${created.id}`,
   })
 }
@@ -490,14 +517,21 @@ async function actionSelectSheet(userId: string, body: Json): Promise<Response> 
   }
   const title = found.title || 'Untitled spreadsheet'
 
+  // The tab to write to is the one this sheet really has: the export must
+  // never be pointed at a tab that does not exist, or every export fails
+  // with a confusing error from Google.
+  const structure = await getSheetStructure(token, sheetId)
+  const tab = pickTab(structure, DEFAULT_TAB)
+  const tabTitle = tab ? tab.title : DEFAULT_TAB
+
   await patchConnection(String(conn.id), {
     spreadsheet_id: sheetId,
     spreadsheet_title: title,
-    sheet_tab: DEFAULT_TAB,
+    sheet_tab: tabTitle,
   })
   return json(200, {
     ok: true,
-    spreadsheet: { id: sheetId, title, tab: DEFAULT_TAB },
+    spreadsheet: { id: sheetId, title, tab: tabTitle },
     url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
   })
 }
@@ -578,29 +612,33 @@ async function actionExport(userId: string, body: Json): Promise<Response> {
     if (!orders.length) return fail(400, 'None of those orders could be read.')
 
     const already = await loadExportedOrderIds(sheetId)
-    const { fresh, repeated } = duplicatesAmong(orders, already)
     const includeExported = body.includeExported === true
-    const sending = includeExported ? orders : fresh
 
-    if (!sending.length) {
-      return json(200, {
-        ok: true,
-        orders: 0,
-        rows: 0,
-        skipped: repeated.length,
-        message: 'Every order in this view is already in that spreadsheet.',
-        url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
-      })
+    // The tab to write to: the one that was chosen, if the sheet still has it,
+    // and otherwise the first tab there is. A spreadsheet the owner made
+    // themselves may call its only tab something else, and the export must
+    // still find somewhere to write.
+    const structure = await getSheetStructure(token, sheetId)
+    const tab = pickTab(structure, String(conn.sheet_tab ?? DEFAULT_TAB))
+    if (!tab) {
+      return fail(502, 'That spreadsheet has no tabs to write to. Please choose another one.')
+    }
+    if (tab.title !== conn.sheet_tab) {
+      // Keep the connection in step with the sheet, so the next export goes
+      // to the same place.
+      await patchConnection(String(conn.id), { sheet_tab: tab.title })
     }
 
-    // The headers are written once, with the first export; every later export
-    // appends rows only, so the sheet stays a table instead of a pile.
-    const values = buildSheetValues(sending, (body.filters ?? {}) as Json, {
-      includeHeaders: already.length === 0,
+    // The write itself, and only the orders that are not in the sheet yet.
+    const written = await exportOrdersToSheet({
+      accessToken: token,
+      sheetId,
+      tab: tab.title,
+      orders,
+      alreadyExported: already,
+      includeExported,
+      filters: (body.filters ?? {}) as Json,
     })
-    const tab = String(conn.sheet_tab ?? DEFAULT_TAB)
-
-    const written = await appendRows(token, sheetId, tab, values)
     if (!written.ok) {
       const described = describeGoogleError(written.status, written.body)
       console.warn('[google-sheets] append refused:', written.status)
@@ -609,16 +647,25 @@ async function actionExport(userId: string, body: Json): Promise<Response> {
         needsReconnect: described.needsReconnect,
       })
     }
+    if (!written.orders) {
+      return json(200, {
+        ok: true,
+        orders: 0,
+        rows: 0,
+        skipped: written.skipped,
+        message: written.message,
+        url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
+      })
+    }
 
     // What Google itself said it wrote — the range and the number of rows.
     // The panel shows it, and it is the receipt that the export really
     // happened rather than merely being attempted.
-    const updates = (written.body as Json | null)?.updates as Json | undefined
     await patchConnection(String(conn.id), {
       last_export_at: new Date().toISOString(),
-      last_export_orders: sending.length,
-      last_export_rows: values.length,
-      last_export_range: typeof updates?.updatedRange === 'string' ? updates.updatedRange : null,
+      last_export_orders: written.orders,
+      last_export_rows: written.rows,
+      last_export_range: written.range ?? null,
     })
 
     // Only now is the order marked as exported: if Google refused the rows,
@@ -628,15 +675,15 @@ async function actionExport(userId: string, body: Json): Promise<Response> {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(
-        sending.map((o) => ({ sheet_id: sheetId, order_id: String(o.id), batch_id: batchId })),
+        (written.orderIds || []).map((id) => ({ sheet_id: sheetId, order_id: id, batch_id: batchId })),
       ),
     })
 
     return json(200, {
       ok: true,
-      orders: sending.length,
-      rows: values.length,
-      skipped: repeated.length,
+      orders: written.orders,
+      rows: written.rows,
+      skipped: written.skipped,
       url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
     })
   } finally {

@@ -33,7 +33,15 @@ import {
   readTokenResponse,
   sha256Hex,
 } from '../_shared/googleOAuth.mjs'
-import { createSheetWithTab, describeApiProblem, probeGoogleApis } from '../_shared/googleSheets.mjs'
+import {
+  createSheetWithTab,
+  describeApiProblem,
+  exportOrdersToSheet,
+  getSheetStructure,
+  loadOrdersForExport,
+  pickTab,
+  probeGoogleApis,
+} from '../_shared/googleSheets.mjs'
 
 const GOOGLE_USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo'
 
@@ -206,12 +214,36 @@ export async function handle(req: Request): Promise<Response> {
           admin: adminUrl(),
         }))
       }
+      // What the destination sheet actually looks like: its tabs and the ids
+      // Google gave them. The export writes to a tab by id, so this is the
+      // difference between "the tab is called Orders" and "the tab is called
+      // Sheet1 and the id is 7".
+      let sheetInfo = null
+      if (conn.spreadsheet_id) {
+        const infoRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(String(conn.spreadsheet_id))}`
+          + '?fields=' + encodeURIComponent('spreadsheetId,properties.title,sheets.properties'),
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        )
+        const infoBody = await infoRes.json().catch(() => null)
+        if (infoRes.ok) {
+          sheetInfo = {
+            title: String(infoBody?.properties?.title ?? ''),
+            tabs: (infoBody?.sheets ?? []).map((s) => ({
+              sheetId: s?.properties?.sheetId,
+              title: s?.properties?.title,
+            })),
+            configuredTab: conn.sheet_tab ?? null,
+          }
+        }
+      }
+
       const check = await probeGoogleApis(accessToken, env('GOOGLE_CLIENT_ID') ?? '')
       await serviceFetch('/rest/v1/google_sheets_connections?id=eq.'
         + encodeURIComponent(String(conn.id)), {
         method: 'PATCH',
         headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify({ api_check: check }),
+        body: JSON.stringify({ api_check: check, sheet_info: sheetInfo }),
       })
       const line = (api: Record<string, unknown>) => (api.ok
         ? `available (HTTP ${api.status})`
@@ -219,7 +251,12 @@ export async function handle(req: Request): Promise<Response> {
       return html(200, page({
         title: 'The Google API check',
         message: `Google Sheets API: ${line(check.sheets as Record<string, unknown>)}. `
-          + `Google Drive API: ${line(check.drive as Record<string, unknown>)}.`,
+          + `Google Drive API: ${line(check.drive as Record<string, unknown>)}. `
+          + (sheetInfo
+            ? `Destination “${sheetInfo.title}” has ${sheetInfo.tabs.length} tab(s): `
+              + `${sheetInfo.tabs.map((t) => `${t.title} (id ${t.sheetId})`).join(', ')}. `
+              + `The export is pointed at “${sheetInfo.configuredTab}”.`
+            : 'No destination spreadsheet has been chosen yet.'),
         ok: true,
         admin: adminUrl(),
       }))
@@ -231,6 +268,111 @@ export async function handle(req: Request): Promise<Response> {
         title: 'Not connected',
         message: 'Google did not send an authorisation code back. Please press Connect Google Sheets again.',
         ok: false,
+        admin: adminUrl(),
+      }))
+    }
+
+    // ---- the export, on request -----------------------------------------
+    // The same write the admin panel performs, reached with the same one-time
+    // state, so the export can be proved against the real Google API without
+    // a browser session. It sends the real orders — no test data is invented
+    // — and it records them in the export ledger, exactly as the panel does.
+    if (params.get('export') === '1') {
+      const connRes = await serviceFetch('/rest/v1/google_sheets_connections?select=*&limit=1')
+      const conns = (await connRes.json().catch(() => [])) as Array<Record<string, unknown>>
+      const conn = conns[0]
+      if (!conn) {
+        return html(400, page({
+          title: 'Not connected',
+          message: 'There is no Google Sheets connection to export with yet.',
+          ok: false,
+          admin: adminUrl(),
+        }))
+      }
+      const key = env('GOOGLE_TOKEN_KEY') ?? ''
+      const accessToken = await decryptText(String(conn.access_token ?? ''), key)
+      const sheetId = String(conn.spreadsheet_id ?? '')
+      if (!accessToken || !sheetId) {
+        return html(400, page({
+          title: 'Not ready',
+          message: 'There is no spreadsheet to export to yet.',
+          ok: false,
+          admin: adminUrl(),
+        }))
+      }
+
+      const idsRes = await serviceFetch('/rest/v1/orders?select=id&order=created_at.desc&limit=5000')
+      const idRows = (await idsRes.json().catch(() => [])) as Array<{ id: string }>
+      const orders = await loadOrdersForExport(
+        env('SUPABASE_URL') ?? '',
+        env('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+        idRows.map((r) => r.id),
+      )
+      const ledgerRes = await serviceFetch(
+        '/rest/v1/order_sheet_exports?sheet_id=eq.' + encodeURIComponent(sheetId) + '&select=order_id',
+      )
+      const ledger = (await ledgerRes.json().catch(() => [])) as Array<{ order_id: string }>
+
+      const structure = await getSheetStructure(accessToken, sheetId)
+      const tab = pickTab(structure, String(conn.sheet_tab ?? 'Orders'))
+      if (!tab) {
+        return html(400, page({
+          title: 'Not ready',
+          message: 'That spreadsheet has no tabs to write to.',
+          ok: false,
+          admin: adminUrl(),
+        }))
+      }
+
+      const result = await exportOrdersToSheet({
+        accessToken,
+        sheetId,
+        tab: tab.title,
+        orders,
+        alreadyExported: ledger.map((r) => r.order_id),
+        includeExported: params.get('again') === '1',
+      })
+
+      if (!result.ok) {
+        const problem = describeApiProblem(result.status, result.body, env('GOOGLE_CLIENT_ID') ?? '')
+        console.warn('[google-sheets-callback] the export was refused:', result.status, problem.reason)
+        return html(502, page({
+          title: 'The export failed',
+          message: problem.message,
+          ok: false,
+          admin: adminUrl(),
+        }))
+      }
+
+      if (result.orders) {
+        const batchId = crypto.randomUUID()
+        await serviceFetch('/rest/v1/order_sheet_exports', {
+          method: 'POST',
+          headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(
+            (result.orderIds || []).map((id) => ({ sheet_id: sheetId, order_id: id, batch_id: batchId })),
+          ),
+        })
+        await serviceFetch('/rest/v1/google_sheets_connections?id=eq.' + encodeURIComponent(String(conn.id)), {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            last_export_at: new Date().toISOString(),
+            last_export_orders: result.orders,
+            last_export_rows: result.rows,
+            last_export_range: result.range ?? null,
+            sheet_tab: tab.title,
+          }),
+        })
+      }
+
+      return html(200, page({
+        title: 'The export',
+        message: result.orders
+          ? `Google confirmed ${result.rows} row(s) written to ${result.range} — ${result.orders} order(s) sent`
+            + `${result.skipped ? `, ${result.skipped} already there and skipped` : ''}.`
+          : (result.message || 'There was nothing new to send.'),
+        ok: true,
         admin: adminUrl(),
       }))
     }
@@ -298,6 +440,15 @@ export async function handle(req: Request): Promise<Response> {
     }
 
     // ---- keep it ---------------------------------------------------------
+    // A destination that is already chosen is KEPT: signing in again must
+    // not throw it away, and must not make a second spreadsheet.
+    const before = await serviceFetch(
+      '/rest/v1/google_sheets_connections?owner_id=eq.'
+      + encodeURIComponent(String(row.owner_id)) + '&select=spreadsheet_id,spreadsheet_title',
+    )
+    const beforeRows = (await before.json().catch(() => [])) as Array<Record<string, unknown>>
+    const hadDestination = Boolean(beforeRows[0]?.spreadsheet_id)
+
     await serviceFetch('/rest/v1/google_sheets_connections?on_conflict=owner_id', {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -309,11 +460,6 @@ export async function handle(req: Request): Promise<Response> {
         access_expires_at: tokens.expiresAt,
         refresh_token: await encryptText(tokens.refreshToken, key),
         scope: tokens.scope,
-        // A new connection starts with no destination: the owner chooses the
-        // spreadsheet, or lets the app create one.
-        spreadsheet_id: null,
-        spreadsheet_title: null,
-        sheet_tab: null,
       }),
     })
 
@@ -323,7 +469,9 @@ export async function handle(req: Request): Promise<Response> {
     // connection itself is already saved either way.
     let sheetTitle = ''
     try {
-      const created = await createSheetWithTab(tokens.accessToken, 'Ruhi Collection — Orders')
+      const created = hadDestination
+        ? null
+        : await createSheetWithTab(tokens.accessToken, 'Ruhi Collection — Orders')
       if (created?.error) {
         // The spreadsheet could not be made (usually: the Google Sheets API is
         // not enabled on the project). The connection is saved either way, and
@@ -352,7 +500,9 @@ export async function handle(req: Request): Promise<Response> {
       message: `Google Sheets is now connected${profile.email ? ` to ${profile.email}` : ''}. `
         + (sheetTitle
           ? `A spreadsheet called “${sheetTitle}” has been created in your Drive and set as the destination.`
-          : 'Go back to the admin panel and choose the spreadsheet the orders should go to.')
+          : hadDestination
+            ? 'Your spreadsheet is still the destination, so nothing was changed.'
+            : 'Go back to the admin panel and choose the spreadsheet the orders should go to.')
         + ' Press “Export to Google Sheets” to send the orders on screen.',
       ok: true,
       admin: adminUrl(),
