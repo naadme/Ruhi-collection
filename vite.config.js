@@ -21,6 +21,10 @@ const spa404 = () => {
 export default defineConfig({
   plugins: [react(), spa404()],
   build: {
+    // The build always starts from an empty output directory. A file left
+    // behind by an earlier build must never be published again — a stale
+    // photograph or asset is invisible in the source tree and easy to miss.
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         // Third-party code (React, Supabase, the router, Lucide) is effectively
