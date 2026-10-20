@@ -151,6 +151,26 @@ export default function Dashboard({ showOrders }) {
   const [busyId, setBusyId] = useState('')
   const [toast, setToast] = useState(null)
 
+  // The section lives in the URL, so a link can land the owner on a
+  // particular tab — the Google sign-in sends them back to
+  // /admin?section=orders, and a refresh keeps them where they were.
+  const changeSection = useCallback((next) => {
+    setSection(next)
+    try {
+      const url = new URL(window.location.href)
+      url.searchParams.set('section', next)
+      window.history.replaceState(null, '', url)
+    } catch {
+      /* the URL is a convenience, never a requirement */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!showOrders) return
+    const wanted = new URLSearchParams(window.location.search).get('section')
+    if (wanted && SECTIONS.some(([k]) => k === wanted)) setSection(wanted)
+  }, [showOrders])
+
   const notify = (type, message) => setToast({ type, message, id: Date.now() })
 
   // One entry per design, grouped with the storefront's own rule, so the
@@ -365,7 +385,7 @@ export default function Dashboard({ showOrders }) {
   if (showOrders && section !== 'products') {
     return (
       <div className="font-ui">
-        <SectionSwitch value={section} onChange={setSection} showOrders={showOrders} />
+        <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'orders' && <OrdersPanel notify={notify} />}
           {section === 'banners' && <BannerPanel notify={notify} />}
@@ -380,7 +400,7 @@ export default function Dashboard({ showOrders }) {
   return (
     <div className="font-ui">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <SectionSwitch value={section} onChange={setSection} showOrders={showOrders} />
+        <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
       </div>
 
       <div id="panel-products" role="tabpanel">

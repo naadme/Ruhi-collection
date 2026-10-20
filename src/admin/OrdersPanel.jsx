@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, ArrowUpDown, Calendar, ChevronDown, Download, ExternalLink, Inbox, Loader2, MapPin,
-  Phone, RefreshCw, Sheet, User, X,
+  AlertTriangle, ArrowUpDown, Calendar, ChevronDown, Download, Inbox, Loader2, MapPin,
+  Phone, RefreshCw, User, X,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { inr } from '../lib/pricing'
 import { filterAndSortOrders } from '../lib/orderFiltering'
 import { downloadOrdersXlsx } from './orderExport'
+import GoogleSheetsPanel from './GoogleSheetsPanel'
 
 const STATUSES = [
   ['pending', 'Pending'],
@@ -210,22 +211,6 @@ function Row({ order, open, onToggle, onStatus, busy }) {
   )
 }
 
-/**
- * The JSON body of a failed Edge Function call, if it carried one.
- *
- * supabase-js surfaces a non-2xx answer as an error whose `context` is the
- * Response; without this the admin would only ever see "Error sending
- * request" instead of the setup steps the server wrote for them.
- */
-async function readFunctionError(error) {
-  try {
-    const body = await error?.context?.json?.()
-    return body && typeof body === 'object' ? body : null
-  } catch {
-    return null
-  }
-}
-
 export default function OrdersPanel({ notify }) {
   const [state, setState] = useState({ loading: true, orders: [], error: '' })
   const [query, setQuery] = useState('')
@@ -236,10 +221,6 @@ export default function OrdersPanel({ notify }) {
   const [openId, setOpenId] = useState('')
   const [busyId, setBusyId] = useState('')
   const [exporting, setExporting] = useState(false)
-  // Google Sheets export. `setup` is the list of steps the server said are
-  // still outstanding — it is shown, not swallowed, and the export is never
-  // announced as done unless the sheet really accepted the rows.
-  const [sheets, setSheets] = useState({ busy: false, setup: null, url: '' })
 
   const load = useCallback(async (silent) => {
     if (!silent) setState((s) => ({ ...s, loading: true }))
@@ -320,43 +301,10 @@ export default function OrdersPanel({ notify }) {
   }
 
   // Send exactly what is on screen — the same filtered, sorted rows the list
-  // and the Excel download describe — to the owner's Google Sheet.
-  //
-  // The work happens in the `export-orders-sheet` Edge Function: the
-  // service-account key lives only in that server's secrets and the browser
-  // never sees it. The server re-checks that the caller is an admin, so a
-  // tampered request cannot reach anyone else's orders.
-  const exportToSheets = async () => {
-    if (sheets.busy || state.loading || !rows.length) return
-    setSheets((s) => ({ ...s, busy: true, setup: null, url: '' }))
-    try {
-      const { data, error } = await supabase.functions.invoke('export-orders-sheet', {
-        body: {
-          ids: rows.map((o) => o.id),
-          filters: { status: filter, query, from, to },
-        },
-      })
-
-      // A function that answers 501 (not configured) or 403 (not an admin)
-      // carries its own explanation in the body. Surface it verbatim — an
-      // admin cannot fix a missing secret from a one-line toast.
-      const detail = await readFunctionError(error)
-      if (error || !data?.ok) {
-        const setup = Array.isArray(detail?.setup) ? detail.setup : null
-        setSheets((s) => ({ ...s, busy: false, setup }))
-        notify('error', detail?.error || error?.message
-          || 'Google Sheets did not accept the export. Please try again.')
-        return
-      }
-
-      setSheets((s) => ({ ...s, busy: false, url: data.url || '' }))
-      notify('success', `Sent ${data.orders ?? rows.length} ${
-        (data.orders ?? rows.length) === 1 ? 'order' : 'orders'} to Google Sheets.`)
-    } catch (e) {
-      setSheets((s) => ({ ...s, busy: false, setup: null }))
-      notify('error', e?.message || 'Could not reach the export service. Please try again.')
-    }
-  }
+  // and the Excel download describe — to the owner's Google Sheet. The work
+  // happens in the `google-sheets` Edge Function, against the owner's own
+  // Google account; the browser never sees a token.
+  const filters = { status: filter, query, from, to }
 
   return (
     <div>
@@ -379,15 +327,6 @@ export default function OrdersPanel({ notify }) {
             {exporting ? 'Exporting…' : 'Export Excel'}
           </button>
           <button
-            onClick={exportToSheets}
-            disabled={sheets.busy || state.loading || rows.length === 0}
-            title={rows.length ? `Send these ${rows.length} orders to Google Sheets` : 'No orders to export'}
-            className="inline-flex items-center gap-2 h-[46px] px-4 rounded-lg border border-black/70 text-[15px] font-medium hover:bg-black hover:text-white transition disabled:opacity-60"
-          >
-            {sheets.busy ? <Loader2 size={16} className="animate-spin" /> : <Sheet size={16} />}
-            {sheets.busy ? 'Sending…' : 'Export to Google Sheets'}
-          </button>
-          <button
             onClick={() => load()}
             disabled={state.loading}
             className="inline-flex items-center gap-2 h-[46px] px-4 rounded-lg border border-black/70 text-[15px] font-medium hover:bg-black hover:text-white transition disabled:opacity-60"
@@ -404,33 +343,10 @@ export default function OrdersPanel({ notify }) {
         </div>
       )}
 
-      {/* Google Sheets: either the sheet that was just written (so the owner
-          can open it), or the exact setup still missing. Never a quiet
-          "done" for an export that never reached Google. */}
-      {sheets.setup && (
-        <div role="alert" className="mt-6 border border-amber-200 bg-amber-50 text-amber-900 rounded-xl px-4 py-3 text-[14px]">
-          <p className="font-semibold flex items-center gap-2">
-            <AlertTriangle size={16} className="shrink-0" /> Google Sheets export is not ready yet
-          </p>
-          <ul className="mt-2 space-y-1 list-disc pl-5">
-            {sheets.setup.map((step) => <li key={step}>{step}</li>)}
-          </ul>
-          <button
-            onClick={() => setSheets((s) => ({ ...s, setup: null }))}
-            className="mt-2 underline underline-offset-2 text-[13px]"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-      {sheets.url && (
-        <p className="mt-6 border border-green-200 bg-green-50 text-green-800 rounded-xl px-4 py-3 text-[14px]">
-          Sent.{' '}
-          <a href={sheets.url} target="_blank" rel="noreferrer" className="underline underline-offset-2 inline-flex items-center gap-1 font-medium">
-            Open the sheet <ExternalLink size={13} aria-hidden="true" />
-          </a>
-        </p>
-      )}
+      {/* Google Sheets: connect the owner's own Google account, choose where
+          the orders go, and send them. The panel owns the whole flow so the
+          orders list below stays exactly as it was. */}
+      <GoogleSheetsPanel rows={rows} filters={filters} notify={notify} />
 
       <div className="mt-6 flex flex-wrap gap-3 items-center justify-between border-y border-black/10 py-4">
         <div className="flex flex-wrap items-center gap-1 bg-white border border-black/15 rounded-lg p-1">

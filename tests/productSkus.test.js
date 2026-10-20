@@ -16,9 +16,16 @@ const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
 const MIG = 'supabase/migrations/20261020120000_product_skus.sql'
 const SQL = read(MIG)
 
-test('the SKU migration is the newest one, and is additive', () => {
+test('the SKU migration is additive, and so is every migration after it', () => {
   const files = fs.readdirSync(path.join(process.cwd(), 'supabase/migrations')).sort()
-  assert.equal(files[files.length - 1], '20261020120000_product_skus.sql')
+  assert.ok(files.includes('20261020120000_product_skus.sql'), 'the SKU migration is there')
+  // Later migrations must not undo it: none of them may touch products.id or
+  // the uniqueness of the six-character ID.
+  for (const file of files.filter((f) => f > '20261020120000_product_skus.sql')) {
+    const later = read(`supabase/migrations/${file}`)
+    assert.doesNotMatch(later, /alter column id/i, `${file} never rewrites a product id`)
+    assert.doesNotMatch(later, /drop index .*products_sku_key/i, `${file} never drops the ID's uniqueness`)
+  }
 
   assert.doesNotMatch(SQL, /\bDROP\s+TABLE\b/i, 'no table is dropped')
   assert.doesNotMatch(SQL, /\bTRUNCATE\b/i, 'nothing is truncated')

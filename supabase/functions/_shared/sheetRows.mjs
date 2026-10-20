@@ -2,35 +2,55 @@
 // receives. Plain JavaScript on purpose: the Edge Function imports it and so
 // does the Node test suite, so the sheet can never disagree with what the
 // tests proved.
+//
+// The formatting is chosen so a real spreadsheet is useful the moment it
+// lands, without the owner having to clean anything up:
+//   * a header row, so the columns are named;
+//   * dates as `YYYY-MM-DD HH:MM:SS` in the store's own time zone — Sheets
+//     reads that as a real date cell, so it can be sorted and filtered;
+//   * money as plain numbers, with the unit in the column name;
+//   * one row per line item, with the order's own totals repeated on every
+//     item row, so a column of the sheet can never split an order's money
+//     away from the order it belongs to.
 
 /** The columns every export writes, in order. */
 export const SHEET_COLUMNS = [
-  'Reference', 'Placed at', 'Status', 'Payment', 'Customer', 'Email', 'Phone',
-  'Address', 'City', 'State', 'Pincode', 'Item', 'Size', 'Qty', 'Unit price',
-  'Line total', 'Subtotal', 'Discount', 'Coupon', 'Shipping', 'Order total',
+  'Reference', 'Placed at', 'Status', 'Payment status', 'Payment method',
+  'Customer', 'Email', 'Phone', 'Address', 'City', 'State', 'Pincode',
+  'Item', 'Size', 'Qty', 'Unit price (₹)', 'Line total (₹)', 'Subtotal (₹)',
+  'Discount (₹)', 'Coupon', 'Shipping (₹)', 'Order total (₹)',
   'Razorpay order', 'Razorpay payment', 'Note',
 ]
 
-const asText = (v) => (v === null || v === undefined ? '' : v)
+/** The tab the export writes into, and the range it appends to. */
+export const SHEET_TAB = 'Orders'
+export const SHEET_RANGE = `${SHEET_TAB}!A1`
 
-/** A timestamp as the admin already reads it in the panel — en-IN, so a sheet
- *  and the Orders screen can never describe the same order differently. */
+const asText = (v) => (v === null || v === undefined ? '' : v)
+const asNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+
+/**
+ * A timestamp as the shop's own wall clock — `2026-10-05 16:00:00`.
+ *
+ * The store is in India and keeps no daylight saving, so the offset is fixed
+ * and the conversion needs no timezone database. Sheets parses this shape as
+ * a date and time, which is what makes the column sortable.
+ */
 export function formatPlacedAt(value) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return asText(value)
-  try {
-    return d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
-  } catch {
-    return d.toISOString()
-  }
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(d)
+  const get = (type) => parts.find((p) => p.type === type)?.value || ''
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`
 }
 
 /**
  * One order -> one row per line item (and one row when it has none).
- *
- * The order's own money is repeated on every item row, so filtering or
- * pivoting a column of a real sheet never splits an order's totals across
- * rows that can no longer be traced back to it.
  */
 export function orderRows(order) {
   if (!order) return []
@@ -39,6 +59,7 @@ export function orderRows(order) {
     formatPlacedAt(order.created_at),
     asText(order.status),
     asText(order.payment_status || ''),
+    asText(order.payment_method || ''),
     asText(order.full_name),
     asText(order.email),
     asText(order.phone),
@@ -48,11 +69,11 @@ export function orderRows(order) {
     asText(order.pincode),
   ]
   const tail = [
-    Number(order.subtotal) || 0,
-    Number(order.discount) || 0,
+    asNumber(order.subtotal),
+    asNumber(order.discount),
     asText(order.coupon_code),
-    Number(order.shipping) || 0,
-    Number(order.total) || 0,
+    asNumber(order.shipping),
+    asNumber(order.total),
     asText(order.razorpay_order_id),
     asText(order.razorpay_payment_id),
     asText(order.note),
@@ -63,9 +84,9 @@ export function orderRows(order) {
     ...head,
     asText(it.title),
     asText(it.size),
-    Number(it.qty) || 0,
-    Number(it.unit_price) || 0,
-    (Number(it.qty) || 0) * (Number(it.unit_price) || 0),
+    asNumber(it.qty),
+    asNumber(it.unit_price),
+    asNumber(it.qty) * asNumber(it.unit_price),
     ...tail,
   ])
 }
@@ -73,9 +94,15 @@ export function orderRows(order) {
 /**
  * Every order in the admin's CURRENT view — the same filtered, sorted array
  * the list on screen and the Excel download already describe.
+ *
+ * The header row is written only on the FIRST export to a sheet: the export
+ * appends, so writing the headers every time would put them in the middle of
+ * the data. The caller knows which case it is, because the export ledger
+ * already says whether the sheet has anything in it.
  */
-export function buildSheetValues(orders, filters = {}) {
-  const rows = [SHEET_COLUMNS]
+export function buildSheetValues(orders, filters = {}, options = {}) {
+  const rows = []
+  if (options.includeHeaders !== false) rows.push(SHEET_COLUMNS)
   const described = describeFilters(filters)
   if (described) rows.push([described])
   for (const order of Array.isArray(orders) ? orders : []) rows.push(...orderRows(order))
@@ -94,29 +121,21 @@ export function describeFilters(filters = {}) {
 }
 
 /**
- * The message an admin needs when the integration has not been set up yet.
+ * Which of these orders are already in this sheet.
  *
- * Never mentions a value, only the names of the variables — this text is
- * rendered in a browser, so it must be safe to show even to someone who is
- * not the person who configured the project.
+ * The export is append-only, so an order that has been sent before must not
+ * be sent again — that is how a sheet stops filling up with the same three
+ * orders every week. A plain set membership test, so it can be unit-tested
+ * without a database.
  */
-export function missingConfigMessage(missing) {
-  const names = (Array.isArray(missing) ? missing : []).filter(Boolean)
-  return [
-    'Google Sheets export is not set up on this project yet.',
-    names.length ? `Still missing: ${names.join(', ')}.` : '',
-    '1. Create a Google Cloud project and enable the Google Sheets API.',
-    '2. Create a service account, download its JSON key, and share the target spreadsheet with the service account email (Editor).',
-    `3. Add the project secrets: GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY${names.includes('GOOGLE_SHEET_ID') ? ', GOOGLE_SHEET_ID' : ''}.`,
-    '4. Deploy the export-orders-sheet Edge Function, then try again.',
-    'The Excel download keeps working in the meantime.',
-  ].filter(Boolean)
-}
-
-/** Which of the settings the function needs are absent from `env`. */
-export function missingConfig(env, keys = ['GOOGLE_SERVICE_ACCOUNT_EMAIL', 'GOOGLE_PRIVATE_KEY', 'GOOGLE_SHEET_ID']) {
-  return keys.filter((k) => {
-    const v = env?.[k]
-    return typeof v !== 'string' || v.trim().length === 0
-  })
+export function duplicatesAmong(orders, alreadyExported) {
+  const seen = new Set((Array.isArray(alreadyExported) ? alreadyExported : []).map(String))
+  const fresh = []
+  const repeated = []
+  for (const order of Array.isArray(orders) ? orders : []) {
+    if (!order?.id) continue
+    if (seen.has(String(order.id))) repeated.push(order)
+    else fresh.push(order)
+  }
+  return { fresh, repeated }
 }

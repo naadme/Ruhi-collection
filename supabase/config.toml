@@ -406,6 +406,19 @@ verify_jwt = false
 [functions.send-contact-email]
 verify_jwt = false
 
+# Google sign-in, part 1: the admin actions (connect, choose a spreadsheet,
+# export). These all need a real store-owner session, so the platform's own
+# JWT verification stays ON.
+[functions.google-sheets]
+verify_jwt = true
+
+# Google sign-in, part 2: where Google redirects the owner back to. A browser
+# navigation cannot carry a session, so JWT verification is off here — and the
+# function proves the caller itself with a one-time, ten-minute, single-use
+# `state` that is bound to one admin account.
+[functions.google-sheets-callback]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
