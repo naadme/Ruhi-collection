@@ -92,25 +92,28 @@ async function release(orderId: string): Promise<void> {
   }
 }
 
-/** The order's lines, as stored — never computed in the browser. */
+/**
+ * The order's lines, as stored — never computed in the browser.
+ *
+ * A failed query is NOT an empty order. It throws, so the caller abandons the
+ * send instead of telling the owner about an order with no products in it.
+ */
 async function fetchItems(orderId: string): Promise<Json[]> {
-  try {
-    // Only columns `public.order_items` actually has — see the note in
-    // `confirmation.ts`: asking for a column the table does not carry makes
-    // PostgREST answer 400 and the mail goes out with no items at all.
-    const res = await serviceFetch(
-      `/rest/v1/order_items?order_id=${encodeURIComponent(orderId)}` +
-        '&select=title,size,qty,unit_price,sku&order=created_at.asc',
-    )
-    if (!res.ok) {
-      console.warn('[owner-notification] order_items query failed:', res.status, await res.text())
-      return []
-    }
-    const rows = (await res.json().catch(() => [])) as Json[]
-    return Array.isArray(rows) ? rows : []
-  } catch {
-    return []
+  // Only columns `public.order_items` actually has — see the note in
+  // `confirmation.ts`: asking for a column the table does not carry makes
+  // PostgREST answer 400 and the mail goes out with no items at all. The
+  // `eq.` matters for the same reason: a bare value is read by PostgREST as
+  // "not equal to" and the filter is refused.
+  const res = await serviceFetch(
+    `/rest/v1/order_items?order_id=eq.${encodeURIComponent(orderId)}` +
+      '&select=title,size,qty,unit_price,sku&order=created_at.asc',
+  )
+  if (!res.ok) {
+    console.warn('[owner-notification] order_items query failed:', res.status, await res.text())
+    throw new Error('order-items-unavailable')
   }
+  const rows = (await res.json().catch(() => [])) as Json[]
+  return Array.isArray(rows) ? rows : []
 }
 
 /**

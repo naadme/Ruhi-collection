@@ -46,9 +46,10 @@ as long as you never add a `VITE_` prefix to it.
 | `RAZORPAY_KEY_SECRET` | Supabase secret | The Razorpay **Key Secret**. Never in `.env`, never `VITE_*`, never in this repo |
 | `RAZORPAY_WEBHOOK_SECRET` | Supabase secret | Signing secret from Razorpay Dashboard → Settings → Webhooks |
 | `RESEND_API_KEY` | Supabase secret | Resend API key, read by the mail module every order email and the contact form go through. Never in `.env`, never `VITE_*`, never in this repo |
-| `RESEND_FROM` | Supabase secret (optional) | Resend **From** address, e.g. `Ruhi Collection <hello@yourdomain.com>`. Defaults to `onboarding@resend.dev` — **which can only reach the Resend account's own address**, so set this once a domain is verified |
+| `RESEND_FROM` | Supabase secret | Resend **From** address. **Set** to `Ruhi Collection <orders@ruhi-collections.com>` — `ruhi-collections.com` is verified at Resend. Without it the mail falls back to `onboarding@resend.dev`, which may only reach the Resend account's own address |
 | `ORDER_NOTIFICATIONS_SECRET` | Supabase secret | Shared secret between the database and the `order-notifications` Edge Function. The database holds the same value in its own vault |
-| `OWNER_EMAIL` | Supabase secret (optional) | Where the new-order notification goes. Defaults to `ruhicollections2026@gmail.com` |
+| `OWNER_EMAIL` | Supabase secret (optional) | Where the new-order notification goes. Unset ⇒ `ruhicollections2026@gmail.com` |
+| `RAZORPAY_WEBHOOK_SECRET` | Supabase secret | The secret Razorpay signs webhook events with. **Set.** It must be the same value as the webhook's secret in the Razorpay dashboard |
 
 The first three are the only ones the frontend can ever see. The rest are
 read inside Edge Functions through `supabase secrets set`.
@@ -177,30 +178,29 @@ The trigger is part of the migration
 `supabase/migrations/20261021160000_order_notifications.sql` — apply it with
 `npx supabase db push --linked --yes`.
 
-#### What is still missing before a mail actually arrives
+#### The From address — done
 
-> **The From address must be on a domain you have verified at
-> [resend.com/domains](https://resend.com/domains).**
+> **`ruhi-collections.com` is verified at Resend, and `RESEND_FROM` is set to
+> `Ruhi Collection <orders@ruhi-collections.com>`.** Order mail now goes out
+> from that address, and it has been delivered end to end.
 >
-> The API key alone is not enough. While `RESEND_FROM` is unset it falls back to
-> `onboarding@resend.dev`, and Resend answers that with
-> *"You can only send testing emails to your own email address… To send emails to other
-> recipients, please verify a domain, and change the `from` address to an email using this
-> domain."* — **403, and nothing is delivered.** The order is still recorded and the marker is
-> given back, so nothing is lost; the mail simply has not gone out.
+> While `RESEND_FROM` is unset it falls back to `onboarding@resend.dev`, and
+> Resend answers that with *"You can only send testing emails to your own email
+> address… To send emails to other recipients, please verify a domain, and
+> change the `from` address to an email using this domain."* — **403, and
+> nothing is delivered.** The order is still recorded and the marker is given
+> back, so nothing is lost; the mail simply has not gone out.
 >
-> A **sending access key** (a key restricted to sending only) cannot verify a domain itself —
-> the domain has to be added in the Resend dashboard. Then:
+> A **sending access key** (a key restricted to sending only) cannot verify a
+> domain itself — the domain has to be added in the Resend dashboard. It also
+> cannot *read* Resend's delivery log: `GET /emails/{id}` answers
+> `401 restricted_api_key`. To read the log you need a full-access key, or the
+> Resend dashboard.
 >
-> ```bash
-> npx supabase secrets set RESEND_FROM='Ruhi Collection <orders@yourdomain.com>' \
->   --project-ref <your-project-ref>
-> ```
->
-> The free tier carries one domain and 3,000 emails a month, which is plenty for a shop this
-> size.
+> The free tier carries one domain and 3,000 emails a month, which is plenty
+> for a shop this size.
 
-**While the mail cannot be sent, the failure is visible rather than silent:** the
+**When a mail cannot be sent, the failure is visible rather than silent:** the
 `order-notifications` function answers with the reason (`failed resend-403`), and the same
 detail is written to the function's log — Dashboard → Edge Functions → `order-notifications` →
 Logs. The customer is never told a mail went out when it did not.
@@ -216,7 +216,8 @@ curl -X POST "https://<your-project-ref>.functions.supabase.co/order-notificatio
 ```
 
 Without the secret it answers `401` — the function is not a mail relay and cannot be pointed
-at an address of someone else's choosing.
+at an address of someone else's choosing. An order that has already been announced answers
+`already-sent` and sends nothing, however many times you ask.
 
 ### Google Sheets — the daily order sheet
 
@@ -437,6 +438,23 @@ settles.
 6. Save, then run step 3's `supabase secrets set RAZORPAY_WEBHOOK_SECRET=…`.
 
 Razorpay retries a non-2xx response; the ledger table makes retries harmless.
+
+> **The webhook is the safety net for the order emails as well as for the
+> payment.** When the shopper's browser dies mid-payment, this is the only
+> thing that settles the order — and therefore the only thing that can send the
+> confirmation.
+>
+> `RAZORPAY_WEBHOOK_SECRET` is now set on this project, so the function is
+> ready. It refuses every event whose signature does not match, which means a
+> webhook created in the dashboard with a **different** secret will be rejected
+> with `401 Invalid signature`. The two must be the same value: either use the
+> one already in place, or set a fresh secret in the dashboard and run
+> `npx supabase secrets set RAZORPAY_WEBHOOK_SECRET=<the same value>`.
+>
+> The webhook itself has been proved end to end: a correctly signed
+> `payment.captured` event settles the order and sends both mails, the same
+> event delivered again answers `duplicate` and sends nothing more, and a
+> forged or missing signature answers `401`.
 
 ### 7. Test it
 
@@ -745,6 +763,7 @@ What has been verified against this codebase:
 
 Manual steps only you can do: create the Razorpay TEST keys, deploy the functions, set the
 secrets, create the webhook, and run a real test-mode payment (steps 1–7 above). For the order
-mails, one more: **verify a domain at resend.com/domains and set `RESEND_FROM`** — until that
-is done, Resend answers 403 and no order mail is delivered (see
-[Order emails](#order-emails--the-customers-confirmation-and-the-owners-notice)).
+mails, one thing is left: **add the webhook in the Razorpay dashboard** with the URL and the
+three events above, and make its secret the same value as `RAZORPAY_WEBHOOK_SECRET` — the
+order emails are already delivered; this only adds the safety net for a shopper whose
+browser dies mid-payment.

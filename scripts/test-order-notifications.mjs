@@ -62,6 +62,7 @@ const state = {
   calls: [],
   mail: [],
   resendStatus: 200,
+  itemsFail: false,
   unknownUrls: [],
 }
 
@@ -74,6 +75,32 @@ const state = {
  * null and gets nothing back.
  */
 const RESERVED = new Set(['select', 'order', 'limit', 'offset'])
+
+/** The operators PostgREST understands. */
+const OPERATORS = new Set([
+  'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike', 'is', 'in',
+  'cs', 'cd', 'ov', 'sl', 'sr', 'nsl', 'nsr',
+])
+
+/**
+ * Does this query have a filter PostgREST would refuse?
+ *
+ * A bare value is read by PostgREST as "not equal to", so `order_id=<uuid>`
+ * is answered with 400 ("failed to parse filter") — the mistake that shipped
+ * once and made every confirmation email go out with no products in it. The
+ * stub refuses it the same way, so the harness catches it too.
+ */
+function filterProblem(url) {
+  const query = String(url).split('?')[1] ?? ''
+  const params = new URLSearchParams(query)
+  for (const [key, value] of params) {
+    if (key === 'or') continue
+    if (RESERVED.has(key)) continue
+    if (!value.includes('.')) return `failed to parse filter (${key})`
+    if (!OPERATORS.has(value.split('.')[0])) return `unexpected operator in filter (${key})`
+  }
+  return null
+}
 
 function matchesFilters(url, order) {
   const query = String(url).split('?')[1] ?? ''
@@ -134,6 +161,11 @@ globalThis.fetch = async (input, init = {}) => {
 
   // ---- the order lines ----------------------------------------------------
   if (url.includes('/rest/v1/order_items')) {
+    // A filter PostgREST would refuse answers 400 — and the caller must not
+    // post a mail with no products in it because of it.
+    const problem = filterProblem(url)
+    if (problem) return jsonRes(400, { code: 'PGRST100', message: problem })
+    if (state.itemsFail) return jsonRes(500, { message: 'items unavailable' })
     return jsonRes(200, state.items)
   }
 
@@ -204,6 +236,7 @@ function reset(over = {}) {
   state.calls.length = 0
   state.mail.length = 0
   state.resendStatus = 200
+  state.itemsFail = false
   state.unknownUrls.length = 0
 }
 
@@ -344,7 +377,36 @@ console.log('\n7. The endpoint never writes to an address the caller chose')
   check('the owner still gets theirs', mailTo('ruhicollections2026@gmail.com').length === 1)
 }
 
-console.log('\n8. Non-POST is refused; OPTIONS preflight answered')
+console.log('\n8. The order lines are really read — and a broken query sends no mail')
+{
+  reset()
+  await withSecret({ order_id: BASE.id })
+  const itemsCall = state.calls.find((c) => c.url.includes('/rest/v1/order_items'))
+  check('the order lines are queried', !!itemsCall)
+  check(
+    'the filter names an operator (a bare value is read as "not equal to")',
+    !!itemsCall && /order_id=eq\./.test(itemsCall.url),
+    itemsCall ? itemsCall.url : 'no call',
+  )
+  const customer = mailTo('priya@example.com')[0] ?? {}
+  check('and the mail lists the products',
+    /Denim Shirt - Blue/.test(customer.text ?? '') &&
+      /Cotton Dress - Green/.test(customer.text ?? '') &&
+      /× 2 — ₹1,800/.test(customer.text ?? ''))
+}
+{
+  reset()
+  state.itemsFail = true
+  const res = await withSecret({ order_id: BASE.id })
+  const body = await res.json()
+  check('a failed line query → no mail at all', state.mail.length === 0, `sent ${state.mail.length}`)
+  check('and the caller is told it failed',
+    /^failed/.test(body.results?.[BASE.id]?.customer ?? ''), JSON.stringify(body.results))
+  check('and the slot is given back', state.order.confirmation_sent_at === null)
+  state.itemsFail = false
+}
+
+console.log('\n9. Non-POST is refused; OPTIONS preflight answered')
 {
   reset()
   const getRes = await handle(new Request('https://unit-test.functions.supabase.co/order-notifications', { method: 'GET' }))

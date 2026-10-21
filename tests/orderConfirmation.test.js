@@ -7,6 +7,7 @@ const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
 
 const SQL = read('supabase/migrations/20261019150100_order_confirmation_tracking.sql');
 const CONFIRM = read('supabase/functions/_shared/confirmation.ts');
+const OWNER = read('supabase/functions/_shared/ownerNotification.ts');
 const VERIFY = read('supabase/functions/verify-razorpay-payment/index.ts');
 const WEBHOOK = read('supabase/functions/razorpay-webhook/index.ts');
 
@@ -204,14 +205,33 @@ test('fetchItems selects only columns order_items actually has', () => {
   assert.ok(selected.includes('sku'), 'the Product ID of the line is read too');
 });
 
+test('the item query names its operator, so PostgREST reads it at all', () => {
+  // Regression, and the reason every confirmation email went out with an
+  // empty "Items" block: the filter was `order_id=<uuid>` with no operator.
+  // PostgREST reads a bare value as "not equal to" and answers 400
+  // ("failed to parse filter"), the error was swallowed, and the mail was
+  // posted with no products in it.
+  for (const [name, src] of [['confirmation', CONFIRM], ['owner notification', OWNER]]) {
+    assert.match(src, /order_items\?order_id=eq\./,
+      `${name} filters the lines with an explicit operator`);
+  }
+});
+
 test('a failed item query is reported instead of failing silently', () => {
   // The old code returned [] with no trace, which is why this shipped.
   const at = CONFIRM.indexOf('order_items query failed');
   assert.ok(at !== -1, 'fetchItems logs its own failure');
-  const block = CONFIRM.slice(CONFIRM.indexOf('async function fetchItems'), CONFIRM.indexOf('const STATUS_LABEL'));
+  const block = CONFIRM.slice(
+    CONFIRM.indexOf('async function fetchItems'),
+    CONFIRM.indexOf('export async function sendOrderConfirmation'),
+  );
   assert.match(block, /if \(!res\.ok\) \{/, 'the non-200 is detected');
-  assert.ok(block.indexOf('order_items query failed') < block.indexOf('return []'),
-    'the failure is logged BEFORE the list is treated as empty');
+  assert.ok(block.indexOf('order_items query failed') < block.indexOf('throw'),
+    'the failure is logged BEFORE the send is abandoned');
+  // A failed query is NOT an empty order: the mail is not posted at all, so
+  // the customer is never told about an order with no products in it.
+  assert.match(block, /throw new Error\('order-items-unavailable'\)/);
+  assert.ok(!/return \[\]/.test(block), 'the query never comes back as an empty list');
 });
 
 test('an empty item list still produces a readable email (no dangling header)', () => {

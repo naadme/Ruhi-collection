@@ -93,29 +93,37 @@ async function release(orderId: string): Promise<void> {
   }
 }
 
-/** The order's lines, as stored — never computed in the browser. */
+/**
+ * The order's lines, as stored — never computed in the browser.
+ *
+ * A failed query is NOT an empty order. It throws, so the caller abandons the
+ * send instead of posting a confirmation with no products in it — half a truth
+ * is worse than no mail — and gives the claim back so a later attempt can try
+ * again.
+ */
 async function fetchItems(orderId: string): Promise<Json[]> {
-  try {
-    // Select ONLY columns `public.order_items` actually has. It carries no
-    // `colour` column — colour lives inside `products.colour` and inside the
-    // title that `create_order()` snapshots (e.g. "Korean Pants - Black").
-    // Asking PostgREST for `colour` answers 400, this function then returned
-    // `[]`, and every confirmation email went out with an empty "Items" block
-    // and no subtotal line at all. The colour is still readable by the
-    // shopper, because it is part of the snapshot title below.
-    const res = await serviceFetch(
-      `/rest/v1/order_items?order_id=${encodeURIComponent(orderId)}` +
-        '&select=title,size,qty,unit_price,sku&order=created_at.asc',
-    )
-    if (!res.ok) {
-      console.warn('[confirmation] order_items query failed:', res.status, await res.text())
-      return []
-    }
-    const rows = (await res.json().catch(() => [])) as Json[]
-    return Array.isArray(rows) ? rows : []
-  } catch {
-    return []
+  // Select ONLY columns `public.order_items` actually has. It carries no
+  // `colour` column — colour lives inside `products.colour` and inside the
+  // title that `create_order()` snapshots (e.g. "Korean Pants - Black").
+  // Asking PostgREST for `colour` answers 400, this function then returned
+  // `[]`, and every confirmation email went out with an empty "Items" block
+  // and no subtotal line at all. The colour is still readable by the
+  // shopper, because it is part of the snapshot title below.
+  //
+  // The `eq.` matters just as much: PostgREST reads a bare value as
+  // "not equal to", so `order_id=<uuid>` is answered with 400
+  // ("failed to parse filter") and the lines never arrive. That is exactly
+  // what shipped, and it is why the emails went out with no items in them.
+  const res = await serviceFetch(
+    `/rest/v1/order_items?order_id=eq.${encodeURIComponent(orderId)}` +
+      '&select=title,size,qty,unit_price,sku&order=created_at.asc',
+  )
+  if (!res.ok) {
+    console.warn('[confirmation] order_items query failed:', res.status, await res.text())
+    throw new Error('order-items-unavailable')
   }
+  const rows = (await res.json().catch(() => [])) as Json[]
+  return Array.isArray(rows) ? rows : []
 }
 
 /**
