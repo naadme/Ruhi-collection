@@ -33,6 +33,13 @@ create schema if not exists net;
 create schema if not exists extensions;
 create schema if not exists supabase_migrations;
 
+-- Supabase grants the API roles USAGE on `public`, so a query that reaches
+-- the table can get as far as the table's own grants and its row level
+-- security. Without it every query fails with "permission denied for schema
+-- public" and the policies are never reached — which would make an isolated
+-- test prove nothing about the policies it is meant to be testing.
+grant usage on schema public to anon, authenticated, service_role;
+
 -- ---- auth: who is asking --------------------------------------------------
 create table if not exists auth.users (
   id    uuid primary key default gen_random_uuid(),

@@ -119,11 +119,23 @@ const go = async (url) => {
     const ready = await cdp.evaluate('document.readyState === "complete" && !!document.querySelector("main")')
     if (ready) break
   }
-  // the catalogue arrives from the database after the shell has rendered
+  // the catalogue arrives from the database after the shell has rendered, and
+  // the category tiles are drawn from it — so the reading is taken once the
+  // page has stopped changing. Waiting only for the first product card
+  // catches the page between the products arriving and the tiles being
+  // drawn, and reports a category that is really there as missing.
+  let last = ''
   for (let i = 0; i < 40; i += 1) {
     await sleep(500)
-    const n = await cdp.evaluate('document.querySelectorAll(\'a[href^="/product/"]\').length')
-    if (n > 0) break
+    const state = await cdp.evaluate(`(() => {
+      const h = [...document.querySelectorAll('h2')].find(x => /shop by category/i.test(x.textContent||''));
+      const box = h?.closest('section') || h?.parentElement;
+      const tiles = box ? box.querySelectorAll('a[href^="/shop?type="]').length : 0;
+      const cards = document.querySelectorAll('a[href^="/product/"]').length;
+      return tiles + ':' + cards;
+    })()`)
+    if (state && state === last && state !== '0:0') break
+    last = state
   }
 }
 

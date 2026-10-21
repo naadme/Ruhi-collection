@@ -14,6 +14,7 @@ import { supabase } from './supabase.js'
 import {
   CATEGORY_KEY_RE,
   SEED_CATEGORIES,
+  categoriesFromDatabase,
   categoryKey,
   categoryLabelKey,
   cleanLabel,
@@ -26,6 +27,7 @@ import {
 export {
   SEED_CATEGORIES,
   MAX_CATEGORY_LABEL,
+  categoriesFromDatabase,
   categoryKey,
   categoryLabelKey,
   cleanLabel,
@@ -52,9 +54,11 @@ export async function fetchCategories({ strict = false } = {}) {
       .order('key', { ascending: true })
       .retry(false)
     if (error) throw new Error(error.message || 'Could not load the categories.')
-    const merged = mergeCategories(data || [])
-    // An answer that merged down to nothing would blank the storefront's
-    // filters; the seed is the safer truth in that case.
+    // The database answered, so the database is the truth: a category the
+    // owner has deleted is not offered by the storefront any more, and one
+    // they have added is offered at once. The seed is only for a database
+    // that could not be reached — and for one that answers with nothing.
+    const merged = categoriesFromDatabase(data || [])
     return merged.length ? merged : SEED_CATEGORIES
   } catch (e) {
     if (strict) throw e

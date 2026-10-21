@@ -15,6 +15,7 @@ import { readFile } from 'node:fs/promises'
 import {
   CATEGORY_KEY_RE,
   SEED_CATEGORIES,
+  categoriesFromDatabase,
   categoryKey,
   categoryLabelKey,
   cleanLabel,
@@ -240,6 +241,70 @@ test('a malformed database row is ignored rather than blanking the storefront', 
   assert.ok(merged.length >= SEED_CATEGORIES.length)
   assert.ok(merged.some((c) => c.key === 'kurtis'))
   for (const c of merged) assert.match(c.key, CATEGORY_KEY_RE)
+})
+
+// ---------------------------------------------------------------------------
+// categoriesFromDatabase — what the storefront shows when the database has
+// answered.
+//
+// The database is the truth on its own: a category the owner has deleted in
+// the admin panel must not still be offered by the storefront, and a filter
+// that offers a category the shop has taken away opens a page with nothing
+// on it. The seed is only for a database that could not be reached.
+// ---------------------------------------------------------------------------
+
+test('a category the owner has deleted is not offered by the storefront', () => {
+  const fromDb = [
+    { key: 'tops', label: 'Tops & T-shirts', position: 0 },
+    { key: 'coord', label: 'Co-ord Sets', position: 1 },
+    { key: 'dress', label: 'Dresses', position: 2 },
+    { key: 'trousers', label: 'Trousers & Pants', position: 3 },
+    { key: 'winter-wear', label: 'Winter Wear', position: 6 },
+  ]
+  const shown = categoriesFromDatabase(fromDb)
+  assert.deepEqual(shown.map((c) => c.key), ['tops', 'coord', 'dress', 'trousers', 'winter-wear'])
+  // The two the client asked for by name, and the shop does not stock, are
+  // not offered until the owner creates them.
+  assert.ok(!shown.some((c) => c.key === 'night-wear'))
+  assert.ok(!shown.some((c) => c.key === 'kurta-sets'))
+})
+
+test('the seed does not come back when the database has answered', () => {
+  // "Night Wear" and "Kurta Sets" are in the seed, and are NOT in this
+  // answer: they must stay out of the storefront.
+  const shown = categoriesFromDatabase([
+    { key: 'tops', label: 'Tops & T-shirts', position: 0 },
+    { key: 'night-wear', label: 'Night Wear Renamed By The Owner', position: 1 },
+  ])
+  assert.deepEqual(shown.map((c) => c.label), ['Tops & T-shirts', 'Night Wear Renamed By The Owner'])
+})
+
+test('a category the owner has just added is offered straight away', () => {
+  const shown = categoriesFromDatabase([
+    { key: 'tops', label: 'Tops & T-shirts', position: 0 },
+    { key: 'kurtis', label: 'Kurtis', position: 1, code: '07' },
+  ])
+  assert.deepEqual(shown.map((c) => c.key), ['tops', 'kurtis'])
+  assert.equal(shown[1].code, '07')
+})
+
+test('an empty or broken answer yields nothing, so the caller can use the seed', () => {
+  assert.deepEqual(categoriesFromDatabase([]), [])
+  assert.deepEqual(categoriesFromDatabase(null), [])
+  assert.deepEqual(categoriesFromDatabase(undefined), [])
+  // A row that cannot be matched is dropped, exactly as mergeCategories does.
+  assert.deepEqual(categoriesFromDatabase([{ key: 'BAD KEY', label: 'Nope' }]), [])
+})
+
+test('the storefront asks for the database\'s own list, not a merged one', async () => {
+  // The bug this pins: the storefront used to merge the seed into every
+  // answer, so a category deleted in the admin panel was still offered and
+  // opened an empty page.
+  const source = await readFile(new URL('../src/lib/categories.js', import.meta.url), 'utf8')
+  assert.match(source, /categoriesFromDatabase\(data \|\| \[\]\)/,
+    'a successful read is used on its own')
+  assert.doesNotMatch(source, /mergeCategories\(data \|\| \[\]\)/,
+    'and the seed is not merged into it')
 })
 
 // ---------------------------------------------------------------------------

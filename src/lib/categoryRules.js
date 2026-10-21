@@ -62,6 +62,24 @@ export const categoryKey = (label) => {
   return (/[a-z0-9]/.test(clean.toLowerCase()) && CATEGORY_KEY_RE.test(slug)) ? slug : ''
 }
 
+/** The categories to show when the DATABASE answered.
+ *
+ *  The database is the truth on its own. The seed exists for a shop that has
+ *  not reached the database yet — a migration not applied, a network that is
+ *  down — and for a database that answers with nothing at all.
+ *
+ *  It is deliberately NOT merged in here. A category the owner has deleted in
+ *  the admin panel has to disappear from the storefront as well: a filter
+ *  that offers a category the shop has taken away opens a page with nothing
+ *  on it. (The seed's "Night Wear" and "Kurta Sets" are two categories the
+ *  client asked for by name and the shop does not stock — they must not be
+ *  offered until they exist and hold something.)
+ *
+ *  The seed still stands in for a database that could not be reached; that is
+ *  the caller's business, and it is decided where the read happens. */
+export const categoriesFromDatabase = (rows) =>
+  mergeCategories(Array.isArray(rows) ? rows : [], [])
+
 /** The list to render a category picker from: exactly `list`, plus an option
  *  for `type` when the catalogue holds that category but the list does not.
  *
