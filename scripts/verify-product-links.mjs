@@ -18,7 +18,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 
 const BASE = (process.argv[2] || 'https://www.ruhi-collections.com').replace(/\/$/, '')
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-const PORT = 9355
+// No fixed debugging port: Chrome picks one and announces it (see below).
 
 const ok = (m) => console.log(`  \u2713 ${m}`)
 const bad = (m) => { console.log(`  \u2717 ${m}`); failures += 1 }
@@ -65,21 +65,45 @@ class CDP {
 }
 
 const chrome = spawn(CHROME, [
-  '--headless=new', '--disable-gpu', '--no-sandbox', `--remote-debugging-port=${PORT}`,
-  '--user-data-dir=/tmp/ruhi-chrome-product-links', 'about:blank',
-], { stdio: 'ignore' })
+  '--headless=new', '--disable-gpu', '--no-sandbox', '--remote-debugging-port=0',
+  '--user-data-dir=/tmp/ruhi-chrome-product-links-' + process.pid, 'about:blank',
+], { stdio: ['ignore', 'ignore', 'pipe'] })
 
+// Chrome chooses the port and announces it on stderr. Asking for a fixed port
+// instead would mean that a browser left behind by a run that died could hold
+// it — and this script would then quietly drive *that* browser, with its old
+// catalogue and its old scroll positions, instead of the one it just started.
+let announced = ''
+const spoke = new Promise((resolve) => {
+  let out = ''
+  chrome.stderr.on('data', (chunk) => {
+    out += String(chunk)
+    const m = out.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//)
+    if (m) resolve(m[1])
+  })
+})
+announced = await Promise.race([spoke, new Promise((r) => {
+  const t = setTimeout(() => r(''), 30000)
+  if (t.unref) t.unref()
+})])
+if (!announced) {
+  bad('Chrome did not start')
+  chrome.kill()
+  process.exit(1)
+}
+// That socket is the browser's; the tab's — the one that answers Page.* —
+// is read from the target list on the port it just announced.
 let wsUrl = ''
-for (let i = 0; i < 40 && !wsUrl; i += 1) {
-  await sleep(500)
+for (let i = 0; i < 20 && !wsUrl; i += 1) {
+  await sleep(300)
   try {
-    const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()
+    const list = await (await fetch(`http://127.0.0.1:${announced}/json/list`)).json()
     const page = list.find((t) => t.type === 'page')
     if (page?.webSocketDebuggerUrl) wsUrl = page.webSocketDebuggerUrl
-  } catch { /* chrome is still starting */ }
+  } catch { /* the target list is not up yet */ }
 }
 if (!wsUrl) {
-  bad('Chrome did not start')
+  bad('Chrome did not open a tab')
   chrome.kill()
   process.exit(1)
 }
@@ -94,6 +118,24 @@ await cdp.send('Page.enable')
 await cdp.send('Runtime.enable')
 await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false })
 
+/** Read until two consecutive readings agree.
+ *
+ *  The catalogue arrives from the database some moments after the page paints
+ *  (the bundled seed in `src/data/products.js` fills that gap), so a reading
+ *  taken in between describes the seed — its placeholder prices and its old
+ *  photographs — rather than the shop. Waiting for the page to stop changing
+ *  describes the shop, and costs only the moments the seed was showing. */
+const settle = async (read, tries = 40) => {
+  let last = JSON.stringify(await read())
+  for (let i = 0; i < tries; i += 1) {
+    await sleep(700)
+    const now = JSON.stringify(await read())
+    if (now === last) return JSON.parse(now)
+    last = now
+  }
+  return JSON.parse(last)
+}
+
 /** Open a page and wait for the catalogue to arrive. */
 const go = async (url) => {
   await cdp.send('Page.navigate', { url })
@@ -107,6 +149,10 @@ const go = async (url) => {
     const n = await cdp.evaluate('document.querySelectorAll(\'a[href^="/product/"]\').length')
     if (n > 0) break
   }
+  // …and then for the catalogue the database sent to be the one on screen.
+  return settle(() => cdp.evaluate(`[...document.querySelectorAll('a[href^="/product/"]')]
+    .map((a) => { const img = a.querySelector('img');
+      return a.getAttribute('href') + '|' + (a.innerText || '').match(/₹[\\d,]+/) + '|' + (img ? (img.getAttribute('src') || '') : '') })`))
 }
 
 /** The cards on the page, as the browser sees them. */
@@ -148,12 +194,19 @@ const clickPhoto = async (href) => {
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: again.x, y: again.y })
   await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: again.x, y: again.y, button: 'left', clickCount: 1 })
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: again.x, y: again.y, button: 'left', clickCount: 1 })
-  await sleep(2200)
-  return cdp.evaluate(`(() => {
+  await sleep(1600)
+  // The product page paints from the same bundled seed for a moment before
+  // the database answers, so — as on the listing — the reading is taken once
+  // the page has stopped changing.
+  return settle(() => cdp.evaluate(`(() => {
     const img = document.querySelector('section img')
     const norm = (f) => String(f || '').split('/').pop().replace(/-640(\\.[a-z0-9]+)$/i, '$1')
-    const price = [...document.querySelectorAll('p')].map((p) => (p.innerText || '').trim())
-      .find((t) => /^₹[\\d,]+$/.test(t)) || ''
+    // The price line may also carry the "was" price and the discount
+    // ("₹849 ₹999 15% off"), so the first ₹ on the first price line of the
+    // product's own section is the price — not a card further down the page.
+    const section = document.querySelector('section')
+    const price = [...(section ? section.querySelectorAll('p') : [])].map((p) => (p.innerText || '').trim())
+      .map((t) => (t.match(/^₹[\\d,]+/) || [''])[0]).find(Boolean) || ''
     return {
       url: location.pathname + location.search,
       name: (document.querySelector('h1') || {}).innerText || '',
@@ -163,7 +216,7 @@ const clickPhoto = async (href) => {
       image: norm(img && (img.currentSrc || img.src)),
       notFound: document.body.innerText.includes('Product not found'),
     }
-  })()`)
+  })()`))
 }
 
 const PAGES = ['/', '/shop', '/shop?type=tops', '/shop?type=dress', '/shop?type=coord',

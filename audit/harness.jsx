@@ -20,6 +20,7 @@ import CategoriesPanel from '../src/admin/CategoriesPanel'
 import CategoryImagesPanel from '../src/admin/CategoryImagesPanel'
 import BestsellerPanel from '../src/admin/BestsellerPanel'
 import OrdersPanel from '../src/admin/OrdersPanel'
+import ReviewsPanel from '../src/admin/ReviewsPanel'
 import '../src/index.css'
 
 const notify = (kind, message) => {
@@ -47,6 +48,9 @@ function Inside() {
       <Panel name="bestsellers"><BestsellerPanel notify={notify} products={all} /></Panel>
       <Panel name="categories"><CategoriesPanel notify={notify} /></Panel>
       <Panel name="orders"><OrdersPanel notify={notify} /></Panel>
+      {/* The dashboard hands this panel the same raw catalogue rows it does
+          the best sellers one — a review is shown under the product it names. */}
+      <Panel name="reviews"><ReviewsPanel notify={notify} products={all} /></Panel>
     </>
   )
 }

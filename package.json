@@ -15,6 +15,8 @@
     "audit:search": "node scripts/audit-colour-search.mjs",
     "audit:dates": "node scripts/audit-order-dates.mjs",
     "audit:filters": "node scripts/audit-status-filters.mjs",
+    "audit:reviews": "node scripts/audit-reviews.mjs",
+    "audit:product": "node scripts/audit-product-page.mjs",
     "audit:categories": "node scripts/audit-category-manager.mjs",
     "audit:storefront": "node scripts/audit-category-storefront.mjs",
     "audit:lifecycle": "node scripts/audit-category-lifecycle.mjs",

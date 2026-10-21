@@ -85,6 +85,15 @@ function Row({ order, open, onToggle, onStatus, busy }) {
         <div className="min-w-0 flex-1 basis-[16rem]">
           <p className="font-semibold text-[15px]">
             <span className="font-mono">{order.reference}</span>
+            {/* An order placed before the DDMMYYNN format keeps the number the
+                customer was given then. It is searched too (orderSearchText),
+                and it is shown here so an order that arrived through an old
+                RCH-… number reads as the same order rather than a second one. */}
+            {order.previous_reference && (
+              <span className="font-mono text-black/45 font-normal text-[13px] ml-2">
+                was {order.previous_reference}
+              </span>
+            )}
             <span className="text-black/45 font-normal text-[13px] ml-2">
               {formatShopDateTime(order.created_at)}
             </span>

@@ -4,21 +4,48 @@
 import { spawn } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-const URL_ = process.argv[2] || 'http://localhost:5199/audit-harness.html'
+const URL_ = process.argv[2] || 'http://localhost:5199/audit/index.html'
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-const PORT = 9365
+// No fixed debugging port: Chrome picks one and announces it (see below).
 
 const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--no-sandbox',
-  `--remote-debugging-port=${PORT}`, '--user-data-dir=/tmp/ruhi-chrome-audit3', 'about:blank'], { stdio: 'ignore' })
+  '--remote-debugging-port=0', '--user-data-dir=/tmp/ruhi-chrome-audit3-' + process.pid, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] })
 
+// Chrome picks its own port and announces it on stderr, so this script can
+// never find itself talking to a browser left behind by a run that died.
+let announced = ''
+const spoke = new Promise((resolve) => {
+  let out = ''
+  chrome.stderr.on('data', (chunk) => {
+    out += String(chunk)
+    const m = out.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)\//)
+    if (m) resolve(m[1])
+  })
+})
+announced = await Promise.race([spoke, new Promise((r) => {
+  const t = setTimeout(() => r(''), 30000)
+  if (t.unref) t.unref()
+})])
+if (!announced) {
+  console.log('Chrome did not start')
+  chrome.kill()
+  process.exit(1)
+}
+// That socket is the browser's; the tab's — the one that answers Page.* —
+// is read from the target list on the port it just announced.
 let wsUrl = ''
-for (let i = 0; i < 40 && !wsUrl; i += 1) {
-  await sleep(500)
+for (let i = 0; i < 20 && !wsUrl; i += 1) {
+  await sleep(300)
   try {
-    const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()
+    const list = await (await fetch(`http://127.0.0.1:${announced}/json/list`)).json()
     const page = list.find((t) => t.type === 'page')
     if (page?.webSocketDebuggerUrl) wsUrl = page.webSocketDebuggerUrl
-  } catch { /* starting */ }
+  } catch { /* the target list is not up yet */ }
+}
+if (!wsUrl) {
+  console.log('Chrome did not open a tab')
+  chrome.kill()
+  process.exit(1)
 }
 const ws = new WebSocket(wsUrl)
 await new Promise((r) => ws.addEventListener('open', r, { once: true }))
@@ -101,7 +128,7 @@ const row = await evaluate(`(() => {
     link: link ? link.value : null,
     chip: (panel.innerText.match(/Live on the site|Hidden/g) || []),
     note: (panel.innerText.match(/The category page[^\\n]*/) || [''])[0],
-    active: (panel.innerText.match(/Active on the site \\((\\d+) of (\\d+)\\)/) || []).slice(1),
+    active: (panel.innerText.match(/Active on the site \\((\\d+) of (\\d+)\\)/i) || []).slice(1),
   };
 })()`)
 report('the row', row)
@@ -121,8 +148,10 @@ const picked = await evaluate(`(() => {
   const panel = document.querySelector('[data-panel="banners"]');
   const selects = [...panel.querySelectorAll('select')];
   const p = selects[selects.length - 1];
-  const opt = [...p.options].find(o => o.value === '/product/night-wear-pink');
-  if (!opt) return 'that product is not in the menu';
+  // Whatever product the catalogue actually sells — the menu is built from
+  // the live rows, so a hard-coded id would only prove one particular design.
+  const opt = [...p.options].find((o) => o.textContent.includes('(product)'));
+  if (!opt) return 'the menu offers no product destination';
   const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
   setter.call(p, opt.value);
   p.dispatchEvent(new Event('change', { bubbles: true }));
@@ -151,7 +180,7 @@ const afterToggle = await evaluate(`(() => {
   const panel = document.querySelector('[data-panel="banners"]');
   return {
     hidden: (panel.innerText.match(/Hidden/g) || []).length,
-    active: (panel.innerText.match(/Active on the site \\((\\d+) of (\\d+)\\)/) || []).slice(1),
+    active: (panel.innerText.match(/Active on the site \\((\\d+) of (\\d+)\\)/i) || []).slice(1),
   };
 })()`)
 report('after switching off', afterToggle)
