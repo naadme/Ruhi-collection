@@ -477,7 +477,9 @@ So `0101BU` is the first product of category 01, in the colour "Blue".
 **The category codes** are assigned once, in the order the categories are
 displayed, and never move: `01` Tops & T-shirts, `02` Co-ord Sets, `03`
 Dresses, `04` Trousers & Pants, `05` Night Wear, `06` Kurta Sets. Renaming a
-category changes only its label; a new category takes the next free code.
+category changes only its label; a new category takes the next free code — and
+a code that has ever been used is never given to a second category, so the
+Product IDs in an old order can never be mistaken for a new product's.
 
 **The colour codes** live in `public.colour_codes` — one stable pair of
 letters per colour, so "Blue" is always the same code forever. A colour that

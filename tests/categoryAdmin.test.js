@@ -120,6 +120,21 @@ test('the product editor still offers the manager, and still selects a new categ
   assert.match(editor, /setShared\(\{ type: row\.key \}\)/, 'and selects the category just added')
 })
 
+test('a category code is never given to a second category', () => {
+  // The code is the first two letters of a Product ID, so it has to mean the
+  // same category for ever. A deleted category must not free its code for a
+  // new one — the order history still shows the old Product IDs.
+  const migration = read('supabase/migrations/20261021140000_category_code_never_reused.sql')
+  assert.match(migration, /create or replace function public\.next_category_code\(\)/,
+    'the counter is replaced')
+  assert.match(migration, /from public\.categories/, 'it reads the categories')
+  assert.match(migration, /from public\.products/, 'and the products')
+  assert.match(migration, /from public\.order_items/,
+    'and the Product ID every order line carries as a snapshot')
+  assert.match(migration, /nothing existing is renumbered/i,
+    'and nothing that already exists is renumbered')
+})
+
 test('the database refuses to delete a category that still has products', () => {
   // The rule the panel honours is also the rule the database enforces, so a
   // stale count can never orphan a product.
