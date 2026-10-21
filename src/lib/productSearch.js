@@ -10,7 +10,7 @@
 //   * the title and the design name,
 //   * the category — both the stored key and the client's live label, so a
 //     renamed category is found under its new name,
-//   * the product id and the six-character Product ID,
+//   * the product's web address and its six-character Product ID,
 //   * the badge and the description of EVERY colour of the design (not just
 //     the row the card happens to lead with),
 //   * the sizes the design and each of its colours are stocked in,
@@ -100,12 +100,12 @@ export function searchWords(p) {
 }
 
 /**
- * The product's own codes: the card's id, its SKU and the id of every colour
- * row it is made of.
+ * The identifiers a product answers to: its web address, its Product ID and
+ * the address of every colour row it is made of.
  *
- * A code typed in full finds that product — see `matchesProduct`.
+ * A Product ID typed in full finds that product — see `matchesProduct`.
  */
-export function productCodes(p) {
+export function productIdentifiers(p) {
   if (!p) return []
   return [
     p.id,
@@ -185,16 +185,16 @@ export function searchForms(p, typeLabel) {
  * empty query matches everything — which is what restores the normal listing
  * when the search box is cleared.
  *
- * A code typed in full — the product's own id or SKU, or the id of one of its
- * colour rows — finds that product whatever else the code happens to spell:
- * the owner filed a row as "Pink" and its file name still says "red", and a
- * shopper who copies that id down must still find it.
+ * An identifier typed in full — the product's Product ID, its web address, or
+ * the address of one of its colour rows — finds that product whatever else it
+ * happens to spell: the owner filed a row as "Pink" and its file name still
+ * says "red", and a shopper who copies that id down must still find it.
  */
 export function matchesProduct(p, query, typeLabel) {
   const terms = queryTerms(query)
   if (!terms.length) return true
   const code = squash(query)
-  if (code && productCodes(p).some((c) => squash(c) === code)) return true
+  if (code && productIdentifiers(p).some((c) => squash(c) === code)) return true
   const forms = searchForms(p, typeLabel)
   const colours = productColours(p).map((c) => squash(c))
 

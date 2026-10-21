@@ -244,7 +244,7 @@ export default function Product() {
             </>
           )}
 
-          {/* The colour's own Product ID — the six-character code the order
+          {/* The colour's own Product ID — the six characters the order
               sheet, the confirmation email and the admin's order details all
               quote for this exact colour. It follows the colour the shopper
               has chosen, so the code they read here is the code they will see

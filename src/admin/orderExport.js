@@ -26,8 +26,8 @@ const PAY_METHOD = {
 export const EXPORT_COLUMNS = [
   'Order ID', 'Order date', 'Order status', 'Payment method', 'Payment status',
   'Customer name', 'Customer email', 'Customer phone', 'Shipping address',
-  // "Product ID" is the client's six-character code (CCPPCL) — the number they
-  // read off the product. The product's own link is kept beside it so the
+  // "Product ID" is the client's six-character Product ID (CCPPCL) — the
+  // number they read off the product. The product's own link is kept beside it so the
   // internal id is never lost.
   'Product ID', 'Product link', 'Product', 'Colour', 'Size', 'Quantity',
   'Item price', 'Item total',

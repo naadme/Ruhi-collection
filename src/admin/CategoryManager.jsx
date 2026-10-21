@@ -102,7 +102,7 @@ export function CategoryManagerPanel({ categories = [], onSaved, onCancel, autoF
       setLabel('')
       done(
         `“${row.label}” added — it is on the site now and is selectable for this product.`
-        + (row.code ? ` It was given the Product ID code ${row.code}.` : ''),
+        + (row.code ? ` Its products’ Product IDs will begin with ${row.code}.` : ''),
       )
       await onSaved?.(row)
       loadUsage()
@@ -284,7 +284,7 @@ export function CategoryManagerPanel({ categories = [], onSaved, onCancel, autoF
         <AlertTriangle size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
         <span>
           A new category is on the site straight away — it needs no code change and no redeployment, and it is given
-          its own Product ID code so the products in it are numbered properly. Renaming keeps every product where it
+          its own two-digit number so the Product IDs of the products in it are numbered properly. Renaming keeps every product where it
           is — only the name shoppers see changes. A category with products in it cannot be deleted; move those
           products to another category first.
           {!countsKnown && ' Product counts are unavailable right now, so nothing can be deleted until they load.'}

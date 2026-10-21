@@ -183,7 +183,11 @@ try {
         const grid = heading.parentElement.querySelector('.grid')
         const link = [...grid.querySelectorAll('a')].find((a) => a.getAttribute('href') === ${JSON.stringify(card.href)})
         if (!link) return false
-        link.querySelector('img').click()
+        // The photograph when it is there, the link itself when the picture
+        // has not finished loading — a shopper taps either.
+        const image = link.querySelector('img')
+        if (image) image.click()
+        else link.click()
         return true
       })()`)
       if (!clicked) {

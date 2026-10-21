@@ -254,7 +254,7 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
           </label>
 
           <label className="block">
-            <span className={labelCls}>Product ID</span>
+            <span className={labelCls}>Web address</span>
             <input
               value={v.id}
               onChange={(e) => onChange({ id: slug(e.target.value), idTouched: true })}
@@ -272,19 +272,19 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
             </span>
           </label>
 
-          {/* The catalogue code — CCPPCL, e.g. 0101BL — which the database
-              assigns and stamps onto every order line, the sheet and the
-              emails. It is shown, never typed: an owner who wants to check
-              which code a colour carries should not have to open the orders
-              panel to find out. */}
+          {/* The Product ID — the six characters the customer quotes: the
+              category's number, the product's number inside that category and
+              the colour's two letters (0101BU). The database assigns it,
+              stamps it onto every order line, and keeps it the same across
+              edits, so it is shown and never typed. */}
           <div>
-            <span className={labelCls}>Product code</span>
+            <span className={labelCls}>Product ID</span>
             <p className={`${inputCls} mt-1.5 font-mono text-[14px] bg-neutral-100 text-black/60 flex items-center`}>
               {String(v.original?.sku || '').trim() || '— given when this colour is saved'}
             </p>
             <span className="block text-[12px] text-black/45 mt-1.5">
-              The six-character code on order sheets and emails — category, product number and colour
-              (for example <span className="font-mono">0101BL</span>). The database assigns it and keeps it
+              The Product ID of this colour — the category number, the product number and the colour
+              letters (for example <span className="font-mono">0101BU</span>). The database assigns it and keeps it
               the same across edits; it cannot be typed in.
             </span>
           </div>

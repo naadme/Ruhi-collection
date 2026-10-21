@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Loader2, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCategories } from '../context/CategoriesContext'
 import { colourOf } from '../lib/productForm'
+import { productId } from '../lib/productIdentity'
 
 // ---------------------------------------------------------------------------
 // Product list rendering for the dashboard.
@@ -98,10 +99,11 @@ export function ProductRow({ p, busy, onToggle, onEdit, onDelete }) {
         <p className="font-semibold text-[16px] leading-snug truncate">{p.title}</p>
         <p className="text-[13px] text-black/50 mt-0.5 capitalize">
           {typeLabel(p.type)} ·{' '}
-          {/* The six-character ID the database assigns — the admin never types
-              one. A row written before the SKU migration still shows its
-              immutable product id rather than nothing. */}
-          <span className="font-mono normal-case">{p.sku || p.id}</span>
+          {/* The Product ID the database assigns — the six characters the
+              customer quotes. The admin never types one, and a row that has
+              not been given one yet shows nothing rather than a web
+              address passed off as an ID. */}
+          <span className="font-mono normal-case">{productId(p)}</span>
         </p>
         <p className="text-[15px] mt-1 font-medium">
           <span className="text-red-600 font-bold">₹{p.price}</span>
@@ -153,18 +155,21 @@ export function GroupCard({
           <p className="font-semibold text-[16px] leading-snug truncate">{g.name}</p>
           <p className="text-[13px] text-black/50 mt-0.5 capitalize">
             {typeLabel(lead.type)} · {g.rows.length} colours · {liveCount} live
-            {lead.sku ? <> · <span className="font-mono normal-case">{lead.sku}</span></> : null}
           </p>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {g.rows.map((r, i) => (
               <span
                 key={r.id}
-                title={r.is_active ? `In store: ${colours[i] || 'no colour'}` : `Hidden: ${colours[i] || 'no colour'}`}
+                title={`${r.is_active ? 'In store' : 'Hidden'}: ${colours[i] || 'no colour'}${productId(r) ? ` — Product ID ${productId(r)}` : ''}`}
                 className={`text-[12px] font-medium px-2 py-0.5 rounded-full border ${
                   r.is_active ? 'bg-white border-black/25 text-black/70' : 'bg-neutral-100 border-black/10 text-black/35 line-through'
                 }`}
               >
                 {colours[i] || 'No colour'}
+                {/* Every colour is a product of its own, so every colour
+                    carries its own Product ID — the design does not have one
+                    ID shared by all of its variants. */}
+                {productId(r) ? <span className="ml-1 font-mono text-[11px] opacity-70">{productId(r)}</span> : null}
               </span>
             ))}
           </div>
@@ -211,7 +216,7 @@ export function GroupCard({
               <Thumb src={r.image} w="w-10 h-12" />
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-[14px] truncate">{colours[i] || 'No colour'}</p>
-                <p className="text-[12px] text-black/45 font-mono truncate">{r.sku || r.id}</p>
+                <p className="text-[12px] text-black/45 font-mono truncate">{productId(r)}</p>
               </div>
               <p className="text-[14px] font-medium shrink-0">
                 <span className="text-red-600 font-bold">₹{r.price}</span>

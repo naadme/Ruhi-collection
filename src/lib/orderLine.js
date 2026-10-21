@@ -33,7 +33,7 @@ export function orderLineName(title) {
 }
 
 /**
- * The Product ID of an ordered line — the six-character code the product
+ * The Product ID of an ordered line — the six characters the product
  * carried when it was bought. A line placed before the column existed has
  * none, and then there is nothing to show; nothing is invented.
  */

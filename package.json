@@ -27,6 +27,8 @@
     "verify:order-ids:concurrency": "node scripts/test-order-id-concurrency.mjs",
     "test:order-id-allocation": "node scripts/test-order-id-allocation.mjs",
     "test:admin-writes": "node scripts/test-admin-writes.mjs",
+    "test:product-ids": "node scripts/test-product-ids.mjs",
+    "audit:product-ids": "node scripts/audit-product-ids.mjs",
     "audit:search-ui": "node scripts/audit-search-interactions.mjs",
     "audit:home": "node scripts/audit-home-sections.mjs",
     "audit:db-security": "node scripts/audit-db-security.mjs",

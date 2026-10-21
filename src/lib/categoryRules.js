@@ -23,8 +23,8 @@ export const MAX_CATEGORY_LABEL = 60
  *
  *  They carry the same fields a category row from the database carries: a
  *  photograph (none of these has one of its own yet), whether that photograph
- *  is switched on (it is), and the two-letter code the Product IDs of their
- *  products are built from (the database owns that, so the seed has none). */
+ *  is switched on (it is), and the two-digit number the Product IDs of their
+ *  products begin with (the database owns that, so the seed has none). */
 export const SEED_CATEGORIES = TYPES.map((t, i) => ({
   key: t.key,
   label: t.label,
@@ -164,8 +164,8 @@ export const mergeCategories = (rows, seed = SEED_CATEGORIES) => {
       // A row that says nothing about it is active — the category behaves
       // exactly as it did before the switch existed.
       image_active: r?.image_active !== false,
-      // The category's own two-letter code, which the Product IDs of its
-      // products are built from. It is not needed to render anything, but the
+      // The category's own two-digit number, which the Product IDs of its
+      // products begin with. It is not needed to render anything, but the
       // admin panel shows it, so it travels with the category.
       code: String(r?.code ?? '').trim() || null,
     })

@@ -123,7 +123,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
         <div className="border-t border-black/10 p-4 sm:p-5 grid md:grid-cols-[1.4fr_1fr] gap-6 bg-[#F8EDE6]">
           <div>
             <h4 className="text-[13px] font-semibold uppercase tracking-wider text-black/45">
-              Items <span className="normal-case font-normal tracking-normal text-black/40">· the Product ID is the six-character code</span>
+              Items <span className="normal-case font-normal tracking-normal text-black/40">· the Product ID is the six characters on each line</span>
             </h4>
             <ul className="mt-3 space-y-2">
               {items.length === 0 && <li className="text-[14px] text-black/50">No line items recorded.</li>}

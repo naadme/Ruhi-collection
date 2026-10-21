@@ -22,8 +22,8 @@ export default function CategoriesPanel() {
           <h1 className="text-[34px] md:text-[40px] font-bold tracking-tight leading-none">Categories</h1>
           <p className="text-black/55 mt-2 text-[15px]">
             The categories shoppers filter and search by. A new category is on the site straight away — it needs no
-            code change and no redeployment — and it is given its own Product ID code so the products in it are
-            numbered properly.
+            code change and no redeployment — and it is given its own two-digit number so the Product IDs of the
+            products in it are numbered properly.
           </p>
         </div>
       </div>

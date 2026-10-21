@@ -707,37 +707,66 @@ owner rather than in advance.
 
 ## Product IDs
 
-Every product carries a six-character display ID in the format `CCPPCL`:
+The shop has exactly **two** identifiers: the **Order ID** (on the order) and
+the **Product ID** (on the product). There is no third one, and nothing in
+the shop invents one.
+
+Every product carries a six-character Product ID in the format `CCPPCL`:
 
 | Part | Meaning | Example |
 |------|---------|---------|
-| `CC` | the category's two-digit code | `01` |
+| `CC` | the category's two-digit number | `01` |
 | `PP` | the product's number inside that category | `01` |
-| `CL` | the colour's two-letter code | `BU` |
+| `CL` | the colour's two letters | `BU` |
 
-So `0101BU` is the first product of category 01, in the colour "Blue".
+So `0101BU` is the first product of category 01, in the colour "Blue", and
+`0102RE` is the second product of that category, in the colour "Red". **Every
+colour of a design is a product of its own** and carries its own Product ID —
+a design never shares one ID between its colourways.
 
-**The category codes** are assigned once, in the order the categories are
-displayed, and never move: `01` Tops & T-shirts, `02` Co-ord Sets, `03`
-Dresses, `04` Trousers & Pants, `05` Night Wear, `06` Kurta Sets. Renaming a
-category changes only its label; a new category takes the next free code — and
-a code that has ever been used is never given to a second category, so the
-Product IDs in an old order can never be mistaken for a new product's.
+**The category numbers** are assigned once, in the order the categories are
+displayed, and never move. Renaming a category changes only its label; a new
+category takes the next free number — and a number that has ever been used is
+never given to a second category, so the Product IDs in an old order can never
+be mistaken for a new product's.
 
-**The colour codes** live in `public.colour_codes` — one stable pair of
-letters per colour, so "Blue" is always the same code forever. A colour that
-is not on file is given the first pair of its letters that nobody holds; a
-colour with **no** colour recorded is `XX`, a documented placeholder and never
-a guess.
+**The colour letters** live in `public.colour_codes` — one stable pair of
+letters per colour, so "Blue" is always the same two letters forever.
 
-**The IDs are assigned by the database** (`products_assign_sku`), never typed
-by hand, and never reused.
+**When two colours want the same letters.** Blue and Black both start with
+"B", so both would want `BL`. The rule is deterministic and it never changes
+an answer that has already been given:
+
+1. a colour that is already on file keeps the letters it was given, whatever
+   else happens later;
+2. a new colour is given the **first pair of its own letters that nobody
+   holds**, taken in a fixed order — for "Blue" that is `BL`, then `BU`, then
+   `BM`, and so on — and the answer is written down the moment it is chosen;
+3. a colour with **no** colour recorded is `XX`, a documented placeholder and
+   never a guess;
+4. a colour whose every pair of letters is already taken is refused with a
+   message asking for a different name, rather than being given letters that
+   mean something else.
+
+Because the answer is written down on the day, "Black" keeps `BL` and "Blue"
+keeps `BU` for the life of the shop: the Product ID on an old order always
+means the colour it always meant.
+
+**The Product IDs are assigned by the database** (`assign_product_sku`), never
+typed by hand, and never reused. A product keeps its number when it is edited;
+only the parts that describe what it *is now* — its category and its colour —
+are refreshed, and an ID somebody else already holds is never taken.
 
 **The Product ID is snapshotted onto every ordered line** (`order_items.sku`),
 exactly like the title and the price, so an order always names the exact
 product that was bought — even after that product is renamed, renumbered or
-deleted. It is shown on the admin order details, in the Google Sheet, in the
-Excel download and on the order confirmation email.
+deleted. It is shown in the admin product list and product editor, on the
+admin order details, on the customer's order confirmation page, in the Google
+Sheet, in the Excel download and in both emails.
+
+A product's **web address** (`products.id` — the "solid-shirts-blue" in its
+URL) is a link, not an identifier, and it is never shown where the Product ID
+belongs.
 
 ## Behaviour worth knowing
 
@@ -768,12 +797,12 @@ Excel download and on the order confirmation email.
   the contact form is delivered to.
 - **Categories** are owned by the database. `public.categories` holds one row per category — an
   immutable `key`, the label shoppers see, a display `position`, a two-digit `code` the Product IDs
-  of its products are built from, and the photograph the category shows. The header, footer, shop
+  of its products begin with, and the photograph the category shows. The header, footer, shop
   Type filter, admin selector and homepage tiles all read that list, so a category is added in
   exactly one place: the admin panel's **Categories** section (or the "Add category" button
   beside the category picker in the product editor). A new category is on the site straight away —
-  it needs no code change and no redeployment — and the database gives it its own Product ID code
-  when the row is saved. The list in `TYPES` (`src/data/products.js`) is only the **fallback** the
+  it needs no code change and no redeployment — and the database gives it its own
+  two-digit number for the products in it when the row is saved. The list in `TYPES` (`src/data/products.js`) is only the **fallback** the
   storefront shows if the database cannot be reached, so the shop never has an empty category
   list. The homepage hero and the "Shop by Category"/Collections tiles only advertise a category
   once it has a live product.
@@ -861,7 +890,7 @@ What has been verified against this codebase:
   can be driven with made-up rows without touching the database.
 - The category lifecycle is checked against the **live database** (`npm run audit:lifecycle`): a
   category is added, the storefront reads it with its own credentials, a product joins it and is
-  given a Product ID built from the category's own code, the category cannot be deleted while that
+  given a Product ID built from the category's own number, the category cannot be deleted while that
   product is there, and everything the check creates is removed again.
 - The storefront is checked with a **real browser** (`npm run audit:storefront`): a category with a
   product in it appears in the navigation, in the shop's own filter and in the homepage's

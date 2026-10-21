@@ -124,16 +124,19 @@ test('the backfill is ordered, minimal and cannot re-run', () => {
 
 // ---- what the admin sees ----------------------------------------------------
 
-test('the admin is shown the SKU and never asked to type one', () => {
+test('the admin is shown the Product ID and never asked to type one', () => {
   const list = read('src/admin/ProductList.jsx')
-  assert.match(list, /\{p\.sku \|\| p\.id\}/, 'the product row shows the six-character ID')
-  assert.match(list, /\{r\.sku \|\| r\.id\}/, 'and so does each colour row')
+  // The Product ID is the SKU, and only the SKU: a web address is a link, not
+  // an identifier, and it is never shown where the Product ID belongs.
+  assert.match(list, /productId\(p\)/, 'the product row shows the Product ID')
+  assert.match(list, /productId\(r\)/, 'and so does each colour row')
+  assert.doesNotMatch(list, /sku \|\| (p|r)\.id/, 'and never a web address passed off as one')
 
   const editor = read('src/admin/ProductEditor.jsx')
-  // The editor SHOWS the code — an owner has to be able to read the Product
-  // ID of the colour she is looking at — but never offers a field to type or
-  // change one: the database assigns it and keeps it.
-  assert.match(editor, /v\.original\?\.sku/, 'the editor shows the colour’s own code')
+  // The editor SHOWS the Product ID — an owner has to be able to read the
+  // Product ID of the colour she is looking at — but never offers a field to
+  // type or change one: the database assigns it and keeps it.
+  assert.match(editor, /v\.original\?\.sku/, 'the editor shows the colour’s own Product ID')
   assert.doesNotMatch(editor, /onChange\(\{[^}]*sku/i, 'and never writes one back')
   assert.doesNotMatch(editor, /name="sku"|id="sku"/i, 'there is no SKU input to fill in')
 
