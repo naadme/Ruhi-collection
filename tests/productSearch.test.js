@@ -124,8 +124,8 @@ test('searchWords and searchForms expose what is searchable', () => {
 test('the results page and the header search use the SAME matcher', () => {
   const shop = read('src/pages/Shop.jsx')
   const bar = read('src/components/SearchBar.jsx')
-  assert.match(shop, /matchesProduct/, 'Shop filters through the shared rule')
-  assert.match(bar, /matchesProduct/, 'SearchBar filters through the shared rule')
+  assert.match(shop, /searchResultProducts/, 'Shop filters through the shared rule')
+  assert.match(bar, /searchResultProducts/, 'SearchBar filters through the shared rule')
   for (const file of [shop, bar]) {
     assert.doesNotMatch(file, /join\(' '\)\.toLowerCase\(\)\.includes/,
       'no screen keeps a private whole-string matcher any more')

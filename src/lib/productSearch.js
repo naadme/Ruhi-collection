@@ -140,6 +140,13 @@ export function productColours(p) {
   return out
 }
 
+/** Does a saved colour value satisfy one colour term from the query? */
+const matchesColour = (saved, term) => {
+  const wanted = squash(term)
+  const value = squash(saved)
+  return !!wanted && (value === wanted || value.includes(wanted))
+}
+
 /**
  * Split a query into terms.
  *
@@ -196,8 +203,7 @@ export function matchesProduct(p, query, typeLabel) {
     // “blue” may match a saved “Sky Blue” variant, but never a product name
     // containing “blue” or unrelated copy that happens to mention blue.
     if (colour) {
-      const wanted = squash(text)
-      return colours.some((c) => c === wanted || c.includes(wanted))
+      return colours.some((c) => matchesColour(c, text))
     }
     return forms.flat.includes(text) || forms.squashed.includes(squash(text))
   })
@@ -231,6 +237,40 @@ export function matchesProducts(products, { q = '', type = '', typeLabel } = {})
   if (query) return list.filter((p) => matchesProduct(p, query, typeLabel))
   const category = String(type ?? '').trim()
   return category ? list.filter((p) => p.type === category) : list
+}
+
+/**
+ * The cards a search should DISPLAY.
+ *
+ * A grouped design keeps one card, but a colour search must show the matching
+ * colour's photo, price and link — not the design's default (often a totally
+ * different colour). This is deliberately a projection after filtering: the
+ * design remains one result, while tapping it opens the exact variant shown.
+ */
+export function searchResultProducts(products, { q = '', type = '', typeLabel } = {}) {
+  const query = String(q ?? '').trim()
+  const results = matchesProducts(products, { q: query, type, typeLabel })
+  const wantedColours = queryTerms(query).filter((term) => term.colour)
+  if (!wantedColours.length) return results
+
+  return results.map((product) => {
+    const variants = Array.isArray(product?.colors) ? product.colors : []
+    const shown = variants.find((variant) =>
+      wantedColours.every(({ text }) => matchesColour(variant?.color ?? variant?.colour, text)),
+    )
+    if (!shown) return product
+
+    return {
+      ...product,
+      ...shown,
+      // The shared design name is clearer than the raw row title, while the
+      // id, photos, price and sizes all belong to the matching colour row.
+      title: product.title,
+      desc: product.desc,
+      badge: product.badge,
+      colors: product.colors,
+    }
+  })
 }
 
 /**

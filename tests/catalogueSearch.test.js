@@ -23,7 +23,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { matchesProduct, matchesProducts, searchPath } from '../src/lib/productSearch.js'
+import { matchesProduct, matchesProducts, searchPath, searchResultProducts } from '../src/lib/productSearch.js'
 import { groupedCards } from '../src/lib/productGrouping.js'
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
@@ -105,6 +105,17 @@ test('a design is found by any of the colours it comes in', () => {
   assert.equal(matchesProduct(cards[0], 'green', typeLabel), false)
 })
 
+test('a colour result shows and links to the matching variant, not the lead colour', () => {
+  const cards = groupedCards([
+    product({ id: 'wrap-black', type: 'dress', title: 'Wrap Dress - Black', colour: 'Black', image: '/black.jpg', price: 800 }),
+    product({ id: 'wrap-blue', type: 'dress', title: 'Wrap Dress - Blue', colour: 'Blue', image: '/blue.jpg', price: 900 }),
+  ])
+  const [shown] = searchResultProducts(cards, { q: 'blue', typeLabel })
+  assert.equal(shown.id, 'wrap-blue', 'the card opens the blue row')
+  assert.equal(shown.image, '/blue.jpg', 'the card displays the blue photograph')
+  assert.equal(shown.title, 'Wrap Dress', 'the shared design title stays clean')
+})
+
 // ---- the ordinary words still work -----------------------------------------
 
 test('the search is case-insensitive and ignores stray spaces', () => {
@@ -152,11 +163,11 @@ test('the results page and the header search use the same rule', () => {
   const shop = read('src/pages/Shop.jsx')
   const bar = read('src/components/SearchBar.jsx')
   for (const file of [shop, bar]) {
-    assert.match(file, /matchesProduct/, 'both screens filter through the shared rule')
+    assert.match(file, /searchResultProducts/, 'both screens filter through the shared rule')
     assert.doesNotMatch(file, /join\(' '\)\.toLowerCase\(\)\.includes/,
       'no screen keeps a private whole-string matcher any more')
   }
-  assert.match(shop, /matchesProducts/, 'the results page asks the shared catalogue rule')
+  assert.match(shop, /searchResultProducts/, 'the results page asks the shared catalogue rule')
 })
 
 test('the results page does not narrow a search by the category', () => {

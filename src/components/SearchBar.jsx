@@ -4,7 +4,7 @@ import { Search, X } from 'lucide-react'
 import Img from './Img'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
-import { matchesProduct, searchPath } from '../lib/productSearch'
+import { searchPath, searchResultProducts } from '../lib/productSearch'
 import { productHref } from '../lib/productLinks'
 import { inr } from '../lib/pricing'
 
@@ -27,7 +27,7 @@ export default function SearchBar({ onClose }) {
   // category or one size only. A product with no id has no page of its own,
   // so it is never offered as a result.
   const res = term
-    ? products.filter((p) => p.id && matchesProduct(p, term, typeLabel)).slice(0, 6)
+    ? searchResultProducts(products, { q: term, typeLabel }).filter((p) => p.id).slice(0, 6)
     : []
 
   // A submitted search goes to the shop page on its own: the category filter

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import ProductGrid, { ResetLink } from '../components/ProductGrid'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
-import { matchesProducts } from '../lib/productSearch'
+import { searchResultProducts } from '../lib/productSearch'
 import usePageTitle from '../hooks/usePageTitle'
 
 const Sel = ({ label, value, onChange, opts }) => (
@@ -55,10 +55,9 @@ export default function Shop() {
   // Filter + sort only when the catalogue or the filter/sort inputs change —
   // not on every unrelated render of this page.
   const filtered = useMemo(
-    // The rule itself lives in src/lib/productSearch.js (matchesProducts, and
-    // the matchesProduct rule it is built on), so the header search and this
-    // page can never disagree about what a word matches.
-    () => matchesProducts(products, { q, type: t, typeLabel }),
+    // The rule lives in src/lib/productSearch.js, shared with the header. For
+    // a colour search it also promotes the matching colour's photo and link.
+    () => searchResultProducts(products, { q, type: t, typeLabel }),
     [products, q, t, typeLabel],
   )
   const items = useMemo(() => {
