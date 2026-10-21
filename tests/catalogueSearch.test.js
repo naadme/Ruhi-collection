@@ -48,6 +48,7 @@ const CATALOGUE = [
   product({ id: 'blue-top', type: 'tops', title: 'Denim Shirt', colour: 'Blue' }),
   product({ id: 'blue-coord', type: 'coord', title: 'Shirt pant coord set', colour: 'Sky Blue' }),
   product({ id: 'green-dress', type: 'dress', title: 'Cotton Dress', colour: 'Green' }),
+  product({ id: 'blue-in-name-only', type: 'dress', title: 'Bluebell Dress', colour: 'Green' }),
   product({ id: 'talks-about-red', type: 'tops', title: 'Everyday Shirt', colour: 'Black', desc: 'A soft red shirt for summer.' }),
 ]
 
@@ -73,6 +74,12 @@ test('the category the page is showing never hides a search result', () => {
 test('searching blue finds every blue product across the categories', () => {
   const found = matchesProducts(CATALOGUE, { q: 'blue', typeLabel })
   assert.deepEqual(ids(found), ['blue-coord', 'blue-top'])
+})
+
+test('a colour search needs saved-colour data, not just a colour-like product name', () => {
+  const found = matchesProducts(CATALOGUE, { q: 'blue', typeLabel })
+  assert.ok(ids(found).includes('blue-coord'), 'a saved Sky Blue variant is blue')
+  assert.ok(!ids(found).includes('blue-in-name-only'), 'a product name is not saved colour data')
 })
 
 test('a word that matches nothing returns nothing', () => {

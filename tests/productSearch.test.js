@@ -37,10 +37,17 @@ test('a colour is found however it was spelled, in any category', () => {
   assert.equal(matchesProduct(plain, 'green', typeLabel), true, 'the colour column is searched')
   assert.equal(matchesProduct(plain, 'PISTA', typeLabel), true, 'case-insensitive')
 
-  const blueTops = product({ id: 'blue-top', type: 'tops', title: 'Classic Top', colour: 'Dark Navy Blue' })
-  const blueDress = product({ id: 'blue-dress', type: 'dress', title: 'Summer Dress', colour: 'Sky Blue' })
+  const blueTops = product({ id: 'blue-top', type: 'tops', title: 'Classic Top', colour: 'Blue' })
+  const blueDress = product({ id: 'blue-dress', type: 'dress', title: 'Summer Dress', colour: 'Blue' })
   assert.equal(matchesProduct(blueTops, 'blue', typeLabel), true, 'across categories')
   assert.equal(matchesProduct(blueDress, 'blue', typeLabel), true, 'across categories')
+})
+
+test('a colour search needs saved colour data, not a colour-like title word', () => {
+  const skyBlue = product({ id: 'sky-blue', title: 'Sky Blue Dress', colour: 'Sky Blue' })
+  const blueName = product({ id: 'blue-name', title: 'Bluebell Dress', colour: 'Green' })
+  assert.equal(matchesProduct(skyBlue, 'blue', typeLabel), true)
+  assert.equal(matchesProduct(blueName, 'blue', typeLabel), false)
 })
 
 test('the two spellings of one colour find each other', () => {

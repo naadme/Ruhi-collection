@@ -39,7 +39,7 @@
 // So a word that names one of the catalogue's own colours is matched against
 // the SAVED colour only: the row's `colour` column, the colour of any of the
 // design's variants, or the " - Colour" suffix of the title. It is never
-// matched against the description, the badge or anything else. Every other
+// matched against a product name, description, badge or code. Every other
 // word keeps the ordinary behaviour, so searching "denim" still finds a
 // product that only says "denim" in its description.
 //
@@ -96,33 +96,6 @@ export function searchWords(p) {
     p.colour, p.color, p.desc, p.description,
     ...sizes, ...variantSizes,
     ...colours, ...descriptions,
-  ].filter(Boolean).join(' ')
-}
-
-/**
- * The product's own NAMES — everything that says what it IS, and nothing that
- * merely describes it.
- *
- * A colour word is matched against this and against the saved colour. The
- * description is deliberately left out: a product whose description happens
- * to say "blue" is not a blue product, and the client asked for a colour
- * filter rather than a word search.
- *
- * The id and the SKU are left out of the colour decision as well: they are
- * codes, not colours. The live catalogue proves why — a row the owner filed
- * under "Pink" still carries a file name that says "red", and that must not
- * turn a pink product into a red one. The codes are still searchable in their
- * own right (see `productCodes`).
- */
-export function searchIdentity(p, typeLabel) {
-  if (!p) return ''
-  const colours = Array.isArray(p.colors) ? p.colors.map((c) => c?.color) : []
-  const label = typeof typeLabel === 'function' ? typeLabel(p?.type) : ''
-  return [
-    p.title, p.type,
-    p.colour, p.color,
-    label,
-    ...colours,
   ].filter(Boolean).join(' ')
 }
 
@@ -216,18 +189,15 @@ export function matchesProduct(p, query, typeLabel) {
   const code = squash(query)
   if (code && productCodes(p).some((c) => squash(c) === code)) return true
   const forms = searchForms(p, typeLabel)
-  const identity = searchIdentity(p, typeLabel)
-  const identityFlat = flat(identity)
-  const identitySquashed = squash(identity)
   const colours = productColours(p).map((c) => squash(c))
 
   return terms.every(({ text, colour }) => {
-    // A word that names a colour is matched against the SAVED colour and the
-    // product's own names — never against its description or its id.
+    // A colour is a case-insensitive match against SAVED colour data only.
+    // “blue” may match a saved “Sky Blue” variant, but never a product name
+    // containing “blue” or unrelated copy that happens to mention blue.
     if (colour) {
       const wanted = squash(text)
-      if (colours.some((c) => c === wanted || c.includes(wanted))) return true
-      return identityFlat.includes(text) || identitySquashed.includes(wanted)
+      return colours.some((c) => c === wanted || c.includes(wanted))
     }
     return forms.flat.includes(text) || forms.squashed.includes(squash(text))
   })
