@@ -12,7 +12,7 @@
 import { useCategories } from '../context/CategoriesContext'
 import { CategoryManagerPanel } from './CategoryManager.jsx'
 
-export default function CategoriesPanel({ notify }) {
+export default function CategoriesPanel() {
   const { categories, reload } = useCategories()
 
   return (
@@ -29,14 +29,15 @@ export default function CategoriesPanel({ notify }) {
       </div>
 
       <div className="mt-8 max-w-[760px]">
+        {/* The manager says what happened in its own words, under the form —
+            so the message is read where the owner is looking. */}
         <CategoryManagerPanel
           categories={categories}
-          onSaved={async (row) => {
+          onSaved={async () => {
             // The storefront reads the categories from the database, so a
             // reload here puts the new category in front of the very next
             // visitor.
             await reload()
-            if (row?.label) notify('success', `“${row.label}” is on the site now.`)
           }}
         />
       </div>

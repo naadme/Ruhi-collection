@@ -391,7 +391,7 @@ export default function Dashboard({ showOrders }) {
         <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'orders' && <OrdersPanel notify={notify} />}
-          {section === 'categories' && <CategoriesPanel notify={notify} />}
+          {section === 'categories' && <CategoriesPanel />}
           {section === 'banners' && <BannerPanel notify={notify} />}
           {section === 'category-images' && <CategoryImagesPanel notify={notify} />}
           {section === 'bestsellers' && <BestsellerPanel notify={notify} products={all} />}
