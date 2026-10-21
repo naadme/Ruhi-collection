@@ -45,8 +45,10 @@ as long as you never add a `VITE_` prefix to it.
 | `RAZORPAY_KEY_ID` | Supabase secret | Same Key Id, read server-side by the Edge Functions |
 | `RAZORPAY_KEY_SECRET` | Supabase secret | The Razorpay **Key Secret**. Never in `.env`, never `VITE_*`, never in this repo |
 | `RAZORPAY_WEBHOOK_SECRET` | Supabase secret | Signing secret from Razorpay Dashboard → Settings → Webhooks |
-| `RESEND_API_KEY` | Supabase secret | Resend API key, read by `send-contact-email`. Never in `.env`, never `VITE_*`, never in this repo |
-| `RESEND_FROM` | Supabase secret (optional) | Resend **From** address, e.g. `Ruhi Collection <hello@yourdomain.com>`. Defaults to `onboarding@resend.dev` |
+| `RESEND_API_KEY` | Supabase secret | Resend API key, read by the mail module every order email and the contact form go through. Never in `.env`, never `VITE_*`, never in this repo |
+| `RESEND_FROM` | Supabase secret (optional) | Resend **From** address, e.g. `Ruhi Collection <hello@yourdomain.com>`. Defaults to `onboarding@resend.dev` — **which can only reach the Resend account's own address**, so set this once a domain is verified |
+| `ORDER_NOTIFICATIONS_SECRET` | Supabase secret | Shared secret between the database and the `order-notifications` Edge Function. The database holds the same value in its own vault |
+| `OWNER_EMAIL` | Supabase secret (optional) | Where the new-order notification goes. Defaults to `ruhicollections2026@gmail.com` |
 
 The first three are the only ones the frontend can ever see. The rest are
 read inside Edge Functions through `supabase secrets set`.
@@ -118,6 +120,103 @@ account's own inbox) — once you have verified a domain, add
 Also useful: the submitted address is set as `reply_to`, so replying from Gmail answers the
 customer directly. Set `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` as usual — no
 `VITE_` variable is added for this.
+
+### Order emails — the customer's confirmation and the owner's notice
+
+Two mails go out for every order that is real:
+
+| Mail | To | Says |
+| --- | --- | --- |
+| **Order confirmation** | the customer's own address on the order | the brand, the Order ID, the order date, the status, how it is paid, the delivery address, every product with its Product ID, colour, size, quantity and price, and the money |
+| **New-order notification** | the shop's inbox (`OWNER_EMAIL`, default `ruhicollections2026@gmail.com`) | the same order facts, plus the customer's name, email and phone, the delivery address and note, the products and quantities, and the payment status. The customer's address is the `reply_to`, so answering the notice answers the customer |
+
+**Both payment methods are handled, and neither is ever described wrongly:**
+
+| Method | When the mail goes out | What it says |
+| --- | --- | --- |
+| **Razorpay** | after the payment is verified — by the browser's `verify-razorpay-payment` *or* by Razorpay's webhook, whichever gets there first | "Paid online (Razorpay)" and "Total paid: ₹…" |
+| **Cash on delivery** | the moment the order is placed | "Cash on delivery — pay when it arrives" and "Amount to pay on delivery: ₹…". It never says the order was paid, because it has not been |
+
+**No order is ever announced twice.** Each mail has its own marker on the order —
+`orders.confirmation_sent_at` and `orders.owner_notified_at` — and each is claimed with a
+single compare-and-set, so Postgres decides which of the browser's call, Razorpay's webhook
+and Razorpay's retries actually sends. A refused send gives the marker back, so the next
+attempt can still reach the customer.
+
+**Cash on delivery is announced by the database, not by the payment functions.** The storefront
+pays online, so the payment functions never see a cash order. A deferred trigger on
+`public.orders` fires at COMMIT — by which time `create_order()` has inserted the order lines
+— and calls the `order-notifications` Edge Function over `pg_net`. The trigger never writes to
+the order, and a failed announcement never costs the shop an order.
+
+#### Setting it up
+
+```bash
+# 1. The shared secret between the database and the function. The SAME value
+#    goes into the database's vault (step 3) — that is what lets the trigger
+#    prove who it is.
+npx supabase secrets set ORDER_NOTIFICATIONS_SECRET="$(openssl rand -hex 32)" \
+  --project-ref <your-project-ref>
+
+# 2. The function
+npx supabase functions deploy order-notifications \
+  --project-ref <your-project-ref> --no-verify-jwt
+
+# 3. The database side: the function's URL and the same secret, in the vault.
+#    Run this in the Supabase SQL editor (Dashboard → SQL → New query).
+#    The URL is not a secret; the secret must be the SAME string as step 1.
+select vault.create_secret(
+  'https://<your-project-ref>.functions.supabase.co/order-notifications',
+  'order_notifications_url');
+select vault.create_secret(
+  '<the same value as ORDER_NOTIFICATIONS_SECRET>',
+  'order_notifications_secret');
+```
+
+The trigger is part of the migration
+`supabase/migrations/20261021160000_order_notifications.sql` — apply it with
+`npx supabase db push --linked --yes`.
+
+#### What is still missing before a mail actually arrives
+
+> **The From address must be on a domain you have verified at
+> [resend.com/domains](https://resend.com/domains).**
+>
+> The API key alone is not enough. While `RESEND_FROM` is unset it falls back to
+> `onboarding@resend.dev`, and Resend answers that with
+> *"You can only send testing emails to your own email address… To send emails to other
+> recipients, please verify a domain, and change the `from` address to an email using this
+> domain."* — **403, and nothing is delivered.** The order is still recorded and the marker is
+> given back, so nothing is lost; the mail simply has not gone out.
+>
+> A **sending access key** (a key restricted to sending only) cannot verify a domain itself —
+> the domain has to be added in the Resend dashboard. Then:
+>
+> ```bash
+> npx supabase secrets set RESEND_FROM='Ruhi Collection <orders@yourdomain.com>' \
+>   --project-ref <your-project-ref>
+> ```
+>
+> The free tier carries one domain and 3,000 emails a month, which is plenty for a shop this
+> size.
+
+**While the mail cannot be sent, the failure is visible rather than silent:** the
+`order-notifications` function answers with the reason (`failed resend-403`), and the same
+detail is written to the function's log — Dashboard → Edge Functions → `order-notifications` →
+Logs. The customer is never told a mail went out when it did not.
+
+To check the whole chain yourself at any time:
+
+```bash
+# Sends the mails for one order (and for anything else that is still owed one).
+curl -X POST "https://<your-project-ref>.functions.supabase.co/order-notifications" \
+  -H "Content-Type: application/json" \
+  -H "x-order-notifications-secret: <ORDER_NOTIFICATIONS_SECRET>" \
+  -d '{"order_id":"<the order id>"}'
+```
+
+Without the secret it answers `401` — the function is not a mail relay and cannot be pointed
+at an address of someone else's choosing.
 
 ### Google Sheets — the daily order sheet
 
@@ -322,6 +421,7 @@ They have **no** npm/Deno dependencies — plain Web APIs and `fetch` only.
 | `verify-razorpay-payment` | Browser | Recomputes `HMAC_SHA256(order_id \| payment_id)` with the Key Secret, checks it against Razorpay's signature, re-fetches the order from Razorpay to confirm amount + currency, **then** sets `payment_status='paid'` |
 | `razorpay-webhook` | Razorpay | Verifies `x-razorpay-signature` against the raw body, records the event id once, then reconciles `payment.captured` / `payment.failed` / `refund.processed` from the trusted database row |
 | `send-contact-email` | Browser (Contact page) | Validates the four form fields, stores the message in `contact_messages`, emails it to `ruhicollections2026@gmail.com` via Resend with the submitted address as `reply_to` |
+| `order-notifications` | The **database** (a deferred trigger on `orders`, through `pg_net`) and the owner by hand | Sends the customer's confirmation and the owner's new-order notification for an order, once each, to the order's own address and to the shop's inbox |
 
 ### 6. Create the webhook
 
@@ -391,6 +491,9 @@ values back in.
 7. The browser clears the cart and shows the confirmation with the reference and payment id.
 8. If the browser never comes back, step 6 is repeated by the webhook, which is signature-checked
    and idempotent.
+9. The two order mails go out — the customer's confirmation and the owner's new-order
+   notification — once each, whichever of the two paths (browser or webhook) gets there first.
+   See [Order emails](#order-emails--the-customers-confirmation-and-the-owners-notice).
 
 Nothing in the browser decides price, discount, shipping, total, or whether an order is paid.
 
@@ -416,6 +519,18 @@ Nothing in the browser decides price, discount, shipping, total, or whether an o
   has not been charged. Please try again."). Constraint names, SQL, stack traces, `error_id`s and
   service-role keys are never shown.
 - Customers can only `SELECT` their own orders; there is no client path to another customer's order.
+- **The mail key exists in exactly one place**: `supabase secrets`, read by the one module that
+  talks to Resend. It is not in `.env`, not in `.env.example`, not in any `VITE_*` variable, not
+  in `src/`, not in `dist/`, not in git.
+- The `order-notifications` function is not a mail relay: it answers `401` to anyone who cannot
+  present `ORDER_NOTIFICATIONS_SECRET`, it never takes a recipient from the caller, and the
+  customer's address is the one the **database** holds for that order. A browser cannot write
+  `confirmation_sent_at` or `owner_notified_at` either — a trigger refuses both to `anon` and
+  to `authenticated`, so a session cannot quietly silence a customer's mail or the owner's
+  notice.
+- The database's announcement trigger only ever **reads** an order and makes one HTTP request
+  to our own function. It never writes to the order, and everything it does is wrapped so that
+  a missing secret or an unreachable network leaves the order exactly as it was.
 
 ---
 
@@ -508,6 +623,13 @@ Excel download and on the order confirmation email.
   cannot double-charge.
 - **Cart is only cleared after a confirmed payment.** Refreshing the
   confirmation page does not create a second order.
+- **Two mails per order, never more.** The customer's confirmation and the owner's new-order
+  notice are each claimed with a compare-and-set on the order itself, so the browser's
+  verification, Razorpay's webhook and Razorpay's retries all race for the same two slots and
+  exactly one mail each wins. A refused send gives the slot back, so nothing is lost.
+- **A cash-on-delivery order is announced the moment it is placed**, by a deferred trigger in
+  the database — not by the payment functions, which only ever see online orders. The trigger
+  fires at COMMIT, so the mail lists every product, not just the first one.
 - **`VITE_RAZORPAY_KEY_ID` empty** ⇒ no online option, no Razorpay script loaded, and checkout
   cannot accept an order.
 - The FAQ mentions UPI/cards only because Razorpay is expected to be connected. Online payment is
@@ -594,4 +716,7 @@ What has been verified against this codebase:
   in place while the site falls back to another picture.
 
 Manual steps only you can do: create the Razorpay TEST keys, deploy the functions, set the
-secrets, create the webhook, and run a real test-mode payment (steps 1–7 above).
+secrets, create the webhook, and run a real test-mode payment (steps 1–7 above). For the order
+mails, one more: **verify a domain at resend.com/domains and set `RESEND_FROM`** — until that
+is done, Resend answers 403 and no order mail is delivered (see
+[Order emails](#order-emails--the-customers-confirmation-and-the-owners-notice)).

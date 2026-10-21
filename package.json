@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test \"tests/*.test.js\"",
+    "test:notifications": "node scripts/test-order-notifications.mjs",
     "audit:admin": "node scripts/audit-admin-panels.mjs",
     "audit:banners": "node scripts/audit-banner-destinations.mjs",
     "audit:orders": "node scripts/audit-order-details.mjs",

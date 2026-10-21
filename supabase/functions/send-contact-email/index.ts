@@ -10,22 +10,15 @@
 // Vite bundle.
 
 import { serve } from '../_shared/deno.ts'
-import { env, MissingConfigError, requireEnv } from '../_shared/env.ts'
+import { MissingConfigError, requireEnv } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
 import { serviceFetch } from '../_shared/supabase.ts'
+import { sendMail } from '../_shared/resend.ts'
 
 /** The one mailbox that receives contact form submissions. */
 const TO = 'ruhicollections2026@gmail.com'
 
 const SUBJECT = 'New Contact Form Submission — Ruhi Collection'
-
-/**
- * Resend needs a From address on a verified domain. `onboarding@resend.dev`
- * works out of the box during Resend's own onboarding (it can only reach the
- * account's own address); once a domain is verified, set `RESEND_FROM` to
- * something like `Ruhi Collection <hello@yourdomain.com>`.
- */
-const DEFAULT_FROM = 'Ruhi Collection <onboarding@resend.dev>'
 
 const NOT_CONFIGURED =
   'Our contact form is unavailable right now. Please email us directly.'
@@ -129,8 +122,6 @@ async function save(submission: Submission): Promise<void> {
  * browser sent cannot influence either.
  */
 async function deliver(submission: Submission): Promise<void> {
-  const apiKey = requireEnv('RESEND_API_KEY')
-  const from = env('RESEND_FROM') ?? DEFAULT_FROM
   const text = [
     `Name: ${submission.name}`,
     `Email: ${submission.email}`,
@@ -140,27 +131,14 @@ async function deliver(submission: Submission): Promise<void> {
     `Received: ${new Date().toISOString()}`,
   ].join('\n')
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to: [TO],
-      reply_to: submission.email,
-      subject: SUBJECT,
-      text,
-    }),
+  await sendMail({
+    to: TO,
+    subject: SUBJECT,
+    text,
+    // The submitted address is the reply address, so answering the shop
+    // answers the customer directly.
+    replyTo: submission.email,
   })
-
-  if (res.ok) return
-  if (res.status === 401 || res.status === 403) {
-    throw new MissingConfigError(['RESEND_API_KEY'])
-  }
-  console.warn('[send-contact-email] Resend answered', res.status)
-  throw new Error('resend-rejected')
 }
 
 export async function handle(req: Request): Promise<Response> {

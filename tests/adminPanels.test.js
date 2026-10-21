@@ -187,9 +187,10 @@ test('the confirmation email carries everything the client asked for', () => {
   assert.match(confirm, /buildConfirmationText/, 'and the function sends exactly that body')
 })
 
-test('the confirmation email is sent once and only for a paid order', () => {
+test('the confirmation email is sent once and only for a settled order', () => {
   const mail = read('supabase/functions/_shared/confirmation.ts')
-  assert.match(mail, /payment_status=eq\.paid/, 'only a paid order')
+  assert.match(mail, /or=\(payment_status\.eq\.paid,payment_method\.eq\.cod\)/,
+    'only a paid order, or a cash-on-delivery one')
   assert.match(mail, /confirmation_sent_at=is\.null/, 'and only once')
   assert.match(mail, /await release\(orderId\)/, 'a failed send gives the slot back')
   const verify = read('supabase/functions/verify-razorpay-payment/index.ts')

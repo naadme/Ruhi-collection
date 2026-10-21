@@ -1,6 +1,7 @@
 // Order confirmation email, shared by the two functions that can be the first
 // to know a Razorpay payment succeeded: `verify-razorpay-payment` (called by
 // the shopper's browser) and `razorpay-webhook` (called by Razorpay's servers).
+// It is also what `order-notifications` uses for a cash-on-delivery order.
 //
 // There is deliberately NO public endpoint here. A separate HTTP function
 // would hand anyone who could reach it a way to make the store email arbitrary
@@ -9,52 +10,65 @@
 //
 // Three rules, all of them load-bearing:
 //
-//   1. NEVER before verification. The claim query below requires
-//      `payment_status = 'paid'`, which only the payment server can write —
-//      the database refuses it from every browser session.
+//   1. NEVER before verification. The claim query below requires the order to
+//      be paid — or to be a cash-on-delivery order, which is confirmed the
+//      moment it is placed. An online order that is not paid yet matches
+//      neither rule, and the database refuses `payment_status = 'paid'` from
+//      every browser session.
 //   2. NEVER twice. Both callers race for the same order and either can be
 //      retried, so sending is gated by a compare-and-set on
 //      `orders.confirmation_sent_at`: exactly one caller ever gets a row back.
 //   3. NEVER silently lost. If Resend refuses the send, the claim is rolled
 //      back so the next verification or webhook delivery can try again.
 
-import { env, MissingConfigError, requireEnv } from './env.ts'
+import { MissingConfigError, requireEnv } from './env.ts'
 import { asString, type Json } from './http.ts'
 import { serviceFetch } from './supabase.ts'
+import { sendMail, ResendError } from './resend.ts'
 import { buildConfirmationSubject, buildConfirmationText } from './orderEmail.mjs'
-
-/**
- * Resend needs a From address on a verified domain. `onboarding@resend.dev`
- * works out of the box during Resend's own onboarding, but it can ONLY reach
- * the account's own address — so until `RESEND_FROM` is set to a verified
- * domain, customer confirmations are refused by Resend and the claim is rolled
- * back rather than lost. That is why this module reports honestly instead of
- * pretending a message went out.
- */
-const DEFAULT_FROM = 'Ruhi Collection <onboarding@resend.dev>'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/**
+ * The orders this module may confirm.
+ *
+ * Two rules, joined by OR:
+ *   * `payment_status = 'paid'` — an online order the gateway has settled;
+ *   * `payment_method = 'cod'`  — a cash-on-delivery order, which is real the
+ *     moment it is placed and will be paid on arrival.
+ *
+ * An online order that has not been paid matches neither, so it can never be
+ * confirmed: the customer is not told their order is on its way until the
+ * money has actually arrived.
+ */
+const CONFIRMABLE = 'or=(payment_status.eq.paid,payment_method.eq.cod)'
 
 export type ConfirmationOutcome =
   | { sent: true; reference: string }
-  | { sent: false; reason: 'already-sent' | 'not-paid' | 'no-email' | 'not-configured' | 'failed' }
+  | {
+      sent: false
+      reason: 'already-sent' | 'not-paid' | 'no-email' | 'not-configured' | 'failed'
+      /** A short, secret-free note about why — e.g. which status Resend gave. */
+      detail?: string
+    }
 
 /**
  * Claim the "confirmation sent" slot for this order.
  *
  * Returns the order facts when this caller won the race, or null when the
- * order is not paid, has no usable email, or a confirmation has already gone
- * out. Postgres serialises concurrent updates to the same row, so of the
- * browser's verification call and Razorpay's webhook — which routinely arrive
- * within milliseconds of each other — exactly one receives a row.
+ * order is not paid (and not cash on delivery), has no usable email, or a
+ * confirmation has already gone out. Postgres serialises concurrent updates
+ * to the same row, so of the browser's verification call and Razorpay's
+ * webhook — which routinely arrive within milliseconds of each other — exactly
+ * one receives a row.
  */
 async function claim(orderId: string): Promise<Json | null> {
   const res = await serviceFetch(
     `/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}` +
-      '&payment_status=eq.paid&confirmation_sent_at=is.null' +
-      '&select=id,reference,created_at,email,full_name,phone,address,city,state,pincode,'
-      + 'subtotal,discount,coupon_code,shipping,total,status,note',
+      `&confirmation_sent_at=is.null&${CONFIRMABLE}` +
+      '&select=id,reference,created_at,email,full_name,phone,address,city,state,pincode,' +
+      'subtotal,discount,coupon_code,shipping,total,status,note,payment_method,payment_status,' +
+      'razorpay_payment_id',
     {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },
@@ -104,32 +118,9 @@ async function fetchItems(orderId: string): Promise<Json[]> {
   }
 }
 
-
-/** Send via Resend. Throws MissingConfigError on a bad key. */
-async function deliver(to: string, reference: string, text: string): Promise<void> {
-  const apiKey = requireEnv('RESEND_API_KEY')
-  const from = env('RESEND_FROM') ?? DEFAULT_FROM
-
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject: buildConfirmationSubject(reference),
-      text,
-    }),
-  })
-
-  if (res.ok) return
-  if (res.status === 401 || res.status === 403) throw new MissingConfigError(['RESEND_API_KEY'])
-  console.warn('[confirmation] Resend answered', res.status)
-  throw new Error('resend-rejected')
-}
-
 /**
  * Send the confirmation for `orderId` if — and only if — this call is the
- * first to see the payment verified.
+ * first to see the order settle (or to see a cash-on-delivery order placed).
  *
  * Safe to call from both payment paths, in any order, any number of times:
  * every outcome that is not a genuine send leaves the order exactly as it was.
@@ -158,12 +149,19 @@ export async function sendOrderConfirmation(orderId: string): Promise<Confirmati
 
   try {
     const items = await fetchItems(orderId)
-    await deliver(email, reference, buildConfirmationText(order, items))
+    await sendMail({
+      to: email,
+      subject: buildConfirmationSubject(reference),
+      text: buildConfirmationText(order, items),
+    })
     return { sent: true, reference }
   } catch (error) {
     // A refused or failed send must not permanently silence this order.
     await release(orderId)
     if (error instanceof MissingConfigError) return { sent: false, reason: 'not-configured' }
+    if (error instanceof ResendError) {
+      return { sent: false, reason: 'failed', detail: `resend-${error.status}` }
+    }
     console.warn('[confirmation] delivery failed:', String(error))
     return { sent: false, reason: 'failed' }
   }

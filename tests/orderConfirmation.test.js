@@ -52,14 +52,21 @@ test('the sender claims the slot with a compare-and-set, not a read-then-write',
   // This is the whole idempotency story: one statement, guarded by the very
   // conditions that make sending legal, so Postgres resolves the race.
   assert.match(CONFIRM, /confirmation_sent_at=is\.null/);
-  assert.match(CONFIRM, /payment_status=eq\.paid/);
+  assert.match(CONFIRM, /payment_status\.eq\.paid/);
+  assert.match(CONFIRM, /payment_method\.eq\.cod/);
   assert.match(CONFIRM, /method:\s*'PATCH'/);
 });
 
-test('an order that is not paid can never be claimed', () => {
-  assert.match(CONFIRM, /payment_status=eq\.paid/);
+test('an online order that is not paid can never be claimed', () => {
+  // An ONLINE order is confirmed only once the gateway has settled it. A
+  // cash-on-delivery order is confirmed the moment it is placed — it is paid
+  // on arrival, so there is nothing to wait for — and that is the only other
+  // way in.
+  assert.match(CONFIRM, /or=\(payment_status\.eq\.paid,payment_method\.eq\.cod\)/);
   assert.ok(!/payment_status=neq\.paid/.test(CONFIRM),
     'a "not paid" filter would let unpaid orders through');
+  assert.ok(!/payment_status\.neq\.paid/.test(CONFIRM),
+    'and so would a "not paid" branch of the rule');
 });
 
 test('a failed send gives the slot back so a retry can still reach the customer', () => {
@@ -80,7 +87,11 @@ test('the email never carries a payment or database secret, and is plain text', 
   // literal key value.
   assert.doesNotMatch(CONFIRM, /RAZORPAY_KEY_SECRET|SUPABASE_SERVICE_ROLE_KEY|eyJ[A-Za-z0-9_-]{20,}/);
   assert.doesNotMatch(CONFIRM, /dangerouslySetInnerHTML|<html|<div/i);
-  assert.match(CONFIRM, /text,\s*\n\s*\}\)/, 'sends text/plain, not HTML');
+  // The body itself is sent as text/plain by the one module that talks to
+  // Resend — there is no HTML alternative anywhere in the path.
+  const resend = read('supabase/functions/_shared/resend.ts');
+  assert.match(resend, /text: mail\.text/, 'sends text/plain, not HTML');
+  assert.doesNotMatch(resend, /\bhtml\b\s*[:,}]/, 'and never an HTML part');
 });
 
 test('the recipient is the order\'s own email, never anything the caller sends', () => {

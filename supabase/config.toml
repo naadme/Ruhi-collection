@@ -406,6 +406,15 @@ verify_jwt = false
 [functions.send-contact-email]
 verify_jwt = false
 
+# Order notifications — the customer's confirmation and the owner's new-order
+# notice.
+#
+# It is called by the DATABASE (a deferred trigger on `orders` reaches it
+# through `pg_net`), not by a browser, so there is no JWT to verify — the
+# caller presents a shared secret instead. See README.md → "Order emails".
+[functions.order-notifications]
+verify_jwt = false
+
 # Google sign-in, part 1: the admin actions (connect, choose a spreadsheet,
 # export). These all need a real store-owner session, so the platform's own
 # JWT verification stays ON.

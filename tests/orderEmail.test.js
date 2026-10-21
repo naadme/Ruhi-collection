@@ -108,9 +108,10 @@ test('the address is only the lines the customer gave', () => {
   assert.deepEqual(addressLines(order({ address: '', city: '', state: '', pincode: '' })), [])
 })
 
-test('a confirmation is only sent for a paid order, and only once', () => {
+test('a confirmation is only sent for a settled order, and only once', () => {
   const mail = read('supabase/functions/_shared/confirmation.ts')
-  assert.match(mail, /payment_status=eq\.paid/, 'only a paid order may be confirmed')
+  assert.match(mail, /or=\(payment_status\.eq\.paid,payment_method\.eq\.cod\)/,
+    'a paid order, or a cash-on-delivery order')
   assert.match(mail, /confirmation_sent_at=is\.null/, 'and only one confirmation per order')
   assert.match(mail, /await release\(orderId\)/, 'a refused send gives the slot back')
 })
@@ -130,9 +131,12 @@ test('the mail never leaves the browser, and the key is only on the server', () 
 })
 
 test('the email is sent by the existing provider, and only from the server', () => {
-  const mail = read('supabase/functions/_shared/confirmation.ts')
-  assert.match(mail, /api\.resend\.com\/emails/, 'the project\'s existing mail provider')
-  assert.match(mail, /RESEND_FROM/, 'and the From address it uses is configurable')
+  // One module talks to Resend, and it lives on the server only.
+  const resend = read('supabase/functions/_shared/resend.ts')
+  assert.match(resend, /api\.resend\.com\/emails/, 'the project\'s existing mail provider')
+  assert.match(resend, /RESEND_FROM/, 'and the From address it uses is configurable')
+  const confirm = read('supabase/functions/_shared/confirmation.ts')
+  assert.match(confirm, /from '\.\/resend\.ts'/, 'the confirmation goes through it')
   const panel = read('src/admin/GoogleSheetsPanel.jsx')
   assert.ok(!/resend/i.test(panel), 'the admin panel does not hold a mail key either')
 })

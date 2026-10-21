@@ -13,6 +13,7 @@ import { MissingConfigError } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
 import { getRazorpayOrder, toPaise, verifyPaymentSignature } from '../_shared/razorpay.ts'
 import { sendOrderConfirmation } from '../_shared/confirmation.ts'
+import { sendOwnerNotification } from '../_shared/ownerNotification.ts'
 import { syncSheetQuietly } from '../_shared/sheetSyncTrigger.ts'
 import { fetchOrderItems, fetchOrderByColumn, serviceFetch } from '../_shared/supabase.ts'
 
@@ -94,14 +95,20 @@ export async function handle(req: Request): Promise<Response> {
         : (await fetchOrderByColumn('reference', reference)) ?? order
     }
 
-    // The payment is on file. Telling the customer is a separate concern from
-    // proving it, so a mail failure is logged and swallowed — it must never
-    // turn a payment we HAVE verified into an error the shopper sees. The
-    // shared helper also no-ops when the webhook got there first.
+    // The payment is on file. Telling the customer and telling the owner are
+    // separate concerns from proving it, so a mail failure is logged and
+    // swallowed — it must never turn a payment we HAVE verified into an error
+    // the shopper sees. Both helpers are idempotent, so arriving alongside
+    // the webhook — or arriving again on a retry — is safe.
     try {
       await sendOrderConfirmation(asString(settled.id))
     } catch (error) {
       console.warn('[verify-razorpay-payment] confirmation not sent:', String(error))
+    }
+    try {
+      await sendOwnerNotification(asString(settled.id))
+    } catch (error) {
+      console.warn('[verify-razorpay-payment] owner notification not sent:', String(error))
     }
 
     // The order is real, so the owner's spreadsheet gets it now. The sheet is

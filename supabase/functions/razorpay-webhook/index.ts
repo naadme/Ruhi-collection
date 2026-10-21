@@ -15,6 +15,7 @@ import { env } from '../_shared/env.ts'
 import { asString, fail, json, preflight, type Json } from '../_shared/http.ts'
 import { verifyWebhookSignature } from '../_shared/razorpay.ts'
 import { sendOrderConfirmation } from '../_shared/confirmation.ts'
+import { sendOwnerNotification } from '../_shared/ownerNotification.ts'
 import { syncSheetQuietly } from '../_shared/sheetSyncTrigger.ts'
 import {
   fetchOrderByColumn,
@@ -86,14 +87,20 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
         paid_at: new Date().toISOString(),
         ...(paymentId ? { razorpay_payment_id: paymentId } : {}),
       })
-      // Tell the customer, but never at the cost of the acknowledgement: a
-      // non-2xx answer here makes Razorpay redeliver this event, and a mail
-      // hiccup must not turn into a redelivery storm. The helper itself is
-      // idempotent, so arriving alongside the browser's verification is safe.
+      // Tell the customer and the owner, but never at the cost of the
+      // acknowledgement: a non-2xx answer here makes Razorpay redeliver this
+      // event, and a mail hiccup must not turn into a redelivery storm. The
+      // helpers themselves are idempotent, so arriving alongside the browser's
+      // verification — or arriving again on Razorpay's retry — is safe.
       try {
         await sendOrderConfirmation(orderId)
       } catch (error) {
         console.warn('[razorpay-webhook] confirmation not sent:', String(error))
+      }
+      try {
+        await sendOwnerNotification(orderId)
+      } catch (error) {
+        console.warn('[razorpay-webhook] owner notification not sent:', String(error))
       }
       // The payment is settled, so the owner's spreadsheet gets the order now.
       // A failure here is logged and swallowed: the sheet is a record, not
