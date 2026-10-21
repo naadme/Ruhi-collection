@@ -75,15 +75,27 @@ const evaluate = async (expression) => {
 await send('Page.enable')
 await send('Runtime.enable')
 
-const resultsFor = async (query) => {
-  await send('Page.navigate', { url: `${BASE}/shop?q=${encodeURIComponent(query)}` })
-  await sleep(3500)
-  return evaluate(`(() => {
-    const heading = (document.querySelector('h1') || {}).textContent || '';
-    const count = (document.querySelector('section p') || {}).textContent || '';
-    const cards = [...document.querySelectorAll('a[href^="/product/"] h3')].map(h => h.textContent.trim());
-    return { heading: heading.trim(), count: count.trim(), cards: [...new Set(cards)] };
-  })()`)
+const resultsFor = async (query, extra = '') => {
+  await send('Page.navigate', { url: `${BASE}/shop${extra ? `${extra}&` : '?'}q=${encodeURIComponent(query)}` })
+  // The page paints from the bundled catalogue for a moment before the
+  // database answers, so the reading is taken once the page has stopped
+  // changing — otherwise it describes the seed rather than the shop.
+  let last = ''
+  let out = {}
+  for (let i = 0; i < 40; i += 1) {
+    await sleep(700)
+    out = await evaluate(`(() => {
+      const heading = (document.querySelector('h1') || {}).textContent || '';
+      const count = (document.querySelector('section p') || {}).textContent || '';
+      const cards = [...document.querySelectorAll('a[href^="/product/"] h3')].map(h => h.textContent.trim());
+      const empty = (document.querySelector('main') || document.body).innerText || '';
+      return { heading: heading.trim(), count: count.trim(), cards: [...new Set(cards)], empty: empty.replace(/\\s+/g, ' ').slice(0, 400) };
+    })()`)
+    const now = JSON.stringify(out)
+    if (now === last) break
+    last = now
+  }
+  return out
 }
 
 console.log(`\nThe colour search on ${BASE}`)
@@ -95,6 +107,20 @@ for (const query of ['blue', 'BLUE', 'Royal Blue', 'black', 'pink']) {
   console.log(`    count:   ${r.count}`)
   console.log(`    products: ${r.cards.slice(0, 8).join(' | ')}${r.cards.length > 8 ? ` (+${r.cards.length - 8} more)` : ''}`)
 }
+
+console.log('\n  --- a search that matches nothing ---')
+const none = await resultsFor('zzzqqqxx')
+console.log(`    heading: ${none.heading}`)
+console.log(`    count:   ${none.count}`)
+console.log(`    cards:   ${none.cards.length}`)
+console.log(`    says so: ${/Nothing matches|No results|no products/i.test(none.empty)}`)
+
+console.log('\n  --- a search is not held back by the category filter ---')
+const withCategory = await resultsFor('blue', '?type=dress')
+const plain = await resultsFor('blue')
+console.log(`    /shop?q=blue            → ${plain.cards.length} card(s)`)
+console.log(`    /shop?type=dress&q=blue → ${withCategory.cards.length} card(s)`)
+console.log(`    the same results either way: ${JSON.stringify(withCategory.cards) === JSON.stringify(plain.cards)}`)
 
 console.log('\n  --- the products a colour search returns, and their saved colour ---')
 const detail = await evaluate(`(async () => {
