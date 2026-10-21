@@ -9,7 +9,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
-  categoryImage, categoryShopUrl, categoryTiles, extraCategoryTiles, stockedCategoryTiles,
+  categoryImage, categoryShopUrl, categoryTiles, collectionPageTiles,
+  extraCategoryTiles, stockedCategoryTiles,
 } from '../src/lib/categoryTiles.js'
 import { mergeCategories } from '../src/lib/categoryRules.js'
 import { img } from '../src/data/images.js'
@@ -146,18 +147,88 @@ test('the homepage card is one link covering the picture and the name', () => {
 })
 
 test('the Collections page reads the same tiles', () => {
+  // The whole rule lives in the shared module now, so the page is only a
+  // rendering of it: the owner's photograph (or the site's own fallback when
+  // she has switched hers off), her name for the category, and the very link
+  // the shop's Type filter reads.
   const collections = read('src/pages/Collections.jsx')
   assert.match(collections, /from '\.\.\/lib\/categoryTiles'/)
-  assert.match(collections, /categoryImage\(c, products\)/, 'and the owner\'s photo wins there too')
-  assert.match(collections, /categoryShopUrl\(c\.key\)/)
+  assert.match(collections, /collectionPageTiles\(categories, products, collectionTiles\)/,
+    'the page asks the shared module for its tiles')
+  const tiles = read('src/lib/categoryTiles.js')
+  assert.match(tiles, /categoryImage\(category, products\) \|\| tile\.image/,
+    'and the owner\'s photo wins there too — switched on, or not at all')
+  assert.match(tiles, /categoryShopUrl\(key\)/, 'with the link the shop filter uses')
+})
+
+test('the Collections tiles are the live categories, not a fixed four', () => {
+  // The page used to render four tiles from the source code whatever the
+  // client did: a category she deleted kept its tile, under its old name and
+  // its old photograph. Now a tile exists only for a category that does.
+  const curated = [
+    { title: 'Tops & T-shirts', text: 'a', image: '/x.jpg', to: '/shop?type=tops' },
+    { title: 'Dresses', text: 'b', image: '/y.jpg', to: '/shop?type=dress' },
+  ]
+  const products = [{ id: 'shirt', type: 'tops', image: '/shirt.jpg' }, { id: 'gown', type: 'dress', image: '/gown.jpg' }]
+
+  const both = collectionPageTiles(
+    [{ key: 'tops', label: 'Tops & T-shirts' }, { key: 'dress', label: 'Dresses' }],
+    products,
+    curated,
+  )
+  assert.deepEqual(both.map((t) => t.key), ['tops', 'dress'], 'in the curated order')
+
+  // A category the client deleted: no tile, no dead link, no old photograph.
+  const oneLeft = collectionPageTiles([{ key: 'tops', label: 'Tops & T-shirts' }], products, curated)
+  assert.deepEqual(oneLeft.map((t) => t.key), ['tops'], 'the deleted category has no tile')
+
+  // A category she added later gets a tile of its own, after the curated ones.
+  // (It needs a photograph of some kind to be tile-able: her own choice, the
+  // shipped default, or a product in that category — never a broken circle.)
+  const withNew = collectionPageTiles(
+    [{ key: 'tops', label: 'Tops' }, { key: 'dress', label: 'Dresses' }, { key: 'night-wear', label: 'Night Wear' }],
+    [...products, { id: 'nightie', type: 'night-wear', image: '/nightie.jpg' }],
+    curated,
+  )
+  assert.deepEqual(withNew.map((t) => t.key), ['tops', 'dress', 'night-wear'], 'the new one comes after')
+
+  // A category with no photograph anywhere is left out rather than shown as a
+  // blank tile.
+  const photoless = collectionPageTiles(
+    [{ key: 'tops', label: 'Tops' }, { key: 'kurta-sets', label: 'Kurta Sets' }],
+    products,
+    curated,
+  )
+  assert.deepEqual(photoless.map((t) => t.key), ['tops'], 'a category with no photograph has no tile')
+
+  // Her own name for a category wins over the bundled one.
+  assert.equal(
+    collectionPageTiles([{ key: 'tops', label: 'T-Shirts & Tops' }], products, curated)[0].title,
+    'T-Shirts & Tops',
+    'a rename reaches this page too',
+  )
+
+  // A photograph she has switched OFF is not shown here, exactly as on the
+  // homepage: the tile falls back to the photograph that ships with the site.
+  const switched = collectionPageTiles(
+    [{ key: 'tops', label: 'Tops', image: '/chosen.jpg', image_active: false }],
+    products,
+    curated,
+  )
+  assert.notEqual(switched[0].image, '/chosen.jpg', 'the switched-off photo is not used')
+  assert.ok(switched[0].image, 'and the tile still has a photograph')
+
+  // Before the list arrives (or when Supabase is unreachable) the page is not
+  // blank: the curated tiles are shown as they ship.
+  assert.deepEqual(collectionPageTiles([], products, curated).length, 2, 'the bundled tiles still show')
 })
 
 test('the same category is never shown under two different names', () => {
   // The Collections page used to carry its own hardcoded name for a category
   // ("Tops & Shirts") while every other screen used the owner's name
   // ("Tops & T-shirts"), and a rename in the admin panel never reached it.
-  const collections = read('src/pages/Collections.jsx')
-  assert.match(collections, /title: category\?\.label \|\| c\.title/,
+  const tiles = read('src/lib/categoryTiles.js')
+  assert.match(tiles, /title: category\?\.label \|\| tile\.title/,
     'the tile takes the owner\'s name for the category')
   const seed = read('src/data/products.js')
   const labels = [...seed.matchAll(/^\s*\{ key: '([a-z-]+)', label: '([^']+)' \}/gm)].map((m) => m[2])

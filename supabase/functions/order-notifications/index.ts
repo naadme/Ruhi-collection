@@ -55,12 +55,13 @@ const SWEEP_LIMIT = 20
  * Orders that still owe somebody a mail.
  *
  * The same two rules the senders use — a settled online order, or a
- * cash-on-delivery order. The second half of the rule ("one of the two mails
- * has not gone yet") is applied here rather than in the query, because
- * PostgREST takes one `or=` per parameter and the two halves have to hold
- * together.
+ * cash-on-delivery order — and one that keeps a cancelled order quiet: a
+ * parcel that is not going out must never be announced as though it were.
+ * The second half of the rule ("one of the two mails has not gone yet") is
+ * applied here rather than in the query, because PostgREST takes one `or=`
+ * per parameter and the two halves have to hold together.
  */
-const PENDING = 'or=(payment_status.eq.paid,payment_method.eq.cod)'
+const PENDING = 'or=(payment_status.eq.paid,payment_method.eq.cod)&status=neq.cancelled'
 
 /** Compare the caller's secret with ours, without leaking its length. */
 function secretMatches(presented: string): boolean {

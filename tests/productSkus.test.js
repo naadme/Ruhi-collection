@@ -130,9 +130,15 @@ test('the admin is shown the SKU and never asked to type one', () => {
   assert.match(list, /\{r\.sku \|\| r\.id\}/, 'and so does each colour row')
 
   const editor = read('src/admin/ProductEditor.jsx')
-  assert.doesNotMatch(editor, /sku/i, 'the editor has no SKU field to fill in')
+  // The editor SHOWS the code — an owner has to be able to read the Product
+  // ID of the colour she is looking at — but never offers a field to type or
+  // change one: the database assigns it and keeps it.
+  assert.match(editor, /v\.original\?\.sku/, 'the editor shows the colour’s own code')
+  assert.doesNotMatch(editor, /onChange\(\{[^}]*sku/i, 'and never writes one back')
+  assert.doesNotMatch(editor, /name="sku"|id="sku"/i, 'there is no SKU input to fill in')
 
   const form = read('src/lib/productForm.js')
+  assert.doesNotMatch(form, /sku/i, 'the form carries no SKU: it is the database’s to assign')
   assert.match(form, /const id = uniqueId\(slug\(buildTitle\(shared\.name, v\.colour\)\), taken\)/,
     'the internal id is still derived automatically when it is not typed')
 })

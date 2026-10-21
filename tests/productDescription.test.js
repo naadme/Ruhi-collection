@@ -13,7 +13,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { designDescription, groupedCards } from '../src/lib/productGrouping.js'
+import { designDescription, groupedCards, shownDescription } from '../src/lib/productGrouping.js'
 import { groupForm } from '../src/lib/productForm.js'
 
 const read = (rel) => readFileSync(path.join(process.cwd(), rel), 'utf8')
@@ -89,4 +89,23 @@ test('the editor and the storefront read the same rule', () => {
   assert.match(form, /designDescription\(rows\)/, 'the editor uses the shared rule')
   assert.match(grouping, /desc: designDescription\(group\)/, 'and so does the storefront')
   assert.match(grouping, /export const designDescription/, 'the rule lives in one place')
+})
+
+test('what the page renders keeps every break and drops only the stray ends', () => {
+  // The owner's paragraphs are hers: two newlines between them must survive,
+  // and so must a line break in the middle of a sentence she typed.
+  assert.equal(
+    shownDescription('First line.\n\nSecond paragraph,\nover two lines.'),
+    'First line.\n\nSecond paragraph,\nover two lines.',
+  )
+  // Only the two things a textarea leaves behind that are not description:
+  // the Windows line ending, and whitespace at the very start and end.
+  assert.equal(shownDescription('  Soft and light.  '), 'Soft and light.')
+  assert.equal(shownDescription('Line one.\r\n\r\nLine two.'), 'Line one.\n\nLine two.')
+  // A description of nothing but spaces is no description at all — the page
+  // then shows the section and no empty paragraph inside it.
+  assert.equal(shownDescription('   \n\t  '), '')
+  assert.equal(shownDescription(''), '')
+  assert.equal(shownDescription(null), '')
+  assert.equal(shownDescription(undefined), '')
 })

@@ -428,6 +428,15 @@ verify_jwt = true
 [functions.google-sheets-callback]
 verify_jwt = false
 
+# The daily sheet sync, called by Vercel's scheduled job (vercel.json →
+# /api/google-sheets-sync) at 06:00. A cron request carries no Supabase JWT —
+# it proves itself with GOOGLE_SHEETS_SYNC_SECRET instead, and the function
+# checks that secret (or the owner's session) before it does anything. Left
+# with the platform default the gateway would refuse the request before the
+# function ever saw it, and the daily catch-up would quietly do nothing.
+[functions.google-sheets-sync]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

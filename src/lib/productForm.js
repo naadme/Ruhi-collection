@@ -163,7 +163,13 @@ export const variantSpace = (shared, variant) => ({
 
 /** The parent fields that really differ from the lead row the form was loaded
  *  from. Only these travel to every colour's row; a parent whose shared
- *  section was not edited sends none of them. */
+ *  section was not edited sends none of them.
+ *
+ *  The description is the design's, not the lead colour's: the editor shows
+ *  the first colour that has one, so a design whose colours drifted apart
+ *  would look saved while the colours that never received the text kept their
+ *  stale copy. `buildPlan` therefore also carries the description when ANY
+ *  colour still disagrees with it. */
 export const sharedUpdate = (lead, shared) => {
   const cur = rowSpace(lead)
   const nxt = sharedSpace(shared)
@@ -328,10 +334,23 @@ export const validateForm = ({ shared, variants, takenIds }) => {
 /** Turn the editor's form into the writes that make the database match it:
  *  inserts for new colours, updates carrying only changed columns, deletes for
  *  colours the client removed. Shared parent fields ride on every update, but
- *  only the ones that actually differ from the lead row. */
+ *  only the ones that actually differ from the lead row.
+ *
+ *  The description is carried whenever ANY colour of the design still holds a
+ *  different one: the editor shows the first colour that has a description, so
+ *  a design whose colours drifted apart would look saved while the colours
+ *  that never received the text kept their stale copy. One design, one
+ *  description. */
 export const buildPlan = ({ shared, variants, takenIds, lead }) => {
   const ids = withIds(shared, variants, takenIds)
   const changedShared = lead ? sharedUpdate(lead, shared) : {}
+  const kept = ids.filter((v) => v.original)
+  if (kept.length && !('description' in changedShared)) {
+    const shown = sharedSpace(shared).description
+    if (kept.some((v) => rowSpace(v.original).description !== shown)) {
+      changedShared.description = shown
+    }
+  }
   const creates = []
   const updates = []
   const deletes = []

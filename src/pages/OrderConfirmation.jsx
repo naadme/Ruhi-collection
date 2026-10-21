@@ -4,6 +4,8 @@ import usePageTitle from '../hooks/usePageTitle'
 import Img from '../components/Img'
 import { loadOrder } from '../lib/orderStore'
 import { inr, totalFor } from '../lib/pricing'
+import { formatShopDateTime } from '../lib/shopTime'
+import { orderLineDetail, orderLineName } from '../lib/orderLine'
 import { site } from '../data/site'
 
 const PACKING = [PackageCheck, 'We start packing', 'Your order is checked and packed at our studio.']
@@ -73,7 +75,10 @@ export default function OrderConfirmation() {
         <h1 className="text-[38px] md:text-[46px] mt-6">Thank you — your order is in</h1>
         <p className="text-[17px] text-black/65 mt-3">
           Reference <b className="font-ui text-black">{order.reference}</b> ·{' '}
-          {new Date(order.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+          {/* The shop's own clock, not the browser's: the Order ID's first six
+              digits are the day IN INDIA, and a customer reading this from
+              abroad must see the same day the reference names. */}
+          {formatShopDateTime(order.created_at)}
         </p>
         <p className="text-[15px] text-black/55 mt-2">Please keep this reference handy if you get in touch.</p>
       </div>
@@ -98,8 +103,11 @@ export default function OrderConfirmation() {
                   <Img src={it.image} alt={it.title} className="w-full h-full object-cover" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <Link to={`/product/${it.product_id}`} className="text-[15px] leading-snug hover:underline line-clamp-2">{it.title}</Link>
-                  <p className="text-[13px] text-black/55 mt-0.5">Size {it.size} · Qty {it.qty}</p>
+                  <Link to={`/product/${it.product_id}`} className="text-[15px] leading-snug hover:underline line-clamp-2">{orderLineName(it.title)}</Link>
+                  {/* The colour and the Product ID the order snapshotted — the
+                      same two facts the confirmation email and the admin's own
+                      order details show for this line. */}
+                  <p className="text-[13px] text-black/55 mt-0.5">{orderLineDetail(it)}</p>
                 </div>
                 <p className="font-ui text-[15px] font-semibold shrink-0">{inr(it.unit_price * it.qty)}</p>
               </li>

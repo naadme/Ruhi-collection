@@ -1,10 +1,14 @@
 import usePageTitle from '../hooks/usePageTitle'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowRight, Loader2, LogOut, Package, ShoppingBag, Heart, AlertTriangle } from 'lucide-react'
+import { ArrowRight, Loader2, LogOut, Package, ShoppingBag, Heart, AlertTriangle, Star } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useProducts } from '../context/ProductsContext'
 import { supabase } from '../lib/supabase'
 import { inr } from '../lib/pricing'
+import { formatShopDateTime, formatShopDate } from '../lib/shopTime'
+import { orderLineDetail, orderLineName } from '../lib/orderLine'
+import { customerStatusCopy, starLabel } from '../lib/reviews'
 import { site } from '../data/site'
 
 const STATUS = {
@@ -65,7 +69,8 @@ function OrderHistory() {
               <div>
                 <p className="font-ui font-semibold text-[16px]">{o.reference}</p>
                 <p className="text-[13px] text-black/55 mt-0.5">
-                  {new Date(o.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                  {/* The shop's own clock: the same day the Order ID names. */}
+                  {formatShopDateTime(o.created_at)}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -75,9 +80,9 @@ function OrderHistory() {
             </div>
             <ul className="mt-3 pt-3 border-t border-black/10 space-y-1.5">
               {(o.order_items || []).map((it) => (
-                <li key={it.id} className="flex justify-between gap-4 text-[15px] text-black/70">
-                  <Link to={`/product/${it.product_id}`} className="hover:underline truncate">{it.title}</Link>
-                  <span className="font-ui shrink-0">Size {it.size} · ×{it.qty} · {inr(it.unit_price * it.qty)}</span>
+                <li key={it.id} className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-[15px] text-black/70">
+                  <Link to={`/product/${it.product_id}`} className="hover:underline truncate max-w-[60%]">{orderLineName(it.title)}</Link>
+                  <span className="font-ui shrink-0">{orderLineDetail(it)} · {inr(it.unit_price * it.qty)}</span>
                 </li>
               ))}
             </ul>
@@ -93,6 +98,68 @@ function OrderHistory() {
         )
       })}
     </ul>
+  )
+}
+
+/* -------------------------------------------------------------------------
+   The customer's own reviews, wherever they stand.
+   The table's policy hands this query only HER rows — no filter is applied
+   here, and none is needed: someone else's review cannot arrive on this page
+   by any route. Nothing is shown at all while there are none, so an account
+   with no reviews looks exactly as it did before the feature existed.
+   ---------------------------------------------------------------------- */
+
+function YourReviews() {
+  const { getRow } = useProducts()
+  const [state, setState] = useState({ loading: true, reviews: [] })
+
+  useEffect(() => {
+    let alive = true
+    supabase
+      .from('product_reviews')
+      .select('id, product_id, rating, body, status, created_at')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (!alive) return
+        // A failure is an absence of this section, not an error in the page:
+        // her orders are loaded separately and must still be shown.
+        setState({ loading: false, reviews: data || [] })
+      })
+    return () => { alive = false }
+  }, [])
+
+  if (state.loading || !state.reviews.length) return null
+
+  return (
+    <>
+      <h2 className="text-[22px] mt-10 mb-4">Your reviews</h2>
+      <ul className="space-y-3">
+        {state.reviews.map((r) => {
+          const product = getRow(r.product_id)
+          const [word, cls] = customerStatusCopy(r.status)
+          return (
+            <li key={r.id} className="border border-black/10 rounded-xl p-4">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <Link
+                  to={`/product/${r.product_id}`}
+                  className="font-ui font-semibold text-[15px] hover:underline truncate max-w-[70%]"
+                >
+                  {product?.title || r.product_id}
+                </Link>
+                <span role="img" aria-label={starLabel(r.rating)} className="inline-flex items-center gap-[1px]">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Star key={n} size={13} strokeWidth={0} fill={n <= Number(r.rating) ? '#f59e0b' : '#e5e5e5'} />
+                  ))}
+                </span>
+                <span className={`rounded-full border px-2 py-[1px] text-[11px] font-medium ${cls}`}>{word}</span>
+                <span className="text-[13px] text-black/45 ml-auto">{formatShopDate(r.created_at)}</span>
+              </div>
+              <p className="text-[15px] leading-6 text-black/70 mt-2 whitespace-pre-line">{r.body}</p>
+            </li>
+          )
+        })}
+      </ul>
+    </>
   )
 }
 
@@ -126,6 +193,8 @@ function SignedIn({ email, onSignOut, busy }) {
 
       <h2 className="text-[22px] mt-10 mb-4">Your orders</h2>
       <OrderHistory />
+
+      <YourReviews />
     </div>
   )
 }

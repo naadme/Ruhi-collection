@@ -50,6 +50,12 @@ as long as you never add a `VITE_` prefix to it.
 | `ORDER_NOTIFICATIONS_SECRET` | Supabase secret | Shared secret between the database and the `order-notifications` Edge Function. The database holds the same value in its own vault |
 | `OWNER_EMAIL` | Supabase secret (optional) | Where the new-order notification goes. Unset ⇒ `ruhicollections2026@gmail.com` |
 | `RAZORPAY_WEBHOOK_SECRET` | Supabase secret | The secret Razorpay signs webhook events with. **Set.** It must be the same value as the webhook's secret in the Razorpay dashboard |
+| `GOOGLE_CLIENT_ID` | Supabase secret | Google OAuth client id for the order sheet (Google Cloud → APIs & Services → Credentials → Web application). Unset ⇒ the sheet panel explains the setup instead of connecting |
+| `GOOGLE_CLIENT_SECRET` | Supabase secret | The matching OAuth client secret |
+| `GOOGLE_TOKEN_KEY` | Supabase secret | A long random string of this project's own: the owner's Google tokens are stored AES-256-GCM encrypted with it, in `google_sheets_connections` (RLS on, no policy — only the service role reads it) |
+| `GOOGLE_ADMIN_URL` | Supabase secret (optional) | The storefront URL Google sends the owner back to. Unset ⇒ `https://www.ruhi-collections.com` |
+| `GOOGLE_SHEETS_SYNC_SECRET` | Supabase secret + Vercel env | Shared secret between Vercel's daily job and the `google-sheets-sync` Edge Function |
+| `SUPABASE_FUNCTIONS_URL` | Vercel env | `https://<ref>.supabase.co` — where the daily job posts to |
 
 The first three are the only ones the frontend can ever see. The rest are
 read inside Edge Functions through `supabase secrets set`.
@@ -233,6 +239,13 @@ pressing "Export"**:
   06:00 UTC) asks the `google-sheets-sync` Edge Function to send anything the
   event-driven path missed, and to update the rows whose status has changed.
 
+A Google call that is refused with a `429` or a `503` is asked again two more
+times, a beat apart — those two answers are given *before* Google carries out
+the request, so retrying them cannot put the same orders in the sheet twice.
+Anything else (a typo'd range, a revoked token, a dropped connection on a
+write) is reported instead of retried, and the next day's run — or the
+**Export** button — is the reliable retry for it.
+
 **No order is ever sent twice.** The ledger `public.order_sheet_exports` has
 one row per (sheet, order) and its primary key is the guard; the ledger row is
 written only after Google has accepted the rows, so a crash in between sends
@@ -265,6 +278,20 @@ vercel env add SUPABASE_FUNCTIONS_URL production --value "https://<ref>.supabase
 
 The function refuses every caller that cannot present either that secret or a
 signed-in store owner's session.
+
+The three Google functions are deployed with the same flags the config file
+records (`supabase/config.toml`) — the sync and the callback take no JWT,
+because a cron and a Google redirect both arrive without one, and each
+proves itself another way:
+
+```bash
+npx supabase functions deploy google-sheets \
+  --project-ref <ref>                      # admin actions: needs the owner's session
+npx supabase functions deploy google-sheets-callback \
+  --project-ref <ref> --no-verify-jwt      # Google's redirect: proves its `state` instead
+npx supabase functions deploy google-sheets-sync \
+  --project-ref <ref> --no-verify-jwt      # the daily job: proves GOOGLE_SHEETS_SYNC_SECRET
+```
 
 ### Google sign-in and restricted product access
 

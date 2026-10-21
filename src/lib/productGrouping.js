@@ -118,6 +118,18 @@ export const designDescription = (rows) => {
 }
 
 /**
+ * The description as the page renders it.
+ *
+ * Line breaks inside the text are the owner's own and survive untouched —
+ * `whitespace-pre-line` on the product page depends on them. Only the two
+ * things a textarea leaves behind that are NOT description are removed: the
+ * Windows line ending, and whitespace at the very start and end. A row whose
+ * description is nothing but spaces then counts as having none at all, and
+ * the page shows an empty block rather than a paragraph that looks broken.
+ */
+export const shownDescription = (value) => String(value ?? '').replace(/\r\n/g, '\n').trim()
+
+/**
  * The badge a design shows.
  *
  * Like the description, the badge belongs to the design — the admin panel

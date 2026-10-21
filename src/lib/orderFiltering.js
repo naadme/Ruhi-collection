@@ -24,12 +24,20 @@ import { shopDayEndExclusive, shopDayStart } from './shopTime.js'
  *  The order's PREVIOUS reference is searched too: orders placed before the
  *  DDMMYYNN format keep their old "RCH-XXXXXXXX" number beside the new one,
  *  and a customer who still has that number written down must be able to find
- *  their order with it. */
+ *  their order with it.
+ *
+ *  The PRODUCTS in the order are searched as well — their title, their
+ *  six-character Product ID, their size and their colour. The owner's most
+ *  common question about a product ("who has ordered this?") is a product
+ *  search, not an order-number one, and it used to need the order id first. */
 export function orderSearchText(order) {
   if (!order) return ''
+  const items = Array.isArray(order.order_items) ? order.order_items : []
+  const goods = items.flatMap((it) => [it?.title, it?.sku, it?.size])
   return [
     order.reference, order.previous_reference, order.full_name, order.email, order.phone, order.city,
     order.state, order.pincode, order.razorpay_order_id, order.razorpay_payment_id,
+    ...goods,
   ].filter(Boolean).join(' ').toLowerCase()
 }
 

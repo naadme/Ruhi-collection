@@ -40,8 +40,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
  * An online order that has not been paid matches neither, so it can never be
  * confirmed: the customer is not told their order is on its way until the
  * money has actually arrived.
+ *
+ * A CANCELLED order is refused outright, whatever its payment says: it owes
+ * its customer an apology, not a "your order is in" mail.
  */
-const CONFIRMABLE = 'or=(payment_status.eq.paid,payment_method.eq.cod)'
+const CONFIRMABLE = 'or=(payment_status.eq.paid,payment_method.eq.cod)&status=neq.cancelled'
 
 export type ConfirmationOutcome =
   | { sent: true; reference: string }

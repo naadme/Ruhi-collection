@@ -100,6 +100,10 @@ export default function BestsellerPanel({ notify, products = [] }) {
   const [original, setOriginal] = useState([])
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  // The catalogue can be bigger than a screenful, so the candidate list shows
+  // the first page and offers the rest — nothing in the catalogue is ever
+  // out of reach behind an arbitrary cut-off.
+  const [showAll, setShowAll] = useState(false)
   // Which designs the owner is looking at: all of them, the ones on the
   // homepage, or the ones switched off.
   const [status, setStatus] = useState('all')
@@ -292,7 +296,15 @@ export default function BestsellerPanel({ notify, products = [] }) {
       ) : (
         <>
           <h2 className="mt-8 text-[18px] font-bold">
-            On the homepage ({chosen.filter((c) => (resolved.find((e) => e.cardId === c.id) || {}).active !== false).length} showing of {chosen.length} chosen, {MAX_BESTSELLERS} at most)
+            On the homepage ({chosen.filter((c, i) => {
+              // "Showing" must mean exactly what the homepage shows: the
+              // design is switched on AND at least one of its colours is
+              // live. A design whose every colour is hidden is dropped by the
+              // storefront, so counting it here would tell the owner she has
+              // four designs in the window while shoppers see three.
+              const entry = resolved.find((e) => e.cardId === c.id)
+              return entry?.active !== false && !availability(c).hidden
+            }).length} showing of {chosen.length} chosen, {MAX_BESTSELLERS} at most)
           </h2>
           <div className="mt-3">
             <StatusFilter value={status} onChange={setStatus} counts={counts} label="Designs" />
@@ -337,7 +349,7 @@ export default function BestsellerPanel({ notify, products = [] }) {
             />
           </div>
           <ul className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {candidates.slice(0, 24).map((card) => (
+            {(showAll ? candidates : candidates.slice(0, 24)).map((card) => (
               <li key={card.id} className="bg-white border border-black/10 rounded-xl p-3 flex gap-3 items-center">
                 <div className="w-[52px] h-[64px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
                   {card.image
@@ -366,6 +378,18 @@ export default function BestsellerPanel({ notify, products = [] }) {
             <p className="mt-3 text-[14px] text-black/45">
               {search ? 'No designs match that search.' : 'Every design is already on the list.'}
             </p>
+          )}
+          {/* The list is long only in a big catalogue, so the first page is
+              shown and the rest is one press away — a design must never be
+              unreachable just because it sorted low. */}
+          {candidates.length > 24 && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-3 text-[13px] font-medium border border-black/40 rounded-lg px-3 h-[36px] hover:bg-black hover:text-white transition"
+            >
+              {showAll ? 'Show fewer designs' : `Show all ${candidates.length} designs`}
+            </button>
           )}
         </>
       )}

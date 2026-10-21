@@ -18,6 +18,7 @@ import CategoriesPanel from './CategoriesPanel'
 import CategoryImagesPanel from './CategoryImagesPanel'
 import BestsellerPanel from './BestsellerPanel'
 import CouponsPanel from './CouponsPanel'
+import ReviewsPanel from './ReviewsPanel'
 
 function Toast({ toast, onClose }) {
   useEffect(() => {
@@ -101,13 +102,15 @@ function Confirm({ title, body, label, busy, onCancel, onConfirm }) {
 }
 
 const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
-// Orders, banners, best sellers and coupons are owner-only surfaces: product
+// Orders, banners, best sellers, coupons and reviews are owner-only surfaces:
+// product
 // managers see only the Products tab, exactly as before. Promoting a design to
-// the homepage is a shop-window decision, not a catalogue edit.
+// the homepage is a shop-window decision, not a catalogue edit — and deciding
+// what the public reads under a product is less still.
 const SECTIONS = [
   ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'],
   ['banners', 'Banners'], ['category-images', 'Category images'],
-  ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'],
+  ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'], ['reviews', 'Reviews'],
 ]
 
 function SectionSwitch({ value, onChange, showOrders }) {
@@ -396,6 +399,7 @@ export default function Dashboard({ showOrders }) {
           {section === 'category-images' && <CategoryImagesPanel notify={notify} />}
           {section === 'bestsellers' && <BestsellerPanel notify={notify} products={all} />}
           {section === 'coupons' && <CouponsPanel notify={notify} />}
+          {section === 'reviews' && <ReviewsPanel notify={notify} products={all} />}
         </div>
         <Toast toast={toast} onClose={() => setToast(null)} />
       </div>

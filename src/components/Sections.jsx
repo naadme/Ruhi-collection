@@ -198,10 +198,15 @@ export const BestSellers = () => {
   // promoted design is indistinguishable from an ordinary catalogue card —
   // and one that has since been deleted or hidden simply drops out.
   const chosen = useMemo(() => resolveBestsellers(picks, products), [picks, products])
+  // The owner has taken charge of this row the moment ANY pick is saved —
+  // including one she has since switched off. Until then the row is derived
+  // from the catalogue exactly as it was before this feature existed, so the
+  // homepage is unchanged by default. What must never happen is the row
+  // quietly filling itself from the catalogue after she switched her own
+  // selection off: that would show designs she did not choose.
+  const ownerHasChosen = Array.isArray(picks) && picks.length > 0
 
-  // No picks saved → the row is derived from the catalogue exactly as it was
-  // before this feature existed, so the homepage is unchanged by default.
-  const items = chosen.length ? chosen : derived
+  const items = ownerHasChosen ? chosen : derived
 
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 pt-14 pb-10">
@@ -210,10 +215,17 @@ export const BestSellers = () => {
         <ProductGrid
           items={items}
           loading={loading && source !== 'database'}
-          empty={{
-            title: 'Nothing here yet',
-            body: 'The catalogue is still loading — please refresh.',
-          }}
+          empty={
+            ownerHasChosen
+              ? {
+                title: 'No best sellers are showing',
+                body: 'Every design you chose is switched off. Switch one back on in Admin → Bestsellers to put it here.',
+              }
+              : {
+                title: 'Nothing here yet',
+                body: 'The catalogue is still loading — please refresh.',
+              }
+          }
         />
       </div>
       <div className="text-center mt-14"><Link to="/shop" className="btn-outline">Shop all products</Link></div>

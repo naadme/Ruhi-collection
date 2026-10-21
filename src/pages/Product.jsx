@@ -1,5 +1,5 @@
 import usePageTitle from '../hooks/usePageTitle'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AlertTriangle, ChevronLeft, Heart, Truck } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
@@ -9,9 +9,12 @@ import { useWishlist } from '../context/WishlistContext'
 import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
 import ProductCard from '../components/ProductCard'
+import ReviewsSection from '../components/ReviewsSection'
 import { inr } from '../lib/pricing'
 import { MAX_QTY } from '../lib/checkout'
-import { variantFor } from '../lib/productGrouping'
+import { shownDescription, variantFor } from '../lib/productGrouping'
+import { fetchPublishedReviews } from '../lib/reviewStore'
+import { reviewSummary, starLabel } from '../lib/reviews'
 
 function Gallery({ product }) {
   const shots = [...new Set(
@@ -70,6 +73,29 @@ export default function Product() {
   useEffect(() => {
     setSize(null); setQty(1); setProblem('')
   }, [id])
+
+  // The published reviews of this design — every colour row it has — read once
+  // and used twice: in the headline rating above the price, and in the list
+  // below the description. Only `status = 'approved'` ever comes back, because
+  // that is all the table's policy lets this page see; a review waiting for
+  // moderation cannot reach here by any route.
+  const reviewIds = useMemo(() => {
+    const rows = p?.colors?.length ? p.colors : p ? [p] : []
+    return [...new Set(rows.map((r) => r?.id).filter(Boolean))]
+  }, [p])
+  const [reviews, setReviews] = useState([])
+  useEffect(() => {
+    let alive = true
+    setReviews([])
+    if (!reviewIds.length) return () => { alive = false }
+    fetchPublishedReviews(reviewIds)
+      .then((rows) => { if (alive) setReviews(rows) })
+      .catch(() => { /* the page is not the reviews */ })
+    return () => { alive = false }
+  }, [reviewIds])
+  // Real reviews win over the numbers typed into the product editor: when
+  // customers have spoken, their average is the honest one to show.
+  const summary = useMemo(() => reviewSummary(reviews), [reviews])
 
   if (!p && loading) {
     return (
@@ -184,14 +210,25 @@ export default function Product() {
           {/* aria-label lives on a <span> so screen readers hear the rating
               instead of five separate "star" glyphs. Ratings and prices the
               client has not supplied yet are not rendered at all: "0.0 (0
-              reviews)" and "₹0" would read as broken rather than unfinished. */}
-          {p.reviews > 0 && (
+              reviews)" and "₹0" would read as broken rather than unfinished.
+              Once real reviews exist they are what the line reports — a number
+              typed into the editor must not overrule what customers said. */}
+          {summary.count > 0 ? (
             <p className="font-ui mt-3 text-sm text-black/70">
-              <span role="img" aria-label={`Rated ${Math.min(p.rating, 5).toFixed(1)} out of 5`}>
-                ★ {Math.min(p.rating, 5).toFixed(1)}
+              <span role="img" aria-label={starLabel(Math.round(summary.average * 10) / 10)}>
+                ★ {Math.min(summary.average, 5).toFixed(1)}
               </span>{' '}
-              <span className="text-black/50">({p.reviews} reviews)</span>
+              <span className="text-black/50">({summary.count} review{summary.count === 1 ? '' : 's'})</span>
             </p>
+          ) : (
+            p.reviews > 0 && (
+              <p className="font-ui mt-3 text-sm text-black/70">
+                <span role="img" aria-label={`Rated ${Math.min(p.rating, 5).toFixed(1)} out of 5`}>
+                  ★ {Math.min(p.rating, 5).toFixed(1)}
+                </span>{' '}
+                <span className="text-black/50">({p.reviews} reviews)</span>
+              </p>
+            )
           )}
 
           {shown.price > 0 && (
@@ -205,6 +242,17 @@ export default function Product() {
               </p>
               <p className="text-black/60 text-sm mt-1">Taxes included.</p>
             </>
+          )}
+
+          {/* The colour's own Product ID — the six-character code the order
+              sheet, the confirmation email and the admin's order details all
+              quote for this exact colour. It follows the colour the shopper
+              has chosen, so the code they read here is the code they will see
+              on their order. */}
+          {String(shown.sku || '').trim() && (
+            <p className="text-[13px] text-black/45 mt-2 font-mono">
+              Product ID <span className="text-black/60">{shown.sku}</span>
+            </p>
           )}
 
           {/* A colour change swaps the URL to the colour's own row so the
@@ -283,9 +331,19 @@ export default function Product() {
             {/* `whitespace-pre-line` is what keeps the paragraph and line
                 breaks an admin typed in the description textarea: without it a
                browser collapses every newline and the text renders as one
-                run-on block. It renders plain text only — no HTML is involved. */}
-            {p.desc && <p className="text-[18px] leading-8 text-black/70 whitespace-pre-line">{p.desc}</p>}
+                run-on block. It renders plain text only — no HTML is involved.
+                `shownDescription` trims only what a textarea leaves at the two
+                ends, so a description of nothing but spaces reads as none at
+                all rather than as an empty paragraph. */}
+            {shownDescription(p.desc) && (
+              <p className="text-[18px] leading-8 text-black/70 whitespace-pre-line">{shownDescription(p.desc)}</p>
+            )}
           </div>
+
+          {/* Approved customer reviews, and the write box for a purchase of
+              this design that has not been reviewed yet. Everything about who
+              may write and what gets shown is decided in the database. */}
+          <ReviewsSection product={p} reviews={reviews} />
         </div>
       </div>
 

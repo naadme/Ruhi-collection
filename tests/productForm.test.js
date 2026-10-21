@@ -229,7 +229,7 @@ test('renaming the product retitles every colour but never touches their ids', (
 
 test('a shared field only travels when the parent actually changed it', () => {
   const black = row('denim-shirt-black', 'Denim Shirt - Black', { desc: 'Shared.', colour: 'Black' })
-  const blue = row('denim-shirt-blue', 'Denim Shirt - Blue', { desc: 'A different note only blue ever had.', colour: 'Blue' })
+  const blue = row('denim-shirt-blue', 'Denim Shirt - Blue', { desc: 'Shared.', colour: 'Blue' })
   const form = groupForm([black, blue], 'tops')
 
   // The parent edits only the description…
@@ -243,9 +243,29 @@ test('a shared field only travels when the parent actually changed it', () => {
   assert.equal(byId[black.id].description, 'Brand new copy.')
   assert.equal(byId[blue.id].description, 'Brand new copy.', 'the whole design gets the new copy')
 
-  // …but when the parent edits nothing, blue’s divergent note survives.
+  // …and when the parent edits nothing, nothing is written at all.
   const untouched = buildPlan({ shared: form.shared, variants: form.variants, takenIds: [black.id, blue.id], lead: black })
   assert.equal(untouched.updates.length, 0)
+})
+
+test('one design has one description, whatever the colours once held', () => {
+  // The description belongs to the DESIGN: the storefront shows the first
+  // colour that has one, and the editor shows that same text. So a design
+  // whose colours had drifted — one colour saved with copy, another with an
+  // older note — must be brought back to one description by a save, or the
+  // owner would see her edit "saved" while half the colours kept the old
+  // words and the page kept showing whichever came first.
+  const black = row('denim-shirt-black', 'Denim Shirt - Black', { desc: 'The current copy.', colour: 'Black' })
+  const blue = row('denim-shirt-blue', 'Denim Shirt - Blue', { desc: 'An older note only blue ever kept.', colour: 'Blue' })
+  const form = groupForm([black, blue], 'tops')
+  // The editor loaded the design's description from the first colour that has
+  // one, so the form shows "The current copy." and blue still disagrees.
+  assert.equal(form.shared.desc, 'The current copy.')
+
+  const plan = buildPlan({ shared: form.shared, variants: form.variants, takenIds: [black.id, blue.id], lead: black })
+  const byId = Object.fromEntries(plan.updates.map((u) => [u.id, u.payload]))
+  assert.equal(byId[black.id], undefined, 'the colour that already had it is left alone')
+  assert.equal(byId[blue.id].description, 'The current copy.', 'the straying colour is brought back')
 })
 
 test('adding and removing colours becomes one insert and one delete', () => {

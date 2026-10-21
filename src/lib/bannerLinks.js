@@ -102,3 +102,43 @@ export function bannerLinkProblem(value) {
   if (/^[a-z][a-z0-9+.-]*:/i.test(link)) return 'Only https:// addresses and paths on this site can be used.'
   return 'That is not a link this site can open. Use a path that starts with /, or a full https:// address.'
 }
+
+/** The image a banner shows: the same shapes as a destination, and only
+ *  formats a browser can actually draw. SVG is deliberately not on the list —
+ *  it is a document that can carry script, and a banner photograph has no
+ *  reason to be one (the upload button offers the same formats). */
+export const BANNER_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif']
+
+/**
+ * Is this a picture the browser can open?
+ *
+ * A banner's photograph is typed or pasted by hand, and a typo used to save
+ * happily and then show a grey box to every visitor — with nothing in the
+ * panel saying so. So the same test a destination gets: a path on this site
+ * or a full https address, ending in a picture's own extension (Google's own
+ * image URLs carry one, and a query string after it is allowed for).
+ */
+export function isBannerImage(value) {
+  const link = String(value ?? '').trim()
+  if (!link) return false
+  if (link.startsWith('/')) return !link.startsWith('//') && endsWithImage(link)
+  if (!/^https:\/\/[^\s]+$/i.test(link)) return false
+  return endsWithImage(link)
+}
+
+function endsWithImage(link) {
+  const path = link.split(/[?#]/)[0].toLowerCase()
+  return BANNER_IMAGE_EXTENSIONS.some((ext) => path.endsWith(`.${ext}`))
+}
+
+/** Empty when the photograph is usable — the same shape as `bannerLinkProblem`. */
+export function bannerImageProblem(value) {
+  if (isBannerImage(value)) return ''
+  const link = String(value ?? '').trim()
+  if (!link) return 'Every banner needs a photograph — upload one, or paste a link to a picture.'
+  if (link.startsWith('//')) return 'That link points at another site. Use a full https:// address, or a path that starts with a single /.'
+  if (/^[a-z][a-z0-9+.-]*:/i.test(link) && !/^https:/i.test(link)) {
+    return 'Only https:// addresses and paths on this site can be used.'
+  }
+  return 'That does not look like a picture. Use an address ending in .jpg, .png, .webp, .gif or .avif.'
+}

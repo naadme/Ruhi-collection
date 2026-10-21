@@ -26,14 +26,20 @@ import StatusFilter from './StatusFilter.jsx'
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear, onToggle }) {
+function CategoryRow({ row, busy, uploading, saved, onUpload, onPick, onClear, onToggle }) {
   const fileRef = useRef(null)
   // The picture the homepage shows for this category RIGHT NOW: the owner's
-  // own choice when there is one, and the site's default photograph when
-  // there is not. The admin always sees the real thing, never a blank box.
-  const shown = row.image || row.defaultImage || ''
-  const isDefault = !row.image
+  // own choice when there is one AND it is switched on, and the site's
+  // default photograph otherwise. A photograph that is switched off is kept
+  // by the category but is not what a visitor sees, so the thumbnail must
+  // not show it either — otherwise the panel would promise a picture the
+  // site is not showing.
   const active = row.is_active !== false
+  const shown = (active && row.image) || row.defaultImage || ''
+  const isDefault = shown !== row.image || !row.image
+  // A photo picked (or uploaded) in this panel is not on the site until the
+  // owner presses Save, and the row has to say so rather than look saved.
+  const unsaved = !saved
   return (
     <li className={`bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start ${active ? '' : 'opacity-70'}`}>
       <div className="w-[120px] h-[120px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
@@ -59,12 +65,17 @@ function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear, onToggle
           }`}>
             {active ? 'Active' : 'Inactive'}
           </span>
+          {unsaved && (
+            <span className="rounded-full border border-amber-300 bg-amber-50 text-amber-800 px-2 py-[1px] text-[11px] font-medium">
+              Not saved yet
+            </span>
+          )}
         </p>
         <p className="text-[12px] text-black/45 font-mono">{row.key}</p>
         <label className="block">
           <span className="sr-only">Photo for {row.label}</span>
           <select
-            value=""
+            value={CATEGORY_IMAGE_OPTIONS.find((o) => o.url === row.image)?.url || ''}
             onChange={(e) => onPick(e.target.value)}
             disabled={busy || uploading}
             className={`${inputCls} h-[40px] text-[13px]`}
@@ -206,9 +217,17 @@ export default function CategoryImagesPanel({ notify }) {
   // What counts as a change: the photograph itself, or whether it is on.
   const changedRows = () => rows.filter((r) => {
     const before = original.find((o) => o.key === r.key)
-    if (!before) return false
+    // A category that appeared while this panel was open (another admin, or
+    // a reload elsewhere) has no "before" to compare against. It is still
+    // shown, so it must still be saveable — otherwise the row would look
+    // right here and never reach the database.
+    if (!before) return Boolean(r.image)
     return r.image !== (before.image || '') || (r.is_active !== false) !== (before.is_active !== false)
   })
+  const dirtyKeys = useMemo(
+    () => new Set(changedRows().map((r) => r.key)),
+    [rows, original],
+  )
 
   const save = async () => {
     const changed = changedRows()
@@ -292,6 +311,7 @@ export default function CategoryImagesPanel({ notify }) {
                 row={row}
                 busy={saving}
                 uploading={uploading === row.key}
+                saved={!dirtyKeys.has(row.key)}
                 onUpload={(f) => upload(row, f)}
                 onPick={(url) => url && setImage(row.key, url)}
                 onClear={() => setImage(row.key, '')}

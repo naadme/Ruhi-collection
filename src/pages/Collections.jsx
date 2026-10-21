@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import Img from '../components/Img'
 import { collectionTiles } from '../data/products'
-import { categoryImage, categoryShopUrl } from '../lib/categoryTiles'
+import { collectionPageTiles } from '../lib/categoryTiles'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import usePageTitle from '../hooks/usePageTitle'
@@ -20,33 +20,13 @@ export default function Collections() {
   // The four launch collections keep their curated copy and photography; a
   // category the client added later gets a tile of its own — its label, a
   // photo from the products it actually holds — so it is reachable here too.
+  //
+  // The whole rule lives in `collectionPageTiles`, so this page and the
+  // homepage can never disagree about a category's name, its photograph or
+  // its link: a photograph the owner has switched OFF is not shown here
+  // either, and a category the client deleted no longer has a tile.
   const { categories } = useCategories()
-  const curated = new Set(collectionTiles.map((c) => c.to))
-  const extra = categories
-    .filter((c) => !curated.has(categoryShopUrl(c.key)))
-    .map((c) => ({
-      title: c.label,
-      text: 'New in this collection',
-      image: categoryImage(c, products),
-      to: categoryShopUrl(c.key),
-    }))
-    .filter((c) => c.image)
-  // The photo the owner chose for a category wins here too, so a change made
-  // in the admin panel is seen on the homepage AND on this page. A category
-  // with no chosen photo keeps the curated photograph below.
-  const byKey = new Map(categories.map((c) => [c.key, c]))
-  const tiles = [
-    ...collectionTiles.map((c) => {
-      const key = new URLSearchParams(c.to.split('?')[1] || '').get('type')
-      const category = byKey.get(key)
-      const chosen = String(category?.image ?? '').trim()
-      // The owner's own name for the category wins, so a rename in the admin
-      // panel is seen here as well — and the same category can never appear
-      // under two different names on two different screens.
-      return { ...c, title: category?.label || c.title, image: chosen || c.image }
-    }),
-    ...extra,
-  ]
+  const tiles = collectionPageTiles(categories, products, collectionTiles)
 
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-14">

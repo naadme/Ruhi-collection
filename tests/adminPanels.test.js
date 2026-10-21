@@ -95,12 +95,19 @@ test('a photograph that is too large is refused with a size the owner can read',
 
 test('the admin sees the photograph the site is actually using', () => {
   const panel = read('src/admin/CategoryImagesPanel.jsx')
-  assert.match(panel, /row\.image \|\| row\.defaultImage/, 'the chosen photo, or the default one')
+  // The owner's photo only when it is switched ON: a photograph the owner has
+  // switched off is kept by the category but is not what a visitor sees, so
+  // the thumbnail must not promise it either.
+  assert.match(panel, /\(active && row\.image\) \|\| row\.defaultImage/,
+    'the chosen photo when it is on, otherwise the one the site shows')
   // The SAME rule the storefront uses — the owner's choice, then the shipped
   // photograph, then the first product photo in that category. A category with
   // products but no photograph of its own must not look empty here.
   assert.match(panel, /categoryImage\(c, products\)/, 'and the default comes from the storefront\'s own rule')
   assert.match(panel, /The site’s default photo/, 'which is said plainly')
+  // A photo picked here is not on the site until Save is pressed, and the row
+  // says so rather than looking published.
+  assert.match(panel, /Not saved yet/, 'an unsaved photograph is marked as unsaved')
 })
 
 test('an upload that the storage refuses is reported, not swallowed', () => {

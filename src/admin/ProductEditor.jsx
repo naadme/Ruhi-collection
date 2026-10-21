@@ -265,12 +265,29 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
             />
             <span className="block text-[12px] text-black/45 mt-1.5">
               {v.original
-                ? 'Locked so existing links keep working.'
+                ? 'The product’s web address — locked so existing links keep working.'
                 : isNewProduct && !String(v.id).trim()
                   ? 'Used in the product URL — filled in automatically.'
                   : 'Used in the product URL — change it only if you know what you’re doing.'}
             </span>
           </label>
+
+          {/* The catalogue code — CCPPCL, e.g. 0101BL — which the database
+              assigns and stamps onto every order line, the sheet and the
+              emails. It is shown, never typed: an owner who wants to check
+              which code a colour carries should not have to open the orders
+              panel to find out. */}
+          <div>
+            <span className={labelCls}>Product code</span>
+            <p className={`${inputCls} mt-1.5 font-mono text-[14px] bg-neutral-100 text-black/60 flex items-center`}>
+              {String(v.original?.sku || '').trim() || '— given when this colour is saved'}
+            </p>
+            <span className="block text-[12px] text-black/45 mt-1.5">
+              The six-character code on order sheets and emails — category, product number and colour
+              (for example <span className="font-mono">0101BL</span>). The database assigns it and keeps it
+              the same across edits; it cannot be typed in.
+            </span>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
@@ -454,7 +471,16 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
   const submit = async (e) => {
     e?.preventDefault?.()
     setError('')
-    const shared = { ...form.shared, name: String(form.shared.name).trim() }
+    const shared = {
+      ...form.shared,
+      name: String(form.shared.name).trim(),
+      // Surrounding whitespace is not description: a textarea that was only
+      // ever pressed Enter into must not store a paragraph that renders as a
+      // blank block. Line breaks INSIDE the text are the owner's own and are
+      // kept exactly — that is what `whitespace-pre-line` on the product page
+      // is there to honour.
+      desc: String(form.shared.desc ?? '').replace(/\r\n/g, '\n').trim(),
+    }
     const variants = withIds(shared, form.variants, takenIds)
     setForm((f) => ({ ...f, shared, variants }))
 
@@ -603,6 +629,25 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
               placeholder="Soft, breathable fabric with a comfortable everyday fit…"
               className="w-full border border-black/30 rounded-lg px-4 py-3 text-[15px] leading-relaxed bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 resize-y"
             />
+            {/* What the shopper will read, drawn with the very same class the
+                product page uses — so a paragraph the owner can see here is a
+                paragraph she will see there, line breaks and all. */}
+            <div className="mt-3">
+              <p className="text-[12px] text-black/45 mb-1.5">Exactly as the product page shows it:</p>
+              {String(form.shared.desc ?? '').trim() ? (
+                <p className="text-[15px] leading-7 text-black/70 whitespace-pre-line border border-dashed border-black/15 rounded-lg px-4 py-3 bg-neutral-50">
+                  {form.shared.desc}
+                </p>
+              ) : (
+                <p className="text-[14px] text-black/35 border border-dashed border-black/15 rounded-lg px-4 py-3 bg-neutral-50">
+                  Nothing yet — the product page shows no description until one is written.
+                </p>
+              )}
+            </div>
+            <span className="block text-[12px] text-black/45 mt-1.5">
+              Line breaks and paragraphs are kept exactly as typed. Plain text only — no HTML is ever
+              rendered, so nothing typed here can affect the rest of the page.
+            </span>
           </Section>
 
           <Section title="Sizes">

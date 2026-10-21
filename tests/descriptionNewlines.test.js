@@ -15,8 +15,10 @@ const EDITOR = read('src/admin/ProductEditor.jsx');
 test('the product page renders the description with whitespace-pre-line', () => {
   // Without this class a browser collapses every newline and a three-paragraph
   // description renders as one run-on block.
-  const line = PRODUCT.split('\n').find((l) => l.includes('{p.desc}'));
+  const line = PRODUCT.split('\n').find((l) => l.includes('whitespace-pre-line') && l.includes('desc'));
   assert.ok(line, 'the description is still rendered from p.desc');
+  assert.match(line, /shownDescription\(p\.desc\)/,
+    'rendered through the rule that trims only what a textarea leaves at the ends');
   assert.match(line, /whitespace-pre-line/,
     'line breaks typed in the admin must survive to the storefront');
 });
@@ -25,7 +27,16 @@ test('the description is rendered as plain text, never as HTML', () => {
   // `whitespace-pre-line` formats text; it does not interpret it. The important
   // guarantee is that no raw HTML is injected.
   assert.doesNotMatch(PRODUCT, /dangerouslySetInnerHTML/);
-  assert.match(PRODUCT, /\{p\.desc\}/, 'the value stays inside a JSX expression, so it is escaped');
+  assert.match(PRODUCT, /shownDescription\(p\.desc\)/, 'the value stays inside a JSX expression, so it is escaped');
+});
+
+test('a description of nothing but spaces is no description at all', () => {
+  // A row saved with whitespace only used to render as an empty paragraph —
+  // a gap on the page where the section looked broken. `shownDescription`
+  // trims the two ends (never the inside, where the owner's breaks live), so
+  // such a row reads as having no description, and nothing is shown.
+  const page = PRODUCT.slice(PRODUCT.indexOf('Description</h2>'))
+  assert.match(page, /shownDescription\(p\.desc\) &&/, 'nothing is rendered when there is nothing to render')
 });
 
 // ---- the admin can actually type those breaks -----------------------------

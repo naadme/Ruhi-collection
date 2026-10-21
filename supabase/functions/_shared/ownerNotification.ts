@@ -36,9 +36,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
  * The orders this module may announce.
  *
  * The same two rules the customer's confirmation uses: a settled online order,
- * or a cash-on-delivery order that has just been placed.
+ * or a cash-on-delivery order that has just been placed — and never a
+ * cancelled one, which is not something to announce to the owner as a sale.
  */
-const ANNOUNCABLE = 'or=(payment_status.eq.paid,payment_method.eq.cod)'
+const ANNOUNCABLE = 'or=(payment_status.eq.paid,payment_method.eq.cod)&status=neq.cancelled'
 
 export type OwnerOutcome =
   | { sent: true; reference: string }

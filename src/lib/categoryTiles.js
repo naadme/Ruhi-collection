@@ -49,6 +49,64 @@ export const categoryImage = (category, products) => {
   return list.find((p) => p?.type === category?.key && p?.image)?.image || null
 }
 
+/**
+ * The tiles the Collections page shows.
+ *
+ * Two rules it follows that the page used to get wrong:
+ *
+ *   * the PHOTOGRAPH goes through `categoryImage`, so a photograph the owner
+ *     has switched OFF is not shown here while every other screen falls back
+ *     — one switch, one answer, on the homepage and on this page alike;
+ *   * the tiles come from the live category list, never from the four launch
+ *     tiles alone: a category the client deleted or renamed can no longer
+ *     appear here under its old name and photograph, and a category added
+ *     later gets a tile of its own.
+ *
+ * The curated four keep their place at the front, and their copy, because
+ * that is the client's own wording for the ranges she launched with.
+ *
+ * `categories` may be empty — before the list arrives, or when Supabase is
+ * unreachable — in which case the curated tiles are shown as they ship, so
+ * the page is never blank while it waits.
+ */
+export const collectionPageTiles = (categories, products, curated) => {
+  const list = Array.isArray(categories) ? categories : []
+  const tiles = Array.isArray(curated) ? curated : []
+  const known = list.length ? new Map(list.map((c) => [c.key, c])) : null
+
+  const leading = tiles
+    .map((tile) => {
+      const key = String(tile.to ?? '').split('?type=')[1] || ''
+      const category = known ? known.get(key) : null
+      // A category that is no longer on the client's list has no tile: the
+      // link would open a shop filter for a category that cannot be chosen
+      // again, and the photograph would be the deleted category's.
+      if (known && !category) return null
+      return {
+        ...tile,
+        key,
+        title: category?.label || tile.title,
+        image: category ? categoryImage(category, products) || tile.image : tile.image,
+        to: categoryShopUrl(key),
+      }
+    })
+    .filter(Boolean)
+
+  const done = new Set(leading.map((t) => t.key))
+  const extra = list
+    .filter((c) => !done.has(c.key))
+    .map((c) => ({
+      key: c.key,
+      title: c.label,
+      text: 'New in this collection',
+      image: categoryImage(c, products),
+      to: categoryShopUrl(c.key),
+    }))
+    .filter((t) => t.image)
+
+  return [...leading, ...extra]
+}
+
 /** One tile per category, with its photo and its link. */
 export const categoryTiles = (categories, products) =>
   (Array.isArray(categories) ? categories : [])

@@ -23,18 +23,62 @@ export const DEFAULT_TAB = 'Orders'
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets'
 const DRIVE_API = 'https://www.googleapis.com/drive/v3/files'
 
-/** One call to Google, with the answer already parsed. */
-export async function googleJson(url, accessToken, init = {}) {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
-  })
-  const body = (await res.json().catch(() => null))
-  return { ok: res.ok, status: res.status, body }
+/** One call to Google, with the answer already parsed.
+ *
+ * Google is a shared service and answers 429 (rate limit) and 503 (a bad
+ * minute) at moments that have nothing to do with the request itself. Those
+ * two are retried, a couple of times, a beat apart — a single failed call
+ * used to cost the whole export until the next day's run.
+ *
+ * A WRITE is only retried when Google has certainly not carried it out: a
+ * 429 or a 503 is answered BEFORE the append happens, so retrying them can
+ * never put the same orders in the sheet twice. A write that fails with a
+ * dropped connection might already have landed, so it is not retried here —
+ * the daily run and the admin's own button pick it up, and the export ledger
+ * is what stops it being written twice.
+ *
+ * `wait` and `attempts` are parameters so the tests can run this without
+ * spending four seconds, and so the rule can be pinned. */
+export const GOOGLE_RETRY_STATUSES = [429, 503]
+export const GOOGLE_MAX_ATTEMPTS = 3
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Is this an answer worth asking Google for again? */
+export function isRetryableGoogleStatus(status) {
+  return GOOGLE_RETRY_STATUSES.includes(Number(status))
+}
+
+export async function googleJson(
+  url,
+  accessToken,
+  init = {},
+  { attempts = GOOGLE_MAX_ATTEMPTS, wait = sleep } = {}) {
+  const isWrite = /^(POST|PUT|PATCH|DELETE)$/i.test(String(init.method || 'GET'))
+  const tries = Math.max(1, Number(attempts) || 1)
+  let last = null
+  for (let attempt = 1; attempt <= tries; attempt += 1) {
+    try {
+      const res = await fetch(url, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          ...(init.headers ?? {}),
+        },
+      })
+      const body = (await res.json().catch(() => null))
+      last = { ok: res.ok, status: res.status, body }
+      // A dropped connection on a READ is worth one more try: nothing was
+      // written, so there is nothing that could happen twice.
+      if (res.ok || !isRetryableGoogleStatus(res.status)) return last
+    } catch (e) {
+      last = { ok: false, status: 0, body: null, network: String(e?.message ?? e) }
+      if (isWrite) return last
+    }
+    if (attempt < tries) await wait(200 * attempt)
+  }
+  return last
 }
 
 /**

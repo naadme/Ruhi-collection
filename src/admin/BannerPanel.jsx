@@ -23,7 +23,7 @@ import { fetchHomeBanners, HOME_HERO_SLOT } from '../lib/banners'
 import { useCategories } from '../context/CategoriesContext'
 import { useProducts } from '../context/ProductsContext'
 import {
-  bannerDestinations, bannerLinkProblem, describeBannerDestination,
+  bannerDestinations, bannerImageProblem, bannerLinkProblem, describeBannerDestination,
 } from '../lib/bannerLinks.js'
 import { countByStatus, filterByStatus } from '../lib/statusFilter.js'
 import StatusFilter from './StatusFilter.jsx'
@@ -32,9 +32,13 @@ const bucket = 'product-images'
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function BannerRow({ row, index, total, busy, uploading, canReorder, onUrl, onLink, onToggle, onMove, onRemove, onUpload }) {
+function BannerRow({ row, index, total, busy, uploading, canReorder, destinations = [], onUrl, onLink, onToggle, onMove, onRemove, onUpload }) {
   const fileRef = useRef(null)
   const problem = bannerLinkProblem(row.link)
+  // A photograph typed or pasted by hand is checked the same way its
+  // destination is: a typo used to save happily and then show a grey box to
+  // every visitor, with nothing here saying so.
+  const imageProblem = bannerImageProblem(row.image)
   const active = row.is_active !== false
   // While a filter is on, the list is a subset of the real order, so the
   // arrows would move a banner past one the owner cannot see. They are
@@ -73,9 +77,11 @@ function BannerRow({ row, index, total, busy, uploading, canReorder, onUrl, onLi
             onChange={(e) => onUrl(e.target.value)}
             placeholder="Image URL (or upload a photo)"
             aria-label={`Image URL for banner ${index + 1}`}
-            className={`${inputCls} h-[40px] pl-8 text-[13px]`}
+            aria-invalid={imageProblem ? 'true' : undefined}
+            className={`${inputCls} h-[40px] pl-8 text-[13px] ${imageProblem ? 'border-red-400' : ''}`}
           />
         </div>
+        {imageProblem && <p className="text-[12px] text-red-700 -mt-2">{imageProblem}</p>}
         <div className="relative">
           <input
             type="text"
@@ -87,6 +93,24 @@ function BannerRow({ row, index, total, busy, uploading, canReorder, onUrl, onLi
             className={`${inputCls} h-[40px] text-[13px] ${problem ? 'border-red-400' : ''}`}
           />
         </div>
+        {/* The same list of destinations, offered per banner and showing the
+            one this banner already has — so the owner can see where each
+            banner goes without reading paths, and change any one of them
+            without the choice being applied to whichever row happens to be
+            first. Anything typed by hand still stands. */}
+        {destinations.length > 0 && (
+          <select
+            value={destinations.some((d) => d.value === row.link) ? row.link : ''}
+            onChange={(e) => e.target.value && onLink(e.target.value)}
+            aria-label={`Choose a destination for banner ${index + 1}`}
+            className={`${inputCls} h-[40px] text-[13px]`}
+          >
+            <option value="">Choose a page, a category or a product…</option>
+            {destinations.map((d) => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
+          </select>
+        )}
         <p className={`text-[12px] ${problem ? 'text-red-700' : 'text-black/45'}`}>
           {problem || describeBannerDestination(row.link)}
         </p>
@@ -246,14 +270,24 @@ export default function BannerPanel({ notify }) {
     [categories, products],
   )
 
-  // Publish the draft: removed banners are deleted, kept ones are re-ordered
-  // and updated, new ones inserted. Every write is checked, then the list is
-  // re-read from the database — the panel always shows what the store holds.
+  // Publish the draft: kept ones are re-ordered and updated, new ones
+  // inserted, and only then are the removed banners deleted.
+  //
+  // The order matters. A delete that lands before the writes is a banner
+  // lost for good if a later write fails; written first, a mid-save failure
+  // leaves the store showing the OLD banners (some of them twice at worst),
+  // which a reload puts right — nothing the owner chose is thrown away
+  // before the replacements are safely in.
   const save = async () => {
     const rows = state.rows
     const empty = rows.some((r) => !String(r.image || '').trim())
     if (empty) {
       notify('error', 'Every banner needs an image — remove the empty entry or upload a photo.')
+      return
+    }
+    const badImage = rows.find((r) => bannerImageProblem(r.image))
+    if (badImage) {
+      notify('error', `One banner’s photograph cannot be used: ${bannerImageProblem(badImage.image)}`)
       return
     }
     const broken = rows.find((r) => bannerLinkProblem(r.link))
@@ -263,12 +297,7 @@ export default function BannerPanel({ notify }) {
     }
     setSaving(true)
     try {
-      const keep = new Set(rows.filter((r) => r.id).map((r) => r.id))
-      for (const b of original) {
-        if (keep.has(b.id)) continue
-        const { error } = await supabase.from('banners').delete().eq('id', b.id)
-        if (error) throw new Error(error.message || 'Could not remove a banner.')
-      }
+      const saved = []
       for (let i = 0; i < rows.length; i += 1) {
         const payload = {
           slot: HOME_HERO_SLOT,
@@ -281,10 +310,20 @@ export default function BannerPanel({ notify }) {
           const { data, error } = await supabase
             .from('banners').update(payload).eq('id', rows[i].id).select('id, image, link, position, is_active').single()
           if (error || !data?.id) throw new Error(error?.message || 'Nothing was saved — your session may have expired.')
+          saved.push(data.id)
         } else {
           const { data, error } = await supabase.from('banners').insert(payload).select('id, image, link, position, is_active').single()
           if (error || !data?.id) throw new Error(error?.message || 'Nothing was saved — your session may have expired.')
+          saved.push(data.id)
         }
+      }
+      // Everything the draft holds is in the database; only now is anything
+      // removed, and only the rows this draft no longer keeps.
+      const keep = new Set(saved)
+      for (const b of original) {
+        if (keep.has(b.id)) continue
+        const { error } = await supabase.from('banners').delete().eq('id', b.id)
+        if (error) throw new Error(error.message || 'Could not remove a banner.')
       }
       await load()
       notify('success', rows.length ? 'Homepage banner saved — it is live on the site now.' : 'Homepage banner cleared — the site shows its default photos again.')
@@ -431,6 +470,7 @@ export default function BannerPanel({ notify }) {
                   busy={saving}
                   uploading={uploading === i}
                   canReorder={status === 'all'}
+                  destinations={destinations}
                   onUrl={(url) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, image: url } : r)))}
                   onLink={(link) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, link } : r)))}
                   onToggle={() => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, is_active: r.is_active === false } : r)))}
@@ -448,33 +488,10 @@ export default function BannerPanel({ notify }) {
             </p>
           )}
 
-          {state.rows.length > 0 && destinations.length > 0 && (
-            <div className="mt-4">
-              <label className="block text-[13px] font-semibold text-black/60">
-                Choose a destination for a banner
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (!value) return
-                    const index = state.rows.findIndex((r) => !String(r.link || '').trim())
-                    const target = index >= 0 ? index : state.rows.length - 1
-                    if (target < 0) return
-                    setRows((rows) => rows.map((r, j) => (j === target ? { ...r, link: value } : r)))
-                  }}
-                  className="mt-2 block w-full max-w-[420px] border border-black/30 rounded-lg px-3 h-[42px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10"
-                >
-                  <option value="">Pick a page, a category or a product…</option>
-                  {destinations.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </select>
-              </label>
-              <p className="mt-2 text-[12px] text-black/45">
-                It is applied to the first banner with no destination of its own, or to the last one. You can
-                also type any path that starts with /.
-              </p>
-            </div>
+          {state.rows.length === 0 && (
+            <p className="mt-4 text-[15px] text-black/55">
+              No banners yet — add one above and it will be the first thing shoppers see.
+            </p>
           )}
         </>
       )}
