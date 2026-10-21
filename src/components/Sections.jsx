@@ -254,6 +254,7 @@ export const Reviews = () => {
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-14">{reviews.map((r) => {
         const p = getProduct(r.product)
         const shown = getVariant(r.product) || p
+        const href = shown ? productHref(shown) : ''
         return (
         <div key={r.name} className="border border-black/10 p-4 hover:shadow-lg transition">
           <Img src={r.img} alt={`Customer wearing ${p ? p.title : 'Ruhi Womens Clothing'}`} className="w-full aspect-[1.1] object-cover" />
@@ -262,8 +263,8 @@ export const Reviews = () => {
           </p>
           <p className="mt-2 text-[22px]"><b className="font-ui">{r.name}</b> <span className="text-black/60 text-[18px] ml-2">✓ Verified Buyer</span></p>
           <p className="text-[18px] leading-[29px] text-black/70 mt-5 pb-4 border-b border-black/10">{r.text}</p>
-          {shown ? (
-            <Link to={productHref(shown)} className="flex gap-4 mt-4 items-center">
+          {href ? (
+            <Link to={href} className="flex gap-4 mt-4 items-center">
               <Img src={shown.image} alt={p ? p.title : shown.title} className="w-[68px] h-[68px] object-cover rounded" />
               <div><p className="text-[17px] leading-6">{p ? p.title : shown.title}</p>{shown.price > 0 && <p className="font-ui font-semibold text-black/60 mt-2">{inr(shown.price)}</p>}</div>
             </Link>

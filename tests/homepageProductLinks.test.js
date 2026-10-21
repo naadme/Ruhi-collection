@@ -118,10 +118,14 @@ test('a product links to its own canonical route', () => {
   assert.equal(productId(card), 'denim-shirt-blue')
 })
 
-test('a product with no id has no page of its own — it never points at another product', () => {
-  assert.equal(productHref({ id: '' }), '/shop')
-  assert.equal(productHref(null), '/shop')
-  assert.equal(productHref(undefined), '/shop')
+test('a product with no id has NO link — it never falls back to the listing page', () => {
+  // The old fallback pointed at "/shop", which is exactly the reported
+  // symptom: a card opened the category/listing page instead of its product.
+  assert.equal(productHref({ id: '' }), '', 'no id, no link')
+  assert.equal(productHref({ id: '   ' }), '', 'a blank id is no id')
+  assert.equal(productHref(null), '', 'no product, no link')
+  assert.equal(productHref(undefined), '', 'no product, no link')
+  assert.equal(productHref({}), '', 'no product, no link')
   assert.equal(productId({}), '')
 })
 

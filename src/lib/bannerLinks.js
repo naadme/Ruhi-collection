@@ -40,8 +40,11 @@ export function bannerDestinations(categories, products) {
     .map((c) => ({ value: `/shop?type=${c.key}`, label: `${c.label} (category)` }))
   // The product's own route — the same one the shop card and the search
   // result use (src/lib/productLinks.js), so a banner can never point at a
-  // different product than the shop shows.
-  const items = groupedCards(products || []).map((p) => ({ value: productHref(p), label: `${p.title} (product)` }))
+  // different product than the shop shows. A product with no id has no page
+  // of its own and is never offered as a destination.
+  const items = groupedCards(products || [])
+    .filter((p) => p.id)
+    .map((p) => ({ value: productHref(p), label: `${p.title} (product)` }))
   return [...SITE_DESTINATIONS, ...cats, ...items]
 }
 

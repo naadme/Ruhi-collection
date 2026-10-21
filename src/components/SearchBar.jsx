@@ -24,9 +24,10 @@ export default function SearchBar({ onClose }) {
   // Same matching rule as the results page (src/lib/productSearch.js), so the
   // header and the shop can never disagree about what a word finds. The live
   // list is taken from the WHOLE catalogue: a search never looks at one
-  // category or one size only.
+  // category or one size only. A product with no id has no page of its own,
+  // so it is never offered as a result.
   const res = term
-    ? products.filter((p) => matchesProduct(p, term, typeLabel)).slice(0, 6)
+    ? products.filter((p) => p.id && matchesProduct(p, term, typeLabel)).slice(0, 6)
     : []
 
   // A submitted search goes to the shop page on its own: the category filter
