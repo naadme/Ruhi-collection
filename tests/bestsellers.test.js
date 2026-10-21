@@ -237,7 +237,7 @@ test('duplicate picks collapse to one card and only the first slot is reported',
 test('the panel reorders and removes by CARD, never by a rendered array index', () => {
   assert.match(PANEL, /const move = \(cardId, dir\)/, 'move takes the card id');
   assert.match(PANEL, /const remove = \(cardId\)/, 'remove takes the card id');
-  assert.match(PANEL, /onMove=\{\(dir\) => move\(card\.id, dir\)\}/,
+  assert.match(PANEL, /onMove=\{\(dir\) => move\(entry\.card\.id, dir\)\}/,
     'the arrow passes the card it is rendered on, not its position');
   // Both must resolve from the state they are about to write, so two quick
   // clicks cannot act on positions computed before the first one landed.

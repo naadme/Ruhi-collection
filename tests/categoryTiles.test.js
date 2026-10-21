@@ -170,8 +170,10 @@ test('the same category is never shown under two different names', () => {
 
 test('the admin panel can change a category photo, and the storefront reads it', () => {
   const lib = read('src/lib/categoryImageStore.js')
-  assert.match(lib, /from\('categories'\)[\s\S]*?\.update\(\{ image: value \}\)[\s\S]*?\.eq\('key', key\)/,
+  assert.match(lib, /from\('categories'\)[\s\S]*?\.update\(payload\)[\s\S]*?\.eq\('key', key\)/,
     'the photo is written to the category row itself')
+  assert.match(lib, /payload\.image_active = isActive !== false/,
+    'and so is whether that photo is the one the site shows')
   const rules = read('src/lib/categoryImages.js')
   assert.match(rules, /CATEGORY_IMAGE_BUCKET = 'product-images'/, 'in the existing image storage')
 

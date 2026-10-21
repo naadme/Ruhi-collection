@@ -57,14 +57,39 @@ export const uploadCategoryImage = async (file) => {
  * Save the photo for one category. An empty value means "use the site's
  * default photograph for this category" — the storefront then falls back to
  * the picture it has always used.
+ *
+ * `isActive` says whether the category's own photograph is the one the site
+ * shows. It is left out of the write when it is not given, so a caller that
+ * only wants to change the picture cannot accidentally switch the picture
+ * off (or back on) by accident.
  */
-export const saveCategoryImage = async (key, image) => {
+export const saveCategoryImage = async (key, image, isActive) => {
   const value = String(image ?? '').trim() || null
+  const payload = { image: value }
+  if (isActive !== undefined) payload.image_active = isActive !== false
   const { data, error } = await supabase
     .from('categories')
-    .update({ image: value })
+    .update(payload)
     .eq('key', key)
-    .select('key, label, image')
+    .select('key, label, image, image_active')
+    .single()
+  if (error || !data?.key) {
+    throw new Error(error?.message || 'Nothing was saved — your session may have expired.')
+  }
+  return data
+}
+
+/**
+ * Switch one category's photograph on or off, leaving the photograph itself
+ * exactly as it is. The category keeps its name, its products and its place
+ * in the navigation; only the picture the site shows for it changes.
+ */
+export const setCategoryImageActive = async (key, isActive) => {
+  const { data, error } = await supabase
+    .from('categories')
+    .update({ image_active: isActive !== false })
+    .eq('key', key)
+    .select('key, label, image, image_active')
     .single()
   if (error || !data?.key) {
     throw new Error(error?.message || 'Nothing was saved — your session may have expired.')

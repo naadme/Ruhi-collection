@@ -1,6 +1,11 @@
 // Category management for the admin — the surface for adding, renaming and
 // deleting the categories the whole storefront lists.
 //
+// It is used in two places:
+//
+//   * the dashboard's own "Categories" section, where it stands on its own;
+//   * the product editor, where it opens as a MODAL.
+//
 // It used to be a 13px underlined text link that opened a panel INSIDE the
 // product editor's <form>. Two things were wrong with that:
 //
@@ -11,9 +16,9 @@
 //      button, also ran the product editor's own submit and saved (or refused
 //      to save) the product the owner was part-way through editing.
 //
-// The panel is therefore a MODAL, portalled straight to document.body so it
-// is not a descendant of the product form at all: the two submit paths can no
-// longer meet, and the category controls get a full, readable layout.
+// The modal is therefore portalled straight to document.body so it is not a
+// descendant of the product form at all: the two submit paths can no longer
+// meet, and the category controls get a full, readable layout.
 //
 // Design rules, all of them enforced in src/lib/categories.js and, for the
 // last one, by the database itself (`products_type_fkey`, ON DELETE RESTRICT):
@@ -25,8 +30,9 @@
 //  * RENAMING changes the label only — the key, and therefore every product's
 //    `type`, is untouched, so a rename can never detach a product.
 //  * DELETING is refused while any product still uses the category. The count
-//    shown is what the refusal is based on, and the database refuses the same
-//    delete independently if the count is stale.
+//    is shown, the refusal is spelled out, and the database refuses the same
+//    delete independently if the count is stale. Nothing is ever deleted to
+//    make a delete succeed.
 //
 // Product managers can PICK a category but not create or rename or delete
 // one: `categories` writes are gated on is_admin(), so the UI hides what the
@@ -42,8 +48,13 @@ const inputCls =
 const btnCls =
   'inline-flex items-center gap-1.5 text-[13px] font-medium border border-black/60 rounded-lg px-3 h-[40px] hover:bg-black hover:text-white transition disabled:opacity-55'
 
-export default function CategoryManager({ categories, onSaved }) {
-  const [open, setOpen] = useState(false)
+/**
+ * The category manager itself — the create form, the list, the messages.
+ *
+ * It is a plain component so it can stand on its own in the dashboard's
+ * "Categories" section as well as inside the product editor's modal.
+ */
+export function CategoryManagerPanel({ categories = [], onSaved, onCancel, autoFocus = false }) {
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState('')          // '' | 'add' | key being edited
   const [note, setNote] = useState(null)        // { kind: 'ok' | 'err', text }
@@ -52,6 +63,16 @@ export default function CategoryManager({ categories, onSaved }) {
   const [draft, setDraft] = useState('')
   const [armed, setArmed] = useState('')        // key awaiting a second click
   const nameInput = useRef(null)
+
+  // When the panel is opened as a modal, the name box takes the focus — it is
+  // the one thing the panel is opened for. It is left alone when the panel
+  // stands on its own, so loading a page never moves the caret somewhere the
+  // owner did not ask for.
+  useEffect(() => {
+    if (!autoFocus) return
+    const t = setTimeout(() => nameInput.current?.focus(), 0)
+    return () => clearTimeout(t)
+  }, [autoFocus])
 
   const loadUsage = useCallback(async () => {
     try {
@@ -62,28 +83,8 @@ export default function CategoryManager({ categories, onSaved }) {
   }, [])
 
   useEffect(() => {
-    if (open) loadUsage()
-  }, [open, loadUsage])
-
-  // A modal the owner cannot dismiss with Escape or the backdrop would be a
-  // trap, so both close it — and focus lands in the name box, which is the one
-  // thing the panel is opened for.
-  useEffect(() => {
-    if (!open) return undefined
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
-    document.addEventListener('keydown', onKey)
-    const t = setTimeout(() => nameInput.current?.focus(), 0)
-    return () => { document.removeEventListener('keydown', onKey); clearTimeout(t) }
-  }, [open])
-
-  const close = () => {
-    setOpen(false)
-    setNote(null)
-    setArmed('')
-    setRenaming('')
-    setLabel('')
-    setBusy('')
-  }
+    loadUsage()
+  }, [loadUsage])
 
   const fail = (e) => setNote({ kind: 'err', text: e?.message || 'Something went wrong. Please try again.' })
   const done = (text) => setNote({ kind: 'ok', text })
@@ -99,7 +100,10 @@ export default function CategoryManager({ categories, onSaved }) {
     try {
       const row = await createCategory(label)
       setLabel('')
-      done(`“${row.label}” added — it is already selectable for this product.`)
+      done(
+        `“${row.label}” added — it is on the site now and is selectable for this product.`
+        + (row.code ? ` It was given the Product ID code ${row.code}.` : ''),
+      )
       await onSaved?.(row)
       loadUsage()
     } catch (err) {
@@ -125,10 +129,30 @@ export default function CategoryManager({ categories, onSaved }) {
     }
   }
 
+  // Nothing may be deleted on a guess. A category that still holds products
+  // is refused here, in plain words, before any delete is attempted — and the
+  // database refuses the same delete independently, so a stale count can never
+  // orphan a product or touch an order.
   const remove = async (c) => {
+    const n = usage ? Number(usage.get(c.key) || 0) : null
+    if (n === null) {
+      setNote({
+        kind: 'err',
+        text: 'Could not check how many products use this category, so it was not deleted. Please try again in a moment.',
+      })
+      return
+    }
+    if (n > 0) {
+      setNote({
+        kind: 'err',
+        text: `“${c.label}” still holds ${n} ${n === 1 ? 'product' : 'products'}, so it was not deleted. `
+          + 'Move them to another category first — no product and no order was touched.',
+      })
+      return
+    }
     if (armed !== c.key) {
       setArmed(c.key)
-      setNote({ kind: 'ok', text: `Click delete again to remove “${c.label}”.` })
+      setNote({ kind: 'ok', text: `Click delete again to remove “${c.label}”. It is empty, so nothing will be lost.` })
       return
     }
     setArmed('')
@@ -136,7 +160,7 @@ export default function CategoryManager({ categories, onSaved }) {
     setBusy(c.key)
     try {
       await deleteCategory(c.key, usage)
-      done(`“${c.label}” deleted.`)
+      done(`“${c.label}” deleted. It is off the site now — the photograph it used was kept in the image storage.`)
       await onSaved?.()
       loadUsage()
     } catch (err) {
@@ -147,14 +171,149 @@ export default function CategoryManager({ categories, onSaved }) {
   }
 
   // Nothing may be deleted on a guess. Until the real counts are known — or
-  // if the read that fetches them failed — every Delete stays disabled rather
-  // than appearing to work and then being refused by the database.
+  // if the read that fetches them failed — the count is shown as unknown and
+  // the refusal is explained, rather than the delete appearing to work and
+  // then being refused by the database.
   const countsKnown = usage !== null
+
+  return (
+    <div className="space-y-4">
+      {/* ---- create ---- */}
+      <form onSubmit={add} onClick={(e) => e.stopPropagation()} className="flex flex-wrap gap-2 items-center">
+        <input
+          ref={nameInput}
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="New category name, e.g. Kurtis"
+          aria-label="New category name"
+          className={`${inputCls} flex-1 min-w-[200px]`}
+        />
+        <button type="submit" disabled={busy === 'add' || !label.trim()} className={btnCls}>
+          {busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={() => { setLabel(''); onCancel?.() }}
+          className={btnCls}
+        >
+          <X size={14} aria-hidden="true" /> Cancel
+        </button>
+      </form>
+
+      {note && (
+        <p
+          role={note.kind === 'err' ? 'alert' : 'status'}
+          className={`text-[13px] ${note.kind === 'err' ? 'text-red-600' : 'text-green-700'}`}
+        >
+          {note.text}
+        </p>
+      )}
+
+      {/* ---- existing ---- */}
+      <ul className="divide-y divide-black/10 border-t border-black/10">
+        {categories.map((c) => {
+          const n = usage ? (usage.get(c.key) || 0) : null
+          const inUse = Number(n) > 0
+          return (
+            <li key={c.key} className="py-3 flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1 basis-[14rem]">
+                {renaming === c.key ? (
+                  <div className="flex gap-2">
+                    <input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      aria-label={`New name for ${c.label}`}
+                      className={`${inputCls} h-[38px]`}
+                    />
+                    <button type="button" onClick={() => rename(c.key)} disabled={busy === c.key} className={btnCls}>
+                      {busy === c.key ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save
+                    </button>
+                    <button type="button" onClick={() => setRenaming('')} className={btnCls} aria-label="Cancel rename">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[15px] font-medium truncate">{c.label}</p>
+                    <p className="text-[12px] text-black/45 font-mono">
+                      {c.key}
+                      {c.code ? ` · ${c.code}` : ''}
+                      {n === null ? '' : ` · ${n} ${n === 1 ? 'product' : 'products'}`}
+                    </p>
+                  </>
+                )}
+              </div>
+              {renaming !== c.key && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => { setRenaming(c.key); setDraft(c.label); setArmed(''); setNote(null) }}
+                    className={btnCls}
+                  >
+                    <Pencil size={13} /> Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(c)}
+                    disabled={busy === c.key}
+                    title={inUse
+                      ? `${n} ${n === 1 ? 'product is' : 'products are'} still in this category — move them first`
+                      : !countsKnown
+                        ? 'Still checking how many products use each category — try again in a moment'
+                        : 'Delete this category'}
+                    className={`${btnCls} ${armed === c.key ? '!border-red-600 !bg-red-600 !text-white' : '!border-black/25 !text-black/50 hover:!text-red-600 hover:!border-red-300'}`}
+                  >
+                    {busy === c.key ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    {armed === c.key ? 'Confirm delete' : 'Delete'}
+                  </button>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+
+      {!categories.length && (
+        <p className="text-[14px] text-black/55">
+          No categories yet — type a name above to add the first one.
+        </p>
+      )}
+
+      <p className="text-[12px] text-black/45 flex items-start gap-1.5">
+        <AlertTriangle size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
+        <span>
+          A new category is on the site straight away — it needs no code change and no redeployment, and it is given
+          its own Product ID code so the products in it are numbered properly. Renaming keeps every product where it
+          is — only the name shoppers see changes. A category with products in it cannot be deleted; move those
+          products to another category first.
+          {!countsKnown && ' Product counts are unavailable right now, so nothing can be deleted until they load.'}
+        </span>
+      </p>
+    </div>
+  )
+}
+
+/** The button that opens the manager as a modal, and the modal itself. */
+export default function CategoryManager({ categories, onSaved }) {
+  const [open, setOpen] = useState(false)
+
+  // A modal the owner cannot dismiss with Escape or the backdrop would be a
+  // trap, so both close it — and focus lands in the name box, which is the one
+  // thing the panel is opened for.
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open])
+
+  const close = () => setOpen(false)
 
   const trigger = (
     <button
       type="button"
-      onClick={() => { setOpen(true); setNote(null); setArmed(''); setRenaming('') }}
+      onClick={() => { setOpen(true) }}
       className="mt-2 inline-flex items-center gap-1.5 h-[38px] px-3 rounded-lg border border-black/60 text-[13px] font-medium hover:bg-black hover:text-white transition"
     >
       <Plus size={14} aria-hidden="true" /> Add category
@@ -187,105 +346,13 @@ export default function CategoryManager({ categories, onSaved }) {
           </button>
         </div>
 
-        {/* ---- create ---- */}
-        <form onSubmit={add} onClick={(e) => e.stopPropagation()} className="flex flex-wrap gap-2 items-center">
-          <input
-            ref={nameInput}
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="New category name, e.g. Kurtis"
-            aria-label="New category name"
-            className={`${inputCls} flex-1 min-w-[200px]`}
-          />
-          <button type="submit" disabled={busy === 'add' || !label.trim()} className={btnCls}>
-            {busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-            Save
-          </button>
+        <CategoryManagerPanel categories={categories} onSaved={onSaved} onCancel={close} autoFocus />
+
+        <div className="flex justify-end">
           <button type="button" onClick={close} className={btnCls}>
-            <X size={14} aria-hidden="true" /> Cancel
+            <X size={14} aria-hidden="true" /> Close
           </button>
-        </form>
-
-        {note && (
-          <p
-            role={note.kind === 'err' ? 'alert' : 'status'}
-            className={`text-[13px] ${note.kind === 'err' ? 'text-red-600' : 'text-green-700'}`}
-          >
-            {note.text}
-          </p>
-        )}
-
-        {/* ---- existing ---- */}
-        <ul className="divide-y divide-black/10 border-t border-black/10">
-          {categories.map((c) => {
-            const n = usage ? (usage.get(c.key) || 0) : null
-            const inUse = Number(n) > 0
-            return (
-              <li key={c.key} className="py-3 flex flex-wrap items-center gap-3">
-                <div className="min-w-0 flex-1 basis-[14rem]">
-                  {renaming === c.key ? (
-                    <div className="flex gap-2">
-                      <input
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        aria-label={`New name for ${c.label}`}
-                        className={`${inputCls} h-[38px]`}
-                      />
-                      <button type="button" onClick={() => rename(c.key)} disabled={busy === c.key} className={btnCls}>
-                        {busy === c.key ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save
-                      </button>
-                      <button type="button" onClick={() => setRenaming('')} className={btnCls} aria-label="Cancel rename">
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-[15px] font-medium truncate">{c.label}</p>
-                      <p className="text-[12px] text-black/45 font-mono">
-                        {c.key}
-                        {n === null ? '' : ` · ${n} ${n === 1 ? 'product' : 'products'}`}
-                      </p>
-                    </>
-                  )}
-                </div>
-                {renaming !== c.key && (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => { setRenaming(c.key); setDraft(c.label); setArmed(''); setNote(null) }}
-                      className={btnCls}
-                    >
-                      <Pencil size={13} /> Rename
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => remove(c)}
-                      disabled={busy === c.key || inUse || !countsKnown}
-                      title={inUse
-                        ? `${n} ${n === 1 ? 'product is' : 'products are'} still in this category — move them first`
-                        : !countsKnown
-                          ? 'Still checking how many products use each category — try again in a moment'
-                          : 'Delete this category'}
-                      className={`${btnCls} ${armed === c.key ? '!border-red-600 !bg-red-600 !text-white' : '!border-black/25 !text-black/50 hover:!text-red-600 hover:!border-red-300'}`}
-                    >
-                      {busy === c.key ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                      {armed === c.key ? 'Confirm delete' : 'Delete'}
-                    </button>
-                  </div>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-
-        <p className="text-[12px] text-black/45 flex items-start gap-1.5">
-          <AlertTriangle size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
-          <span>
-            Renaming keeps every product where it is — only the name shoppers see changes. A category with
-            products in it cannot be deleted; move those products to another category first.
-            {!countsKnown && ' Product counts are unavailable right now, so nothing can be deleted until they load.'}
-          </span>
-        </p>
+        </div>
       </div>
     </div>,
     document.body,

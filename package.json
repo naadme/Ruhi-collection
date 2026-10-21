@@ -12,7 +12,11 @@
     "audit:banners": "node scripts/audit-banner-destinations.mjs",
     "audit:orders": "node scripts/audit-order-details.mjs",
     "audit:search": "node scripts/audit-colour-search.mjs",
-    "audit:dates": "node scripts/audit-order-dates.mjs"
+    "audit:dates": "node scripts/audit-order-dates.mjs",
+    "audit:filters": "node scripts/audit-status-filters.mjs",
+    "audit:categories": "node scripts/audit-category-manager.mjs",
+    "audit:storefront": "node scripts/audit-category-storefront.mjs",
+    "audit:lifecycle": "node scripts/audit-category-lifecycle.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

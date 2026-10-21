@@ -14,6 +14,7 @@ import ProductEditor from './ProductEditor'
 import { ProductRow, GroupCard } from './ProductList'
 import OrdersPanel from './OrdersPanel'
 import BannerPanel from './BannerPanel'
+import CategoriesPanel from './CategoriesPanel'
 import CategoryImagesPanel from './CategoryImagesPanel'
 import BestsellerPanel from './BestsellerPanel'
 import CouponsPanel from './CouponsPanel'
@@ -104,9 +105,9 @@ const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
 // managers see only the Products tab, exactly as before. Promoting a design to
 // the homepage is a shop-window decision, not a catalogue edit.
 const SECTIONS = [
-  ['products', 'Products'], ['orders', 'Orders'], ['banners', 'Banners'],
-  ['category-images', 'Category images'], ['bestsellers', 'Bestsellers'],
-  ['coupons', 'Coupons'],
+  ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'],
+  ['banners', 'Banners'], ['category-images', 'Category images'],
+  ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'],
 ]
 
 function SectionSwitch({ value, onChange, showOrders }) {
@@ -114,7 +115,7 @@ function SectionSwitch({ value, onChange, showOrders }) {
     <div
       role="tablist"
       aria-label="Dashboard sections"
-      className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit"
+      className="flex flex-wrap items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit"
     >
       {SECTIONS.filter(([k]) => k === 'products' || showOrders).map(([k, label]) => (
         <button
@@ -390,6 +391,7 @@ export default function Dashboard({ showOrders }) {
         <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'orders' && <OrdersPanel notify={notify} />}
+          {section === 'categories' && <CategoriesPanel notify={notify} />}
           {section === 'banners' && <BannerPanel notify={notify} />}
           {section === 'category-images' && <CategoryImagesPanel notify={notify} />}
           {section === 'bestsellers' && <BestsellerPanel notify={notify} products={all} />}

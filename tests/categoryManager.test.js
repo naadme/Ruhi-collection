@@ -23,7 +23,7 @@ test('the trigger is a properly sized button, not an underline', () => {
   assert.match(MANAGER, /<Plus size=\{14\} aria-hidden="true" \/> Add category/, 'labelled and iconed')
   assert.match(MANAGER, /h-\[38px\] px-3 rounded-lg border/, 'a real, hit-able control')
   assert.doesNotMatch(MANAGER, /underline underline-offset-2/, 'the 13px underlined text link is gone')
-  assert.match(MANAGER, /type="button"\n\s*onClick=\{\(\) => \{ setOpen\(true\)/,
+  assert.match(MANAGER, /type="button"\n\s*onClick=\{\(\) => \{ setOpen\(true\) \}\}/,
     'a button, so it can never submit the product form it sits inside')
 })
 

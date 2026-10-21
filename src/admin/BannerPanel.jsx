@@ -25,15 +25,21 @@ import { useProducts } from '../context/ProductsContext'
 import {
   bannerDestinations, bannerLinkProblem, describeBannerDestination,
 } from '../lib/bannerLinks.js'
+import { countByStatus, filterByStatus } from '../lib/statusFilter.js'
+import StatusFilter from './StatusFilter.jsx'
 
 const bucket = 'product-images'
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function BannerRow({ row, index, total, busy, uploading, onUrl, onLink, onToggle, onMove, onRemove, onUpload }) {
+function BannerRow({ row, index, total, busy, uploading, canReorder, onUrl, onLink, onToggle, onMove, onRemove, onUpload }) {
   const fileRef = useRef(null)
   const problem = bannerLinkProblem(row.link)
   const active = row.is_active !== false
+  // While a filter is on, the list is a subset of the real order, so the
+  // arrows would move a banner past one the owner cannot see. They are
+  // switched off rather than made to act on the wrong row.
+  const reorderable = canReorder !== false
   return (
     <li className={`bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start ${active ? '' : 'opacity-70'}`}>
       <div className="w-[120px] h-[80px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
@@ -119,7 +125,8 @@ function BannerRow({ row, index, total, busy, uploading, onUrl, onLink, onToggle
         <button
           type="button"
           onClick={() => onMove(-1)}
-          disabled={index === 0 || busy}
+          disabled={index === 0 || busy || !reorderable}
+          title={reorderable ? 'Move this banner earlier' : 'Switch the filter to All to reorder the banners'}
           aria-label={`Move banner ${index + 1} up`}
           className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
         >
@@ -128,7 +135,8 @@ function BannerRow({ row, index, total, busy, uploading, onUrl, onLink, onToggle
         <button
           type="button"
           onClick={() => onMove(1)}
-          disabled={index === total - 1 || busy}
+          disabled={index === total - 1 || busy || !reorderable}
+          title={reorderable ? 'Move this banner later' : 'Switch the filter to All to reorder the banners'}
           aria-label={`Move banner ${index + 1} down`}
           className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
         >
@@ -153,6 +161,9 @@ export default function BannerPanel({ notify }) {
   const [original, setOriginal] = useState([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(-1)
+  // Which banners the owner is looking at: all of them, the ones on the
+  // homepage, or the ones switched off.
+  const [status, setStatus] = useState('all')
   const addRef = useRef(null)
   const { categories } = useCategories()
   const { products } = useProducts()
@@ -294,6 +305,13 @@ export default function BannerPanel({ notify }) {
   // The banners the site is showing right now, in the order it shows them.
   const live = state.rows.filter((r) => r.is_active !== false)
 
+  // The filter shows a subset of the banners; it never changes them. The
+  // order, the photograph and the destination of every banner are exactly as
+  // they were, and a banner keeps its place in that order whether it is
+  // switched on or off.
+  const counts = useMemo(() => countByStatus(state.rows), [state.rows])
+  const shown = useMemo(() => filterByStatus(state.rows, status), [state.rows, status])
+
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -391,27 +409,44 @@ export default function BannerPanel({ notify }) {
         </ul>
       ) : (
         <>
+          <div className="mt-6">
+            <StatusFilter value={status} onChange={setStatus} counts={counts} label="Banners" />
+          </div>
+
           {/* The destination of each banner is chosen from the shop's own
               pages, its categories and its products — so a banner can point at
               the product it shows without anyone having to type a URL. */}
-          <ul className="mt-6 space-y-3">
-            {state.rows.map((row, i) => (
-              <BannerRow
-                key={row.id || `new-${i}`}
-                row={row}
-                index={i}
-                total={state.rows.length}
-                busy={saving}
-                uploading={uploading === i}
-                onUrl={(url) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, image: url } : r)))}
-                onLink={(link) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, link } : r)))}
-                onToggle={() => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, is_active: r.is_active === false } : r)))}
-                onMove={(dir) => move(i, dir)}
-                onRemove={() => removeAt(i)}
-                onUpload={(f) => replaceAt(i, f)}
-              />
-            ))}
+          <ul className="mt-4 space-y-3">
+            {shown.map((row) => {
+              // The TRUE position of this banner in the list, so the number it
+              // carries and the arrows it has are the ones it really has —
+              // even when a filter hides the banners in between.
+              const i = state.rows.indexOf(row)
+              return (
+                <BannerRow
+                  key={row.id || `new-${i}`}
+                  row={row}
+                  index={i}
+                  total={state.rows.length}
+                  busy={saving}
+                  uploading={uploading === i}
+                  canReorder={status === 'all'}
+                  onUrl={(url) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, image: url } : r)))}
+                  onLink={(link) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, link } : r)))}
+                  onToggle={() => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, is_active: r.is_active === false } : r)))}
+                  onMove={(dir) => move(i, dir)}
+                  onRemove={() => removeAt(i)}
+                  onUpload={(f) => replaceAt(i, f)}
+                />
+              )
+            })}
           </ul>
+
+          {!shown.length && state.rows.length > 0 && (
+            <p className="mt-4 text-[15px] text-black/55">
+              No banners in this state — switch the filter to All to see every banner.
+            </p>
+          )}
 
           {state.rows.length > 0 && destinations.length > 0 && (
             <div className="mt-4">

@@ -12,27 +12,30 @@
 // loading and error states — and the chosen picture is written to the
 // `categories` row, which only an admin can write (the table's own RLS).
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Loader2, Trash2, Upload } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Eye, EyeOff, Loader2, Trash2, Upload } from 'lucide-react'
 import { useCategories } from '../context/CategoriesContext'
 import { useProducts } from '../context/ProductsContext'
 import { fetchCategories } from '../lib/categories'
 import { CATEGORY_IMAGE_OPTIONS, validateCategoryImage } from '../lib/categoryImages'
 import { saveCategoryImage, uploadCategoryImage } from '../lib/categoryImageStore'
 import { categoryImage } from '../lib/categoryTiles.js'
+import { countByStatus, filterByStatus } from '../lib/statusFilter.js'
+import StatusFilter from './StatusFilter.jsx'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear }) {
+function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear, onToggle }) {
   const fileRef = useRef(null)
   // The picture the homepage shows for this category RIGHT NOW: the owner's
   // own choice when there is one, and the site's default photograph when
   // there is not. The admin always sees the real thing, never a blank box.
   const shown = row.image || row.defaultImage || ''
   const isDefault = !row.image
+  const active = row.is_active !== false
   return (
-    <li className="bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start">
+    <li className={`bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start ${active ? '' : 'opacity-70'}`}>
       <div className="w-[120px] h-[120px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
         {shown ? (
           <img
@@ -49,7 +52,14 @@ function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear }) {
         <span className="sr-only">{isDefault ? 'The site’s default photo' : 'The photo you chose'}</span>
       </div>
       <div className="flex-1 min-w-[240px] space-y-2">
-        <p className="text-[15px] font-semibold">{row.label}</p>
+        <p className="text-[15px] font-semibold flex items-center gap-2">
+          {row.label}
+          <span className={`rounded-full border px-2 py-[1px] text-[11px] font-medium ${
+            active ? 'border-green-300 bg-green-50 text-green-800' : 'border-black/20 bg-neutral-100 text-black/55'
+          }`}>
+            {active ? 'Active' : 'Inactive'}
+          </span>
+        </p>
         <p className="text-[12px] text-black/45 font-mono">{row.key}</p>
         <label className="block">
           <span className="sr-only">Photo for {row.label}</span>
@@ -67,7 +77,9 @@ function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear }) {
         </label>
         <p className="text-[12px] text-black/45">
           {row.image
-            ? 'Your photo — shown on the homepage and the Collections page.'
+            ? (active
+              ? 'Your photo — shown on the homepage and the Collections page.'
+              : 'Your photo is switched off — the site shows its default picture until you switch it back on.')
             : 'The site’s default photo — upload one or pick one of the site’s photos to change it.'}
         </p>
       </div>
@@ -91,6 +103,18 @@ function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear }) {
         >
           {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
           {uploading ? 'Uploading…' : 'Upload'}
+        </button>
+        <button
+          type="button"
+          disabled={busy || uploading}
+          onClick={onToggle}
+          title={active
+            ? 'Switch this photograph off — the site shows its default picture'
+            : 'Switch this photograph on — the site shows the photo you chose'}
+          aria-label={active ? `Switch the photo for ${row.label} off` : `Switch the photo for ${row.label} on`}
+          className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
+        >
+          {active ? <Eye size={15} /> : <EyeOff size={15} />}
         </button>
         <button
           type="button"
@@ -121,6 +145,9 @@ export default function CategoryImagesPanel({ notify }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState('')
+  // Which photographs the owner is looking at: all of them, the ones on, or
+  // the ones switched off.
+  const [status, setStatus] = useState('all')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -133,6 +160,8 @@ export default function CategoryImagesPanel({ notify }) {
         key: c.key,
         label: c.label,
         image: String(c.image || ''),
+        // Whether the category's own photograph is the one the site shows.
+        is_active: c.image_active !== false,
         // The picture the site shows when the owner has chosen none — the very
         // same rule the storefront uses.
         defaultImage: categoryImage(c, products) || '',
@@ -154,6 +183,11 @@ export default function CategoryImagesPanel({ notify }) {
   const setImage = (key, image) =>
     setRows((list) => list.map((r) => (r.key === key ? { ...r, image } : r)))
 
+  // Switching a photograph off keeps the photograph and the category: the site
+  // simply shows its default picture until it is switched back on.
+  const setActive = (key, isActive) =>
+    setRows((list) => list.map((r) => (r.key === key ? { ...r, is_active: isActive } : r)))
+
   const upload = async (row, file) => {
     setUploading(row.key)
     try {
@@ -169,13 +203,20 @@ export default function CategoryImagesPanel({ notify }) {
     }
   }
 
+  // What counts as a change: the photograph itself, or whether it is on.
+  const changedRows = () => rows.filter((r) => {
+    const before = original.find((o) => o.key === r.key)
+    if (!before) return false
+    return r.image !== (before.image || '') || (r.is_active !== false) !== (before.is_active !== false)
+  })
+
   const save = async () => {
-    const changed = rows.filter((r) => r.image !== (original.find((o) => o.key === r.key)?.image || ''))
+    const changed = changedRows()
     if (!changed.length) return
     setSaving(true)
     try {
       for (const row of changed) {
-        await saveCategoryImage(row.key, row.image)
+        await saveCategoryImage(row.key, row.image, row.is_active !== false)
       }
       // The storefront reads the categories from the database, so a reload
       // here puts the new photos in front of the very next visitor.
@@ -190,7 +231,13 @@ export default function CategoryImagesPanel({ notify }) {
     }
   }
 
-  const dirty = rows.some((r) => r.image !== (original.find((o) => o.key === r.key)?.image || ''))
+  const dirty = changedRows().length > 0
+
+  // The filter shows a subset of the rows; it never changes the rows
+  // themselves, so the order, the photograph and the switch of every category
+  // are exactly as they were.
+  const counts = useMemo(() => countByStatus(rows), [rows])
+  const shown = useMemo(() => filterByStatus(rows, status), [rows, status])
 
   return (
     <div>
@@ -233,28 +280,40 @@ export default function CategoryImagesPanel({ notify }) {
           ))}
         </ul>
       ) : (
-        <ul className="mt-6 space-y-3">
-          {rows.map((row) => (
-            <CategoryRow
-              key={row.key}
-              row={row}
-              busy={saving}
-              uploading={uploading === row.key}
-              onUpload={(f) => upload(row, f)}
-              onPick={(url) => url && setImage(row.key, url)}
-              onClear={() => setImage(row.key, '')}
-            />
-          ))}
-        </ul>
-      )}
+        <>
+          <div className="mt-6">
+            <StatusFilter value={status} onChange={setStatus} counts={counts} label="Photographs" />
+          </div>
 
-      {!loading && !rows.length && !error && (
-        <p className="mt-6 text-[15px] text-black/55">No categories yet — add one in the product editor first.</p>
+          <ul className="mt-4 space-y-3">
+            {shown.map((row) => (
+              <CategoryRow
+                key={row.key}
+                row={row}
+                busy={saving}
+                uploading={uploading === row.key}
+                onUpload={(f) => upload(row, f)}
+                onPick={(url) => url && setImage(row.key, url)}
+                onClear={() => setImage(row.key, '')}
+                onToggle={() => setActive(row.key, row.is_active === false)}
+              />
+            ))}
+          </ul>
+
+          {!shown.length && (
+            <p className="mt-4 text-[15px] text-black/55">
+              {rows.length
+                ? 'No photographs in this state — switch the filter to All to see every category.'
+                : 'No categories yet — add one in the Categories section first.'}
+            </p>
+          )}
+        </>
       )}
 
       <p className="mt-8 text-[14px] text-black/45">
         Photos are stored in the same secure image storage as product photos and homepage banners. Choosing a
-        different photo here never deletes the file it replaces.
+        different photo here never deletes the file it replaces, and switching a photograph off keeps it — the
+        category and its products stay exactly as they are.
       </p>
     </div>
   )

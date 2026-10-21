@@ -19,8 +19,20 @@ export const CATEGORY_KEY_RE = /^[a-z0-9][a-z0-9-]{0,38}$/
 export const MAX_CATEGORY_LABEL = 60
 
 /** The four categories the store launched with, in their original order and
- *  with their original labels — "Trousers & Pants" included, verbatim. */
-export const SEED_CATEGORIES = TYPES.map((t, i) => ({ key: t.key, label: t.label, position: i, image: null }))
+ *  with their original labels — "Trousers & Pants" included, verbatim.
+ *
+ *  They carry the same fields a category row from the database carries: a
+ *  photograph (none of these has one of its own yet), whether that photograph
+ *  is switched on (it is), and the two-letter code the Product IDs of their
+ *  products are built from (the database owns that, so the seed has none). */
+export const SEED_CATEGORIES = TYPES.map((t, i) => ({
+  key: t.key,
+  label: t.label,
+  position: i,
+  image: null,
+  image_active: true,
+  code: null,
+}))
 
 /** A label as the store stores it: internal runs of space collapsed, trimmed,
  *  capped at the column's length. */
@@ -130,6 +142,14 @@ export const mergeCategories = (rows, seed = SEED_CATEGORIES) => {
       label,
       position: Number.isFinite(pos) ? pos : 99,
       image: String(r?.image ?? '').trim() || null,
+      // The owner can switch a category's photograph off without losing it.
+      // A row that says nothing about it is active — the category behaves
+      // exactly as it did before the switch existed.
+      image_active: r?.image_active !== false,
+      // The category's own two-letter code, which the Product IDs of its
+      // products are built from. It is not needed to render anything, but the
+      // admin panel shows it, so it travels with the category.
+      code: String(r?.code ?? '').trim() || null,
     })
   }
   for (const r of (Array.isArray(rows) ? rows : []).concat(Array.isArray(seed) ? seed : [])) push(r)

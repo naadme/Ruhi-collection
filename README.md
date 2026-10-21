@@ -22,6 +22,8 @@
   - [TEST → LIVE switch](#test--live-switch)
 - [How a paid order works](#how-a-paid-order-works)
 - [Security notes](#security-notes)
+- [Order IDs](#order-ids)
+- [Product IDs](#product-ids)
 - [Behaviour worth knowing](#behaviour-worth-knowing)
 - [Testing](#testing)
 
@@ -512,12 +514,29 @@ Excel download and on the order confirmation email.
 - `site.phone` and the testimonial quotes are still owner placeholders — replace them with your
   real details before launch. `site.email` is `ruhicollections2026@gmail.com`, the same mailbox
   the contact form is delivered to.
-- **Categories** come from one list, `TYPES` in `src/data/products.js` (Tops & T-shirts, Co-ord
-  Sets, Dresses, Trousers & Pants, Night Wear, Kurta Sets). The header, footer, shop Type filter,
-  admin selector and homepage tiles all read it, so a category is added in exactly one place — the
-  homepage hero and the "Shop by Category"/Collections tiles only advertise a category once it has
-  a live product. The database holds the same list in `public.categories`, with a stable two-digit
-  code for each.
+- **Categories** are owned by the database. `public.categories` holds one row per category — an
+  immutable `key`, the label shoppers see, a display `position`, a two-digit `code` the Product IDs
+  of its products are built from, and the photograph the category shows. The header, footer, shop
+  Type filter, admin selector and homepage tiles all read that list, so a category is added in
+  exactly one place: the admin panel's **Categories** section (or the "Add category" button
+  beside the category picker in the product editor). A new category is on the site straight away —
+  it needs no code change and no redeployment — and the database gives it its own Product ID code
+  when the row is saved. The list in `TYPES` (`src/data/products.js`) is only the **fallback** the
+  storefront shows if the database cannot be reached, so the shop never has an empty category
+  list. The homepage hero and the "Shop by Category"/Collections tiles only advertise a category
+  once it has a live product.
+- **A category that still holds products cannot be deleted.** The panel shows how many products
+  each category holds and refuses the delete in plain words; the database refuses it independently
+  (`products_type_fkey` is `ON DELETE RESTRICT`), so a stale count can never orphan a product or
+  touch an order. Nothing is ever deleted to make a delete succeed, and the photograph file a
+  category used is never deleted from the image storage either.
+- **The banner, best seller and category photo panels each have an All / Active / Inactive
+  filter**, with the count each filter would show. Every item carries its own status and its own
+  switch; switching something off keeps it, keeps its place in the order and keeps everything
+  else about it (a banner's destination, a category's photograph and name). An inactive banner is
+  not in the homepage slider, an inactive best seller is not in the shop window, and an inactive
+  category photograph is not the one the site shows — the category itself, its products and its
+  navigation all stay exactly as they were.
 - **Colour grouping** lives in `src/lib/productGrouping.js` and is shared by the storefront and
   the admin dashboard: rows group into one design when they share a category, a design name and
   a colour — either the row's `colour` column or a " - Colour" title suffix the catalogue
@@ -558,6 +577,19 @@ What has been verified against this codebase:
   `tests/productForm.test.js` pins the editor's write path (colours round-trip without loss,
   only changed columns are written, shared fields only travel when edited, IDs are locked and
   de-duplicated, validation blocks duplicates/separator colours/ID clashes).
+- The admin panels are driven in a **real browser** by the scripts in `scripts/audit-*.mjs`
+  (`npm run audit:admin`, `audit:banners`, `audit:orders`, `audit:filters`, `audit:categories`).
+  They render the panels through the harness in `audit/` — which is **not** part of the site; the
+  production build only bundles `index.html` — and intercept the browser's requests, so the panels
+  can be driven with made-up rows without touching the database.
+- The category lifecycle is checked against the **live database** (`npm run audit:lifecycle`): a
+  category is added, the storefront reads it with its own credentials, a product joins it and is
+  given a Product ID built from the category's own code, the category cannot be deleted while that
+  product is there, and everything the check creates is removed again.
+- The storefront is checked with a **real browser** (`npm run audit:storefront`): a category with a
+  product in it appears in the navigation, in the shop's own filter and in the homepage's
+  "Shop by Category" row, and switching its photograph off leaves the category and its products
+  in place while the site falls back to another picture.
 
 Manual steps only you can do: create the Razorpay TEST keys, deploy the functions, set the
 secrets, create the webhook, and run a real test-mode payment (steps 1–7 above).

@@ -16,6 +16,7 @@ import { CategoriesProvider } from '../src/context/CategoriesContext'
 import { WishlistProvider } from '../src/context/WishlistContext'
 import { CartProvider } from '../src/context/CartContext'
 import BannerPanel from '../src/admin/BannerPanel'
+import CategoriesPanel from '../src/admin/CategoriesPanel'
 import CategoryImagesPanel from '../src/admin/CategoryImagesPanel'
 import BestsellerPanel from '../src/admin/BestsellerPanel'
 import OrdersPanel from '../src/admin/OrdersPanel'
@@ -44,6 +45,7 @@ function Inside() {
       <Panel name="banners"><BannerPanel notify={notify} /></Panel>
       <Panel name="category-images"><CategoryImagesPanel notify={notify} /></Panel>
       <Panel name="bestsellers"><BestsellerPanel notify={notify} products={all} /></Panel>
+      <Panel name="categories"><CategoriesPanel notify={notify} /></Panel>
       <Panel name="orders"><OrdersPanel notify={notify} /></Panel>
     </>
   )

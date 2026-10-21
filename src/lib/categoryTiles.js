@@ -32,9 +32,16 @@ export const categoryShopUrl = (key) => `/shop?type=${encodeURIComponent(String(
  * panel — and the default photograph is only used when nothing has been
  * chosen, so the site looks exactly as it does today until the owner
  * changes something.
+ *
+ * A photograph the owner has switched OFF is not used: the category keeps it,
+ * so it can be switched on again without choosing it again, but the site
+ * falls back to the photograph that ships with the shop (or the first product
+ * photo in that category) exactly as it does for a category that has no
+ * photograph of its own.
  */
 export const categoryImage = (category, products) => {
-  const chosen = String(category?.image ?? '').trim()
+  const active = category?.image_active !== false
+  const chosen = active ? String(category?.image ?? '').trim() : ''
   if (chosen) return chosen
   const fallback = categoryFallbackImage(category?.key)
   if (fallback) return fallback

@@ -107,10 +107,14 @@ export async function createCategory(label) {
   if (clash) throw new Error(`“${clean}” is already a category.`)
 
   const position = existing.reduce((max, c) => Math.max(max, Number(c.position) || 0), -1) + 1
+  // The category's own code — the two letters its products' Product IDs are
+  // built from — is assigned by the database's own trigger, so nobody has to
+  // set it by hand and a new category is numbered properly the moment it is
+  // saved. The code comes back with the row.
   const { data, error } = await supabase
     .from('categories')
     .insert({ key, label: clean, position })
-    .select('key, label, position')
+    .select('key, label, position, code')
     .single()
   if (error) {
     throw new Error(/duplicate/i.test(error.message || '')

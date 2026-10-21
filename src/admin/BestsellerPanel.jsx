@@ -16,11 +16,17 @@ import {
 } from 'lucide-react'
 import { fetchBestsellers, locatePicks, MAX_BESTSELLERS, saveBestsellers } from '../lib/bestsellers'
 import { groupedCards } from '../lib/productGrouping'
+import { countByStatus, filterByStatus } from '../lib/statusFilter.js'
+import StatusFilter from './StatusFilter.jsx'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function ChosenRow({ card, index, total, busy, active, onMove, onRemove, onToggle }) {
+function ChosenRow({ card, index, total, busy, active, canReorder, onMove, onRemove, onToggle }) {
+  // While a filter is on, the list is a subset of the real order, so the
+  // arrows would move a design past one the owner cannot see. They are
+  // switched off rather than made to act on the wrong row.
+  const reorderable = canReorder !== false
   return (
     <li className={`bg-white border border-black/10 rounded-xl p-3 flex flex-wrap gap-3 items-center ${active ? '' : 'opacity-70'}`}>
       <div className="w-[64px] h-[80px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
@@ -58,7 +64,8 @@ function ChosenRow({ card, index, total, busy, active, onMove, onRemove, onToggl
         <button
           type="button"
           onClick={() => onMove(-1)}
-          disabled={index === 0 || busy}
+          disabled={index === 0 || busy || !reorderable}
+          title={reorderable ? 'Move this design earlier' : 'Switch the filter to All to reorder the designs'}
           aria-label={`Move ${card.title} up`}
           className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
         >
@@ -67,7 +74,8 @@ function ChosenRow({ card, index, total, busy, active, onMove, onRemove, onToggl
         <button
           type="button"
           onClick={() => onMove(1)}
-          disabled={index === total - 1 || busy}
+          disabled={index === total - 1 || busy || !reorderable}
+          title={reorderable ? 'Move this design later' : 'Switch the filter to All to reorder the designs'}
           aria-label={`Move ${card.title} down`}
           className="w-[38px] h-[38px] grid place-items-center rounded-lg border border-black/25 text-black/60 hover:border-black transition disabled:opacity-35"
         >
@@ -92,6 +100,9 @@ export default function BestsellerPanel({ notify, products = [] }) {
   const [original, setOriginal] = useState([])
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  // Which designs the owner is looking at: all of them, the ones on the
+  // homepage, or the ones switched off.
+  const [status, setStatus] = useState('all')
 
   // Every design the store actually sells, built by the same rule the
   // storefront uses, so the picker and the homepage can never disagree.
@@ -120,6 +131,16 @@ export default function BestsellerPanel({ notify, products = [] }) {
   const resolved = useMemo(() => locatePicks(state.picks, cards), [cards, state.picks])
 
   const chosen = useMemo(() => resolved.map((entry) => entry.card), [resolved])
+
+  // The filter works on the designs the owner has chosen, in the order they
+  // are saved. It shows a subset — it never reorders anything, and a design
+  // that is switched off keeps its place in the order either way.
+  const statusRows = useMemo(
+    () => resolved.map((entry) => ({ ...entry, is_active: entry.active !== false })),
+    [resolved],
+  )
+  const counts = useMemo(() => countByStatus(statusRows), [statusRows])
+  const shown = useMemo(() => filterByStatus(statusRows, status), [statusRows, status])
 
   const chosenIds = useMemo(() => new Set(chosen.map((c) => c.id)), [chosen])
 
@@ -273,26 +294,32 @@ export default function BestsellerPanel({ notify, products = [] }) {
           <h2 className="mt-8 text-[18px] font-bold">
             On the homepage ({chosen.filter((c) => (resolved.find((e) => e.cardId === c.id) || {}).active !== false).length} showing of {chosen.length} chosen, {MAX_BESTSELLERS} at most)
           </h2>
+          <div className="mt-3">
+            <StatusFilter value={status} onChange={setStatus} counts={counts} label="Designs" />
+          </div>
           <ul className="mt-3 space-y-3">
-            {chosen.map((card, i) => {
-              const entry = resolved.find((e) => e.cardId === card.id)
-              return (
-                <ChosenRow
-                  key={card.id}
-                  card={card}
-                  index={i}
-                  total={chosen.length}
-                  busy={saving}
-                  active={entry ? entry.active : true}
-                  onMove={(dir) => move(card.id, dir)}
-                  onRemove={() => remove(card.id)}
-                  onToggle={() => toggle(card.id)}
-                />
-              )
-            })}
+            {shown.map((entry) => (
+              <ChosenRow
+                key={entry.card.id}
+                card={entry.card}
+                index={chosen.findIndex((c) => c.id === entry.card.id)}
+                total={chosen.length}
+                busy={saving}
+                active={entry.active}
+                canReorder={status === 'all'}
+                onMove={(dir) => move(entry.card.id, dir)}
+                onRemove={() => remove(entry.card.id)}
+                onToggle={() => toggle(entry.card.id)}
+              />
+            ))}
           </ul>
           {!chosen.length && (
             <p className="mt-3 text-[14px] text-black/45">Nothing chosen — the homepage row is auto-selected.</p>
+          )}
+          {chosen.length > 0 && !shown.length && (
+            <p className="mt-3 text-[14px] text-black/45">
+              No designs in this state — switch the filter to All to see every design you have chosen.
+            </p>
           )}
 
           <h2 className="mt-10 text-[18px] font-bold">Available designs</h2>
