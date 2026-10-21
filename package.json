@@ -17,7 +17,9 @@
     "audit:filters": "node scripts/audit-status-filters.mjs",
     "audit:categories": "node scripts/audit-category-manager.mjs",
     "audit:storefront": "node scripts/audit-category-storefront.mjs",
-    "audit:lifecycle": "node scripts/audit-category-lifecycle.mjs"
+    "audit:lifecycle": "node scripts/audit-category-lifecycle.mjs",
+    "verify:links": "node scripts/verify-product-links.mjs",
+    "verify:catalogue": "node scripts/verify-category-clicks.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

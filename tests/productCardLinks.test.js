@@ -204,3 +204,19 @@ test('a product that was deleted opens nothing at all', () => {
   assert.equal(findProduct(index, 'deleted-product-id'), null)
   assert.equal(findVariant(index, 'deleted-product-id'), null)
 })
+
+test('a product that is switched off is not on the site at all', () => {
+  // The storefront only ever lists the rows that are switched on, so a hidden
+  // product has no card and its address resolves to nothing — the page says
+  // "Product not found" instead of opening the product that shares its name.
+  const withHidden = CATALOGUE.map((r) => (r.id === 'set-red' ? { ...r, is_active: false } : r))
+  const visible = groupedCards(withHidden.filter((r) => r.is_active !== false))
+  const live = indexProducts(visible)
+
+  assert.ok(!visible.some((c) => c.id === 'set-red'), 'a hidden product is never listed')
+  assert.equal(findProduct(live, 'set-red'), null, 'and its address resolves to nothing')
+  assert.equal(findVariant(live, 'set-red'), null)
+  // A colour search must not offer it either.
+  const shown = matchesProducts(visible, { q: 'red', typeLabel })
+  assert.ok(!shown.some((c) => c.id === 'set-red'), 'a hidden product is never in the results')
+})
