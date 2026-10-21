@@ -14,6 +14,8 @@
 //   * an empty destination is not an error: it means "the shop", which is
 //     where the hero's own fallback slides point.
 
+import { groupedCards } from './productGrouping.js'
+
 export const BANNER_FALLBACK = '/shop'
 
 /** The pages of this site a banner may point at. */
@@ -23,6 +25,21 @@ export const SITE_DESTINATIONS = [
   { value: '/about', label: 'About' },
   { value: '/contact', label: 'Contact' },
 ]
+
+/**
+ * Every destination a banner may be pointed at: the shop's own pages, every
+ * category, and every product.
+ *
+ * The products are the DESIGN cards — the same ones the shop shows — so a
+ * banner points at a page a shopper can actually open, and never at a colour
+ * row the shop does not list on its own.
+ */
+export function bannerDestinations(categories, products) {
+  const cats = (Array.isArray(categories) ? categories : [])
+    .map((c) => ({ value: `/shop?type=${c.key}`, label: `${c.label} (category)` }))
+  const items = groupedCards(products || []).map((p) => ({ value: `/product/${p.id}`, label: `${p.title} (product)` }))
+  return [...SITE_DESTINATIONS, ...cats, ...items]
+}
 
 /**
  * Is this a destination the site is willing to follow?

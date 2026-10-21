@@ -23,9 +23,8 @@ import { fetchHomeBanners, HOME_HERO_SLOT } from '../lib/banners'
 import { useCategories } from '../context/CategoriesContext'
 import { useProducts } from '../context/ProductsContext'
 import {
-  bannerLinkProblem, describeBannerDestination, SITE_DESTINATIONS,
+  bannerDestinations, bannerLinkProblem, describeBannerDestination,
 } from '../lib/bannerLinks.js'
-import { groupedCards } from '../lib/productGrouping.js'
 
 const bucket = 'product-images'
 const inputCls =
@@ -231,11 +230,10 @@ export default function BannerPanel({ notify }) {
 
   // The destinations the owner can pick, offered as a menu: the shop's own
   // pages, every category, and every product. Each banner picks its own.
-  const destinations = useMemo(() => {
-    const cats = (categories || []).map((c) => ({ value: `/shop?type=${c.key}`, label: `${c.label} (category)` }))
-    const products = groupedCards(products || []).map((p) => ({ value: `/product/${p.id}`, label: `${p.title} (product)` }))
-    return [...SITE_DESTINATIONS, ...cats, ...products]
-  }, [categories, products])
+  const destinations = useMemo(
+    () => bannerDestinations(categories, products),
+    [categories, products],
+  )
 
   // Publish the draft: removed banners are deleted, kept ones are re-ordered
   // and updated, new ones inserted. Every write is checked, then the list is

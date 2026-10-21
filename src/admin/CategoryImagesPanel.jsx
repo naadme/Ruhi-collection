@@ -15,10 +15,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, Trash2, Upload } from 'lucide-react'
 import { useCategories } from '../context/CategoriesContext'
+import { useProducts } from '../context/ProductsContext'
 import { fetchCategories } from '../lib/categories'
 import { CATEGORY_IMAGE_OPTIONS, validateCategoryImage } from '../lib/categoryImages'
 import { saveCategoryImage, uploadCategoryImage } from '../lib/categoryImageStore'
-import { categoryFallbackImage } from '../data/products.js'
+import { categoryImage } from '../lib/categoryTiles.js'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
@@ -108,6 +109,12 @@ function CategoryRow({ row, busy, uploading, onUpload, onPick, onClear }) {
 
 export default function CategoryImagesPanel({ notify }) {
   const { reload } = useCategories()
+  // The storefront's own rule for a category's photograph: the owner's choice
+  // first, then the photograph that ships with the site, then the first product
+  // photo in that category. The panel asks the SAME rule, so what the owner
+  // sees is exactly what a visitor sees — a category with products but no
+  // photograph of its own is not shown as an empty box.
+  const { products } = useProducts()
   const [rows, setRows] = useState([])
   const [original, setOriginal] = useState([])
   const [loading, setLoading] = useState(true)
@@ -126,9 +133,9 @@ export default function CategoryImagesPanel({ notify }) {
         key: c.key,
         label: c.label,
         image: String(c.image || ''),
-        // The picture the site shows when the owner has chosen none, so the
-        // panel can show the real thing rather than an empty box.
-        defaultImage: categoryFallbackImage(c.key) || '',
+        // The picture the site shows when the owner has chosen none — the very
+        // same rule the storefront uses.
+        defaultImage: categoryImage(c, products) || '',
       }))
       setRows(withImages)
       setOriginal(withImages)
@@ -140,7 +147,7 @@ export default function CategoryImagesPanel({ notify }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [products])
 
   useEffect(() => { load() }, [load])
 
