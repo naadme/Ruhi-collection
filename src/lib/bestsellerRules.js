@@ -106,6 +106,62 @@ export function normalizePicks(productIds) {
     .filter(Boolean))]
 }
 
+// ---- the row the homepage shows when the owner has chosen nothing ----------
+//
+// Four real catalogue styles, never two colourways of the same garment.
+// `styleKey` drops the trailing " - Colour", so "Denim Shirt - Black" and
+// "Denim Shirt - Blue" are one style and only the first colourway is a
+// candidate. Selection runs purely over the live catalogue, so the row can
+// never advertise a product the store does not have. Categories come from
+// the client's own list, and any category that appears in the catalogue but
+// is not in that list yet still gets a bucket, so no product can be skipped.
+//
+// The rule lives here, apart from the network, so it can be tested in plain
+// Node — and so the homepage cannot drift away from it.
+
+/** The design a card belongs to: its title without the trailing colour. */
+export const styleKey = (title) => {
+  const t = String(title ?? '')
+  return t.includes(' - ') ? t.slice(0, t.lastIndexOf(' - ')) : t
+}
+
+/**
+ * The derived Best Sellers row: one style per category, round-robin, so the
+ * row always reads as Tops + Co-ord Sets + Dresses + one more.
+ *
+ * Every entry is a catalogue card, so each one carries its OWN product id and
+ * opens its own product page (see src/lib/productLinks.js).
+ */
+export function derivedBestsellers(list, catKeys, n = 4) {
+  const products = Array.isArray(list) ? list : []
+  // One entry per style, grouped by category.
+  const keys = [...new Set([...(catKeys || []), ...products.map((p) => p.type)])]
+  const styleBuckets = keys.map((key) => {
+    const first = new Map()
+    for (const p of products) {
+      if (p.type !== key) continue
+      const k = styleKey(p.title)
+      if (!first.has(k)) first.set(k, p)
+    }
+    return [...first.values()]
+  })
+
+  const out = []
+  const seen = new Set()
+  // Round-robin: every category gets one style before any category gets a
+  // second, so the row always reads as Tops + Co-ord Sets + Dresses + one more.
+  for (let round = 0; out.length < n && round < n; round++) {
+    for (const bucket of styleBuckets) {
+      const cand = bucket[round]
+      if (!cand || seen.has(styleKey(cand.title))) continue
+      seen.add(styleKey(cand.title))
+      out.push(cand)
+      if (out.length >= n) break
+    }
+  }
+  return out
+}
+
 /**
  * The same list, but as the rows the table holds: the id and whether the
  * design is switched on. A design that was never switched off is switched on.

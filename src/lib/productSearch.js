@@ -13,10 +13,19 @@
 //   * the product id and the six-character Product ID,
 //   * the badge and the description of EVERY colour of the design (not just
 //     the row the card happens to lead with),
+//   * the sizes the design and each of its colours are stocked in,
 //   * the colours themselves, from the grouped card's colour list *and* from
 //     the row's own `colour` column. That second source matters: a row whose
 //     title carries no " - Colour" suffix is never pooled, so it never gets a
 //     `colors` array — searching "blue" used to miss every such product.
+//
+// WHERE a search looks
+// ---------------------
+// A search looks at the WHOLE catalogue, never at one category or one size:
+// searching "red" returns every product that is genuinely red, in every
+// category and in every size it is stocked in. `matchesProducts` below is
+// that one rule, and both the results page and the header's live search read
+// it, so the two can never disagree.
 //
 // A WORD THAT IS A COLOUR IS TREATED AS A COLOUR
 // ----------------------------------------------
@@ -67,40 +76,69 @@ export function isColourWord(word) {
 }
 
 /** Everything one product is searchable by, as text. `colors` is the grouped
- *  card's list; the colour column and description of every member are folded
- *  in so a design is never half-searchable. */
+ *  card's list; the colour column, description and sizes of every member are
+ *  folded in so a design is never half-searchable. */
 export function searchWords(p) {
   if (!p) return ''
   const colours = Array.isArray(p.colors) ? p.colors.map((c) => c?.color) : []
   const descriptions = Array.isArray(p.colors)
     ? p.colors.map((c) => c?.desc ?? c?.description)
     : []
+  // The sizes a design comes in, and the sizes each of its colours comes in:
+  // a shopper who types "XL" wants the styles that are actually stocked in
+  // XL, in whichever colour they are.
+  const sizes = Array.isArray(p.sizes) ? p.sizes : []
+  const variantSizes = Array.isArray(p.colors)
+    ? p.colors.flatMap((c) => (Array.isArray(c?.sizes) ? c.sizes : []))
+    : []
   return [
     p.title, p.type, p.id, p.sku, p.badge,
     p.colour, p.color, p.desc, p.description,
+    ...sizes, ...variantSizes,
     ...colours, ...descriptions,
   ].filter(Boolean).join(' ')
 }
 
 /**
- * The product's own names and codes — everything that IDENTIFIES it, and
- * nothing that merely describes it.
+ * The product's own NAMES — everything that says what it IS, and nothing that
+ * merely describes it.
  *
  * A colour word is matched against this and against the saved colour. The
  * description is deliberately left out: a product whose description happens
  * to say "blue" is not a blue product, and the client asked for a colour
  * filter rather than a word search.
+ *
+ * The id and the SKU are left out of the colour decision as well: they are
+ * codes, not colours. The live catalogue proves why — a row the owner filed
+ * under "Pink" still carries a file name that says "red", and that must not
+ * turn a pink product into a red one. The codes are still searchable in their
+ * own right (see `productCodes`).
  */
 export function searchIdentity(p, typeLabel) {
   if (!p) return ''
   const colours = Array.isArray(p.colors) ? p.colors.map((c) => c?.color) : []
   const label = typeof typeLabel === 'function' ? typeLabel(p?.type) : ''
   return [
-    p.title, p.type, p.id, p.sku,
+    p.title, p.type,
     p.colour, p.color,
     label,
     ...colours,
   ].filter(Boolean).join(' ')
+}
+
+/**
+ * The product's own codes: the card's id, its SKU and the id of every colour
+ * row it is made of.
+ *
+ * A code typed in full finds that product — see `matchesProduct`.
+ */
+export function productCodes(p) {
+  if (!p) return []
+  return [
+    p.id,
+    p.sku,
+    ...(Array.isArray(p.colors) ? p.colors.map((c) => c?.id) : []),
+  ].filter(Boolean)
 }
 
 /**
@@ -166,10 +204,17 @@ export function searchForms(p, typeLabel) {
  * Every term must match (so "blue dress" narrows, as it always has), and an
  * empty query matches everything — which is what restores the normal listing
  * when the search box is cleared.
+ *
+ * A code typed in full — the product's own id or SKU, or the id of one of its
+ * colour rows — finds that product whatever else the code happens to spell:
+ * the owner filed a row as "Pink" and its file name still says "red", and a
+ * shopper who copies that id down must still find it.
  */
 export function matchesProduct(p, query, typeLabel) {
   const terms = queryTerms(query)
   if (!terms.length) return true
+  const code = squash(query)
+  if (code && productCodes(p).some((c) => squash(c) === code)) return true
   const forms = searchForms(p, typeLabel)
   const identity = searchIdentity(p, typeLabel)
   const identityFlat = flat(identity)
@@ -178,7 +223,7 @@ export function matchesProduct(p, query, typeLabel) {
 
   return terms.every(({ text, colour }) => {
     // A word that names a colour is matched against the SAVED colour and the
-    // product's own names and codes — never against its description.
+    // product's own names — never against its description or its id.
     if (colour) {
       const wanted = squash(text)
       if (colours.some((c) => c === wanted || c.includes(wanted))) return true
@@ -194,4 +239,48 @@ export function matchesProduct(p, query, typeLabel) {
  */
 export function queryColours(query) {
   return queryTerms(query).filter((t) => t.colour).map((t) => t.text)
+}
+
+/**
+ * The catalogue as the shopper asked for it.
+ *
+ * A SEARCH looks at the WHOLE catalogue. Searching "red" means every product
+ * that is genuinely red — in every category, in every size it is stocked in —
+ * and never "the red ones in the one category this page happened to be
+ * showing". A category filter narrows the catalogue only when there is no
+ * search: the two are two different ways of looking at the same shop, and the
+ * search always wins, because a shopper who typed a word wants that word's
+ * results and not a filtered subset of them.
+ *
+ * The rule lives here, next to the matcher it uses, so the results page, the
+ * header's live search and the tests can never disagree about it.
+ */
+export function matchesProducts(products, { q = '', type = '', typeLabel } = {}) {
+  const list = Array.isArray(products) ? products : []
+  const query = String(q ?? '').trim()
+  if (query) return list.filter((p) => matchesProduct(p, query, typeLabel))
+  const category = String(type ?? '').trim()
+  return category ? list.filter((p) => p.type === category) : list
+}
+
+/**
+ * The address a NEW search goes to.
+ *
+ * A search covers the whole catalogue, so the category filter it would narrow
+ * is left out — otherwise a shopper who searched from inside one category
+ * would be shown that category only and would think the shop had nothing
+ * else. The SORT is kept: sorting never hides a result, so it is not an
+ * incompatible filter.
+ *
+ * The words are trimmed and keep the shopper's own spelling; matching is
+ * case-insensitive either way.
+ */
+export function searchPath(query, { sort = '' } = {}) {
+  const params = new URLSearchParams()
+  const text = String(query ?? '').trim()
+  if (text) params.set('q', text)
+  const order = String(sort ?? '').trim()
+  if (order) params.set('sort', order)
+  const qs = params.toString()
+  return qs ? `/shop?${qs}` : '/shop'
 }

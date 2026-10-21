@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Star, Heart } from 'lucide-react'
 import Img from './Img'
 import { inr } from '../lib/pricing'
+import { productHref } from '../lib/productLinks'
 import { useWishlist } from '../context/WishlistContext'
 // Grids rebuild their `items` array on every render, so without this each card
 // would re-render whenever any sibling's parent re-rendered. Wishlist changes
@@ -16,9 +17,14 @@ function ProductCard({ product: p }) {
   // count as "0.0 (0)", which looks broken rather than unfinished.
   const priced = p.price > 0
   const rated = p.reviews > 0
+  // The link is the product's OWN route — the row whose photograph, price and
+  // sizes this card shows (src/lib/productLinks.js). One rule, used by every
+  // card on the site, so a card can never advertise one product and open
+  // another.
+  const href = productHref(p)
   return (
     <div className="group relative">
-      <Link to={`/product/${p.id}`} className="block">
+      <Link to={href} className="block">
         <div className="relative aspect-[3/4] overflow-hidden bg-neutral-100">
           <Img src={p.image} alt={p.title} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 group-hover:opacity-0" />
           <Img src={p.hover} alt="" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />

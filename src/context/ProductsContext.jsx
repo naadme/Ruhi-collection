@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { supabase } from '../lib/supabase'
 import { products as seedProducts } from '../data/products'
 import { groupedCards } from '../lib/productGrouping'
+import { indexProducts } from '../lib/productLookup'
 
 const Ctx = createContext(null)
 export const useProducts = () => useContext(Ctx)
@@ -254,23 +255,22 @@ export function ProductsProvider({ children }) {
   // The storefront only ever resolves *visible* products, regardless of who is
   // signed in — hidden items live exclusively in the dashboard.
   //
-  // Resolved through a Map rebuilt only when the catalogue changes: the same
-  // lookup runs once per cart line, per related-products list and per review on
-  // every render, so a linear scan would grow with the table. `first wins`
-  // preserves the previous `Array.find` answer if an id were ever repeated.
+  // The index is built by src/lib/productLookup.js, the one rule for "which
+  // product does this link name?", and is rebuilt only when the catalogue
+  // changes: the same lookup runs once per cart line, per related-products
+  // list and per review on every render, so a linear scan would grow with the
+  // table. `first wins` preserves the previous `Array.find` answer if an id
+  // were ever repeated.
   //
   // Colour rows resolve to their design too, so an old cart line, wishlist
   // heart, order or shared link naming "stripes-dress-pink" still opens the
   // Stripes Dress — on that colour.
-  const activeById = useMemo(() => {
-    const index = new Map()
-    for (const p of products) {
-      if (!index.has(p.id)) index.set(p.id, p)
-      for (const c of p.colors || []) if (!index.has(c.id)) index.set(c.id, p)
-    }
-    return index
-  }, [products])
-  const getProduct = useCallback((id) => activeById.get(id) || null, [activeById])
+  const index = useMemo(() => indexProducts(products), [products])
+  const getProduct = useCallback((id) => index.byId.get(id) || null, [index])
+  // The exact colour row a link names, so a link that names one colour opens
+  // that colour's own photograph and price — and a link that names nothing
+  // resolves to nothing at all.
+  const getVariant = useCallback((id) => index.variants.get(id) || null, [index])
 
   // The *exact* catalogue row behind an id — the row Supabase holds and the
   // row `create_order()` prices from. Colour rows are distinct rows with
@@ -281,8 +281,8 @@ export function ProductsProvider({ children }) {
 
   // Memoised so a consumer only re-renders when one of these actually changes.
   const value = useMemo(
-    () => ({ products, all, getProduct, getRow, reload, applyRow, removeRow, loading, error, source }),
-    [products, all, getProduct, getRow, reload, applyRow, removeRow, loading, error, source],
+    () => ({ products, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, error, source }),
+    [products, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, error, source],
   )
 
   return (

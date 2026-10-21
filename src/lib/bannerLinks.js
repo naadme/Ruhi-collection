@@ -15,6 +15,7 @@
 //     where the hero's own fallback slides point.
 
 import { groupedCards } from './productGrouping.js'
+import { productHref } from './productLinks.js'
 
 export const BANNER_FALLBACK = '/shop'
 
@@ -37,7 +38,10 @@ export const SITE_DESTINATIONS = [
 export function bannerDestinations(categories, products) {
   const cats = (Array.isArray(categories) ? categories : [])
     .map((c) => ({ value: `/shop?type=${c.key}`, label: `${c.label} (category)` }))
-  const items = groupedCards(products || []).map((p) => ({ value: `/product/${p.id}`, label: `${p.title} (product)` }))
+  // The product's own route — the same one the shop card and the search
+  // result use (src/lib/productLinks.js), so a banner can never point at a
+  // different product than the shop shows.
+  const items = groupedCards(products || []).map((p) => ({ value: productHref(p), label: `${p.title} (product)` }))
   return [...SITE_DESTINATIONS, ...cats, ...items]
 }
 

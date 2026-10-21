@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import ProductGrid, { ResetLink } from '../components/ProductGrid'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
-import { matchesProduct } from '../lib/productSearch'
+import { matchesProducts } from '../lib/productSearch'
 import usePageTitle from '../hooks/usePageTitle'
 
 const Sel = ({ label, value, onChange, opts }) => (
@@ -29,17 +29,37 @@ export default function Shop() {
   const q = sp.get('q') || ''
   const sort = sp.get('sort') || ''
   const set = (k) => (v) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n) }
-  const clearAll = () => setSp(new URLSearchParams(q ? { q } : {}))
+  // "Clear" empties the whole bar — the search, the category and the sort —
+  // and shows the catalogue again. It used to keep the search, which left a
+  // button on screen that changed nothing.
+  const clearAll = () => setSp(new URLSearchParams())
+
+  // A search and a category are two different ways of looking at the shop.
+  //
+  // While a search is running it covers the WHOLE catalogue — every category,
+  // every size — because a shopper who typed "red" wants every red product,
+  // not the red ones inside the category the page was already showing. The
+  // category filter is therefore not applied while searching, and the Type
+  // box says so by showing "All".
+  const searching = q.trim().length > 0
+
+  // Picking a category while a search is running means "browse this
+  // category", so the search is dropped rather than silently ignored.
+  const setType = (v) => {
+    const n = new URLSearchParams(sp)
+    n.delete('q')
+    v ? n.set('type', v) : n.delete('type')
+    setSp(n)
+  }
 
   // Filter + sort only when the catalogue or the filter/sort inputs change —
   // not on every unrelated render of this page.
   const filtered = useMemo(
-    // Search across everything a shopper might type — name, category, id, SKU,
-    // badge, description and the colours of a grouped design. The rule itself
-    // lives in src/lib/productSearch.js so the header search and this page can
-    // never disagree about what a word matches.
-    () => products.filter((p) => (!t || p.type === t) && (!q || matchesProduct(p, q, typeLabel))),
-    [products, t, q, typeLabel],
+    // The rule itself lives in src/lib/productSearch.js (matchesProducts, and
+    // the matchesProduct rule it is built on), so the header search and this
+    // page can never disagree about what a word matches.
+    () => matchesProducts(products, { q, type: t, typeLabel }),
+    [products, q, t, typeLabel],
   )
   const items = useMemo(() => {
     const sorted = [...filtered]
@@ -52,8 +72,8 @@ export default function Shop() {
 
   // Unfiltered catalogue reads "All Products"; a category or search still
   // names itself, so only the default label changed.
-  const heading = q
-    ? `Results for “${q}”`
+  const heading = searching
+    ? `Results for “${q.trim()}”`
     : t ? typeLabel(t)
     : 'All Products'
 
@@ -77,7 +97,7 @@ export default function Shop() {
           `flex-wrap` means the group wraps as a unit on narrow screens
           instead of ever being pushed out of view. */}
       <div className="flex flex-wrap items-center gap-4 my-8 border-y border-black/10 py-4">
-        <Sel label="Type" value={t} onChange={set('type')} opts={[['', 'All'], ...optionsFor(t).map((x) => [x.key, x.label])]} />
+        <Sel label="Type" value={searching ? '' : t} onChange={setType} opts={[['', 'All'], ...optionsFor(t).map((x) => [x.key, x.label])]} />
         <Sel label="Sort" value={sort} onChange={set('sort')} opts={[
           ['', 'Featured'], ['low', 'Price, low to high'], ['high', 'Price, high to low'],
           ['rating', 'Top rated'], ['name', 'Name, A–Z'],
@@ -87,13 +107,21 @@ export default function Shop() {
             Clear
           </button>
         )}
+        {/* The search covers the whole catalogue, so the category filter is off
+            while it runs. Saying so keeps the page honest: the Type box reads
+            "All" because every category is being searched. */}
+        {searching && (
+          <p className="w-full text-[14px] text-black/55">
+            Searching every category and every size — the Type filter is off while a search is running.
+          </p>
+        )}
       </div>
 
       <ProductGrid
         items={items}
         loading={loading && source !== 'database'}
         empty={{
-          title: q ? `Nothing matches “${q}”` : 'No products in this view',
+          title: searching ? `Nothing matches “${q.trim()}”` : 'No products in this view',
           body: !loading
             ? 'Try a different search, or clear the filters to see everything.'
             : 'The catalogue is still loading — please refresh.',

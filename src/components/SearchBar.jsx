@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, X } from 'lucide-react'
 import Img from './Img'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
-import { matchesProduct } from '../lib/productSearch'
+import { matchesProduct, searchPath } from '../lib/productSearch'
+import { productHref } from '../lib/productLinks'
 import { inr } from '../lib/pricing'
 
 export default function SearchBar({ onClose }) {
@@ -14,16 +15,24 @@ export default function SearchBar({ onClose }) {
   const { typeLabel } = useCategories()
   const [q, setQ] = useState('')
   const ref = useRef(); const nav = useNavigate()
+  // The current address, so a new search can keep the sort and drop the
+  // category filter it would narrow.
+  const [sp] = useSearchParams()
   useEffect(() => ref.current?.focus(), [])
 
-  const term = q.trim().toLowerCase()
+  const term = q.trim()
   // Same matching rule as the results page (src/lib/productSearch.js), so the
-  // header and the shop can never disagree about what a word finds.
+  // header and the shop can never disagree about what a word finds. The live
+  // list is taken from the WHOLE catalogue: a search never looks at one
+  // category or one size only.
   const res = term
     ? products.filter((p) => matchesProduct(p, term, typeLabel)).slice(0, 6)
     : []
 
-  const go = (e) => { e?.preventDefault?.(); nav(`/shop?q=${encodeURIComponent(term)}`); onClose() }
+  // A submitted search goes to the shop page on its own: the category filter
+  // is left behind (a search covers every category) and the sort is kept
+  // (sorting never hides a result).
+  const go = (e) => { e?.preventDefault?.(); nav(searchPath(term, { sort: sp.get('sort') })); onClose() }
 
   return (
     <div className="absolute inset-x-0 top-full bg-[#FAF0E7] border-b border-black/10 pb-4 shadow">
@@ -47,7 +56,7 @@ export default function SearchBar({ onClose }) {
         <ul className="max-w-[1000px] mx-auto px-4 mt-3">
           {res.map((p) => (
             <li key={p.id}>
-              <Link to={`/product/${p.id}`} onClick={onClose} className="flex items-center gap-4 py-2 hover:bg-black/5">
+              <Link to={productHref(p)} onClick={onClose} className="flex items-center gap-4 py-2 hover:bg-black/5">
                 <Img src={p.image} alt={p.title} className="w-12 h-14 object-cover" />
                 <span className="flex-1">{p.title}</span>
                 <span className="font-ui font-semibold">{p.price > 0 ? inr(p.price) : ''}</span>

@@ -666,6 +666,26 @@ Excel download and on the order confirmation email.
   a colour — either the row's `colour` column or a " - Colour" title suffix the catalogue
   recognises. Nothing is ever merged on a guess, and two designs that merely share a colour
   never pool.
+- **A card always opens the product it shows.** One row speaks for a whole design — the cheapest
+  colour — and every row-specific field on the card comes from that one row: its id, its price,
+  its photograph, its gallery, its sizes. The card used to take the photograph from the design's
+  first row and the id and price from the cheapest one, so a design whose colours cost different
+  amounts showed one colour's photograph and opened another. The link itself is built by
+  `src/lib/productLinks.js` (`productHref`), which every card, search result and banner uses, and
+  the id in it is the product's own row id — the same row the cart adds and the order prices. A
+  product that has been deleted resolves to nothing (`src/lib/productLookup.js`), so its page says
+  "Product not found" instead of quietly opening somebody else's product.
+- **A search looks at the whole catalogue.** Searching "red" returns every product that really is
+  red — in every category and in every size it is stocked in — never "the red ones in the one
+  category the page happened to be showing". The rule lives in `src/lib/productSearch.js`
+  (`matchesProducts`, built on the per-product `matchesProduct`), which both the results page and
+  the header's live search read. A search looks at the product's name, description, category,
+  Product ID, badge, sizes and the colour and description of every one of its colour rows; it
+  ignores stray spaces and capitalisation. A colour word is matched against the **saved** colour —
+  the `colour` column, a colour row's colour, or the " - Colour" title suffix — and never against
+  a description, so a black shirt that mentions red in its text is not a red shirt. A submitted
+  search leaves the category filter behind (it would hide results) and keeps the sort (sorting
+  hides nothing).
 - **The admin panel manages a design as one product**: shared info (name, category, description,
   sizes, badge, ratings) plus a card per colour with its own ID, price, photos and visibility.
   A save writes only the columns that really changed (`src/lib/productForm.js`), so editing one
@@ -714,6 +734,14 @@ What has been verified against this codebase:
   product in it appears in the navigation, in the shop's own filter and in the homepage's
   "Shop by Category" row, and switching its photograph off leaves the category and its products
   in place while the site falls back to another picture.
+- The homepage's product cards are checked against the live catalogue: every card opens the very
+  product it shows (same name, photograph, price, sizes and colour) and a product that no longer
+  exists opens "Product not found" rather than a different one
+  (`tests/homepageProductLinks.test.js`).
+- The search is checked across categories and sizes: "red", "blue" and a word with no match return
+  the same products whether or not a category is selected, a search submitted from inside a
+  category leaves that category behind, and a product is never called red because the word only
+  appears in its description (`tests/catalogueSearch.test.js`).
 
 Manual steps only you can do: create the Razorpay TEST keys, deploy the functions, set the
 secrets, create the webhook, and run a real test-mode payment (steps 1–7 above). For the order

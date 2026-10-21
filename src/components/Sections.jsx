@@ -10,7 +10,9 @@ import { useCategories } from '../context/CategoriesContext'
 import { fetchHomeBanners } from '../lib/banners'
 import { heroSlides, slideAt } from '../lib/heroSlider'
 import { fetchBestsellers, resolveBestsellers } from '../lib/bestsellers'
+import { derivedBestsellers } from '../lib/bestsellerRules'
 import { inr } from '../lib/pricing'
+import { productHref } from '../lib/productLinks'
 import Img from './Img'
 import ProductGrid from './ProductGrid'
 const icons = { Truck, Headset, IndianRupee }
@@ -172,43 +174,8 @@ export const Categories = () => {
 }
 
 // Four real catalogue styles, never two colourways of the same garment.
-// `styleKey` drops the trailing " - Colour", so "Denim Shirt - Black" and
-// "Denim Shirt - Blue" are one style and only the first colourway is a
-// candidate. Selection runs purely over the live catalogue, so the row can
-// never advertise a product the store does not have. Categories come from the
-// client's own list, and any category that appears in the catalogue but is
-// not in that list yet still gets a bucket, so no product can be skipped.
-const styleKey = (title) => (title.includes(' - ') ? title.slice(0, title.lastIndexOf(' - ')) : title)
-
-const bestSellers = (list, catKeys, n = 4) => {
-  // One entry per style, grouped by category.
-  const keys = [...new Set([...(catKeys || []), ...list.map((p) => p.type)])]
-  const styleBuckets = keys.map((key) => {
-    const first = new Map()
-    for (const p of list) {
-      if (p.type !== key) continue
-      const k = styleKey(p.title)
-      if (!first.has(k)) first.set(k, p)
-    }
-    return [...first.values()]
-  })
-
-  const out = []
-  const seen = new Set()
-  // Round-robin: every category gets one style before any category gets a
-  // second, so the row always reads as Tops + Co-ord Sets + Dresses + one more.
-  for (let round = 0; out.length < n && round < n; round++) {
-    for (const bucket of styleBuckets) {
-      const cand = bucket[round]
-      if (!cand || seen.has(styleKey(cand.title))) continue
-      seen.add(styleKey(cand.title))
-      out.push(cand)
-      if (out.length >= n) break
-    }
-  }
-  return out
-}
-
+// The rule that picks them lives in src/lib/bestsellerRules.js, so it can be
+// tested in plain Node and the homepage cannot drift away from it.
 export const BestSellers = () => {
   const { products, loading, source } = useProducts()
   const { categories } = useCategories()
@@ -226,7 +193,7 @@ export const BestSellers = () => {
     return () => { alive = false }
   }, [])
 
-  const derived = useMemo(() => bestSellers(products, catKeys), [products, catKeys])
+  const derived = useMemo(() => derivedBestsellers(products, catKeys), [products, catKeys])
   // Resolved against the same mapped products every other card uses, so a
   // promoted design is indistinguishable from an ordinary catalogue card —
   // and one that has since been deleted or hidden simply drops out.
@@ -274,12 +241,19 @@ export const Reviews = () => {
   // Titles, prices and thumbnails come from the live catalogue rather than
   // hard-coded strings, so a card can never advertise one product and link to
   // another.
-  const { getProduct } = useProducts()
+  //
+  // `getVariant` resolves the EXACT row a review names — usually one colour of
+  // a design — so the small photograph beside the review is the photograph
+  // the shopper lands on, at that colour's own price. A review whose product
+  // has been deleted or hidden resolves to nothing and simply shows no link,
+  // rather than pointing at some other product.
+  const { getProduct, getVariant } = useProducts()
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-10">
       <h2 className="text-center text-[42px] font-medium font-ui">Happy Customers</h2>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-14">{reviews.map((r) => {
         const p = getProduct(r.product)
+        const shown = getVariant(r.product) || p
         return (
         <div key={r.name} className="border border-black/10 p-4 hover:shadow-lg transition">
           <Img src={r.img} alt={`Customer wearing ${p ? p.title : 'Ruhi Womens Clothing'}`} className="w-full aspect-[1.1] object-cover" />
@@ -288,10 +262,10 @@ export const Reviews = () => {
           </p>
           <p className="mt-2 text-[22px]"><b className="font-ui">{r.name}</b> <span className="text-black/60 text-[18px] ml-2">✓ Verified Buyer</span></p>
           <p className="text-[18px] leading-[29px] text-black/70 mt-5 pb-4 border-b border-black/10">{r.text}</p>
-          {p ? (
-            <Link to={`/product/${p.id}`} className="flex gap-4 mt-4 items-center">
-              <Img src={p.image} alt={p.title} className="w-[68px] h-[68px] object-cover rounded" />
-              <div><p className="text-[17px] leading-6">{p.title}</p>{p.price > 0 && <p className="font-ui font-semibold text-black/60 mt-2">{inr(p.price)}</p>}</div>
+          {shown ? (
+            <Link to={productHref(shown)} className="flex gap-4 mt-4 items-center">
+              <Img src={shown.image} alt={p ? p.title : shown.title} className="w-[68px] h-[68px] object-cover rounded" />
+              <div><p className="text-[17px] leading-6">{p ? p.title : shown.title}</p>{shown.price > 0 && <p className="font-ui font-semibold text-black/60 mt-2">{inr(shown.price)}</p>}</div>
             </Link>
           ) : null}
         </div>

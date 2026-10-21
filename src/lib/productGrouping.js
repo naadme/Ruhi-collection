@@ -118,23 +118,49 @@ export const designDescription = (rows) => {
 }
 
 /**
+ * The badge a design shows.
+ *
+ * Like the description, the badge belongs to the design — the admin panel
+ * writes it to every colour of a design at once — so the card shows the
+ * first badge any of the design's rows carries. A design marked "Bestseller"
+ * is never left without its badge because the row that happens to speak for
+ * the card does not carry one.
+ */
+export const designBadge = (rows) => {
+  const list = Array.isArray(rows) ? rows : []
+  for (const row of list) {
+    const badge = String(row?.badge ?? '').trim()
+    if (badge) return row.badge
+  }
+  return null
+}
+
+/**
  * One design -> the single card the storefront shows.
  *
  * A design with no colour, or only one row, is returned untouched (its title,
  * id and image stay exactly as stored — nothing to choose, so nothing to
- * rewrite). A design with several colours becomes ONE card: `title` loses the
- * " - Colour" suffix, `colors` carries every row verbatim — each with its own
- * id, image, gallery and price — and the card's own `id`/`price`/`compare` come
- * from the *cheapest* colour row: that is the price the card advertises, and
- * the id is the row the card opens on, the row the cart adds, and the row
- * `create_order()` prices server-side, so all three always name the same row.
- * When every colour costs the same (the normal case) that row *is* the first
+ * rewrite). A design with several colours becomes ONE card, and ONE row
+ * speaks for it: the cheapest colour row.
+ *
+ * EVERY row-specific field on the card comes from that one row — its id, its
+ * price, its photograph, its gallery, its sizes — so the card a shopper taps
+ * always opens the product it shows, at the price it shows, in the sizes it
+ * shows. That row is also the row the cart adds and the row
+ * `create_order()` prices server-side, so all four always name the same row.
+ * When every colour costs the same (the normal case) that row IS the first
  * one, so ids and prices are unchanged from before grouping existed.
  *
- * The description is the design's, not a colour's: it is the first one in the
- * group that actually has text. A design whose first colour row has no
- * description — and another colour does — used to show an empty description
- * on its page even though the admin had written one.
+ * The card used to take its PHOTOGRAPH from the group's first row while
+ * taking its id and price from the cheapest one. When a design's colours cost
+ * different amounts the two rows are different, and the card then showed one
+ * colour's photograph and opened another: the live "Denim Shirt" card showed
+ * the black shirt (₹2,010) and opened the blue one. The card and the product
+ * it opens are now always the same product.
+ *
+ * The description and the badge are the DESIGN's — the first colour row that
+ * actually carries them — and the title loses the " - Colour" suffix so the
+ * shopper sees the design, not one colourway of it.
  */
 export function groupedCards(rows) {
   const out = []
@@ -146,12 +172,10 @@ export function groupedCards(rows) {
       lead,
     )
     out.push({
-      ...lead,
-      id: priced.id,
-      price: priced.price,
-      compare: priced.compare,
+      ...priced,
       title: parts.name,
       desc: designDescription(group),
+      badge: designBadge(group),
       colors: group.map((r) => ({ ...r, color: partsOf(r)?.colour || '' })),
     })
   }
