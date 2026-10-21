@@ -24,6 +24,11 @@ function createOrderLines(label) {
   return lines.slice(s, e + 1)
 }
 
+/** The migrations, oldest first — the order the database applies them in. */
+const migrationFiles = () => fs.readdirSync(path.join(process.cwd(), 'supabase', 'migrations'))
+  .filter((f) => f.endsWith('.sql'))
+  .sort()
+
 // ---------------------------------------------------------------------------
 // The format
 // ---------------------------------------------------------------------------
@@ -111,6 +116,34 @@ test('the guard that refuses an order that could never be paid is carried over',
     'the unpayable-order guard is still there')
   assert.match(after, /This order comes to ₹0, so there is nothing to pay/,
     'with its own message')
+})
+
+// ---------------------------------------------------------------------------
+// The allocator is still the last word
+// ---------------------------------------------------------------------------
+
+test('the create_order that actually runs still asks the database for the ID', () => {
+  // Several migrations carry a copy of create_order; the LAST copy is the one
+  // the shop runs. A later copy that went back to making the number up would
+  // leave every test above passing — they read one file each.
+  const last = migrationFiles()
+    .filter((f) => read(`supabase/migrations/${f}`).includes('create or replace function public.create_order'))
+    .pop()
+  assert.ok(last, 'some migration defines create_order')
+  const body = createOrderLines(`supabase/migrations/${last}`).join('\n')
+  assert.match(body, /public\.next_order_reference\(\)/,
+    'the create_order the shop runs asks the database for the order ID')
+  assert.ok(!/'RCH-' \|\| upper\(substr\(md5/.test(body),
+    'and never makes one up itself')
+})
+
+test('the allocator and its trigger are defined once, and nothing later replaces them', () => {
+  const defines = (needle) => migrationFiles().filter((f) => read(`supabase/migrations/${f}`).includes(needle))
+  const only = ['20261020190000_order_ids.sql']
+  assert.deepEqual(defines('create or replace function public.next_order_reference'), only,
+    'the allocator is defined once')
+  assert.deepEqual(defines('create trigger orders_assign_reference'), only,
+    'and so is the trigger that gives every order its number')
 })
 
 // ---------------------------------------------------------------------------

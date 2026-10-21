@@ -89,9 +89,14 @@ test('a colour named in the title is found even without the colour column', () =
   assert.equal(matchesProduct(row, 'blue', typeLabel), false)
 })
 
-test('a product whose NAME names the colour is found', () => {
+test('a product whose NAME names the colour is not a colour match', () => {
+  // A colour word is matched against the SAVED colour and nothing else: the
+  // row's own colour, the colours of its variants, or the " - Colour" suffix
+  // of its title. A design merely CALLED "Denim Blue Shirt" is not a blue
+  // product — the client asked for a colour filter, not a word search, so
+  // a name cannot make a product blue.
   const named = product({ title: 'Denim Blue Shirt', colour: null })
-  assert.equal(matchesProduct(named, 'blue', typeLabel), true)
+  assert.equal(matchesProduct(named, 'blue', typeLabel), false)
 })
 
 test('a two-word colour is one term, not two words', () => {

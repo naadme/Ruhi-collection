@@ -622,6 +622,58 @@ transactions, so no order is created):
 node scripts/verify-order-ids.mjs
 ```
 
+**Under real concurrency.** The live checks are one order at a time. The
+allocator's promises are about orders arriving *at the same moment*, so they
+are proved with real parallel connections on a throw-away PostgreSQL that the
+shop's own migrations are applied to, unchanged:
+
+```bash
+npm run test:order-id-db              # builds the isolated database
+npm run verify:order-ids:concurrency  # runs the checks against it
+```
+
+`scripts/test-order-id-db.mjs` creates a PostgreSQL in Docker, gives it the
+scaffolding a Supabase project has (`scripts/test-db-bootstrap.sql`), and
+applies **every file in `supabase/migrations`, in order, unchanged** — so the
+logic under test is the logic that runs in production. The test refuses to
+connect to anything but a local server, and it removes every row it writes.
+
+What it proves, with real parallel backends rather than a simulation:
+
+- two orders created at exactly the same moment get different numbers;
+- ten copies of one checkout submitted at once produce **one** order and
+  **one** number, and the day gives out one number for them, not ten;
+- a hundred and twenty orders at once: every one that succeeds has a number
+  of its own, the day's numbers run `01, 02, 03 …` with no gaps and no
+  repeats, and the ones past the limit are refused with the shop's own
+  message;
+- the day is the shop's day — an order at 23:59:59 IST and one at 00:00:00
+  IST land on different days, each starting again at `01`, and forty orders
+  straddling that midnight come out right on both sides;
+- a transaction that is rolled back, that fails, or whose session is killed
+  at the server leaves no order, no order line and **no gap** behind: the
+  number it was holding is free again;
+- the same order tried again is the same order, with the same number.
+
+**The limit of 99 orders a day, and what to do about it.** `NN` is two
+digits, so a day can hold 99 orders; the hundredth is refused with a clear
+message ("We have reached the limit of 99 orders for today…"), never given a
+duplicate or a malformed ID. The shop's volume makes that comfortable — 29
+orders in the first three weeks, about a day and a half, so the ceiling is
+roughly seventy times the daily run rate — and the format is kept as it is.
+
+It is worth knowing what would happen on a day that is genuinely busy, and
+what the way out would be, before it happens rather than after. The way out
+that does not disturb a single existing ID: keep the eight characters and
+the `DDMMYY` prefix, and widen only the **alphabet of the last two**, from
+decimal to base-36, so a day could hold 1296 orders (`01`–`99`, then `0A`–
+`ZZ`). Every ID the shop has already issued stays exactly as it is, the
+shape on screen does not change, and the only edits would be the check
+constraint (`^[0-9]{8}$` → `^[0-9]{6}[0-9A-Z]{2}$`) and the allocator's
+own counter. That is a change to the format, so it is written down here and
+**not applied** — it is the owner's decision, and it should be made with the
+day's real numbers in front of the owner rather than in advance.
+
 ## Product IDs
 
 Every product carries a six-character display ID in the format `CCPPCL`:
@@ -746,6 +798,11 @@ Excel download and on the order confirmation email.
 
 What has been verified against this codebase:
 
+- **The order ID under real concurrency** — an isolated PostgreSQL built from the shop's own
+  migrations, with real parallel backends: two orders at the same moment, ten copies of one
+  checkout at once, 120 orders at once, the day rolling over at IST midnight, and transactions
+  that are rolled back, that fail, or whose session is killed at the server
+  (`npm run test:order-id-db`, `npm run verify:order-ids:concurrency`).
 - Storefront end-to-end in headless Chrome — catalogue, cart, pricing, checkout, auth, account
   order history, wishlist, policies, a11y, responsive (no horizontal overflow at 390/768/1280/1440).
 - Admin end-to-end — sign-in, gate, products CRUD, orders panel, status persistence, search, logout.
