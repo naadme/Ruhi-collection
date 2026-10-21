@@ -13,7 +13,7 @@ import { serve } from '../_shared/deno.ts'
 import { MissingConfigError, requireEnv } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
 import { serviceFetch } from '../_shared/supabase.ts'
-import { sendMail } from '../_shared/resend.ts'
+import { sendMail, ResendError } from '../_shared/resend.ts'
 
 /** The one mailbox that receives contact form submissions. */
 const TO = 'ruhicollections2026@gmail.com'
@@ -180,6 +180,11 @@ export async function handle(req: Request): Promise<Response> {
     return json(200, { ok: true })
   } catch (error) {
     if (error instanceof MissingConfigError) return fail(503, NOT_CONFIGURED)
+    // 403 is Resend saying the From address may not write to this recipient —
+    // which happens while `RESEND_FROM` is still `onboarding@resend.dev`. It
+    // is a fault on this server, not something the visitor can fix, and they
+    // deserve to be told where to write instead.
+    if (error instanceof ResendError && error.status === 403) return fail(503, NOT_CONFIGURED)
     console.warn('[send-contact-email] delivery failed:', String(error))
     return fail(502, GENERIC)
   }
