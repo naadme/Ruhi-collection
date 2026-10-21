@@ -25,6 +25,7 @@
     "verify:order-ids": "node scripts/verify-order-ids.mjs",
     "test:order-id-db": "node scripts/test-order-id-db.mjs",
     "verify:order-ids:concurrency": "node scripts/test-order-id-concurrency.mjs",
+    "test:order-id-allocation": "node scripts/test-order-id-allocation.mjs",
     "verify:reviews": "node scripts/verify-reviews.mjs"
   },
   "dependencies": {

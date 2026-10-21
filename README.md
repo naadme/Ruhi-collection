@@ -594,6 +594,14 @@ format `DDMMYYNN`:
 So `01102601` is the **first** order of the **1st of October 2026**, and
 `01102602` is the second order of the same day.
 
+**A day that holds more than 99 orders.** The number needs a third digit from
+the hundredth order of a day, so that ID is **nine** digits long — `DDMMYYNNN`,
+and `211026100` is the hundredth order of the 21st of October 2026. The first
+six digits still say the day, and a nine-digit ID cannot be mistaken for an
+eight-digit one, so the format the customer reads only changes on the days
+that need it. A day can hold 999 orders; beyond that the order is refused with
+a clear message rather than a duplicate or a malformed ID.
+
 **Where the number comes from.** The database, in the shop's own time zone
 (`Asia/Kolkata`), from the order's own `created_at`:
 
@@ -601,11 +609,12 @@ So `01102601` is the **first** order of the **1st of October 2026**, and
   orders placed at the same moment cannot be given the same number — the
   second one waits, and reads the day's highest number *after* the lock is
   held;
+- the day's highest number is read as the whole tail of the ID (`13` from
+  `21102613`, `100` from `211026100`), so a day that has passed 99 keeps
+  counting from where it really is;
 - a BEFORE INSERT trigger (`orders_assign_reference`) assigns the number, so
   no code path can write an order without one;
 - a unique index on `orders.reference` has the final word;
-- at 99 orders in a day the number is refused with a clear message rather than
-  a duplicate or a malformed ID;
 - the day resets at midnight **in the shop's own time zone**, which is the
   same clock the admin panel's date filter and every displayed order date use
   (`src/lib/shopTime.js`) — so the filter, the displayed date and the ID can
@@ -613,13 +622,23 @@ So `01102601` is the **first** order of the **1st of October 2026**, and
 
 **Nothing existing was renumbered.** Orders placed before the format keep
 their old `RCH-XXXXXXXX` number in `orders.previous_reference`, and the admin
-search finds them by either number.
+search finds them by either number. Widening the day to 999 orders changed no
+existing ID either.
 
 Verify it against the live database (the checks run in rolled-back
 transactions, so no order is created):
 
 ```bash
 node scripts/verify-order-ids.mjs
+```
+
+Or against a throw-away database, with real parallel connections rather than a
+simulation — a hundred and twenty orders at once, a killed session, a
+rolled-back transaction, a retry, and the hundredth order of a day:
+
+```bash
+node scripts/test-order-id-db.mjs          # builds the isolated database
+node scripts/test-order-id-allocation.mjs  # runs the concurrency tests
 ```
 
 **Under real concurrency.** The live checks are one order at a time. The
@@ -630,6 +649,7 @@ shop's own migrations are applied to, unchanged:
 ```bash
 npm run test:order-id-db              # builds the isolated database
 npm run verify:order-ids:concurrency  # runs the checks against it
+npm run test:order-id-allocation      # and the allocation checks against it
 ```
 
 `scripts/test-order-id-db.mjs` creates a PostgreSQL in Docker, gives it the
@@ -647,6 +667,9 @@ What it proves, with real parallel backends rather than a simulation:
   of its own, the day's numbers run `01, 02, 03 …` with no gaps and no
   repeats, and the ones past the limit are refused with the shop's own
   message;
+- the hundredth order of a day is **accepted**, and it gets a nine-digit ID
+  of its own — the format grows by one digit exactly when it has to, and
+  never before;
 - the day is the shop's day — an order at 23:59:59 IST and one at 00:00:00
   IST land on different days, each starting again at `01`, and forty orders
   straddling that midnight come out right on both sides;
@@ -656,23 +679,31 @@ What it proves, with real parallel backends rather than a simulation:
 - the same order tried again is the same order, with the same number.
 
 **The limit of 99 orders a day, and what to do about it.** `NN` is two
-digits, so a day can hold 99 orders; the hundredth is refused with a clear
-message ("We have reached the limit of 99 orders for today…"), never given a
-duplicate or a malformed ID. The shop's volume makes that comfortable — 29
-orders in the first three weeks, about a day and a half, so the ceiling is
-roughly seventy times the daily run rate — and the format is kept as it is.
+digits, so a day could hold 99 orders and the hundredth was **refused** with a
+clear message ("We have reached the limit of 99 orders for today…"), never
+given a duplicate or a malformed ID. The shop's volume made that comfortable —
+29 orders in the first three weeks, about a day and a half, with a busiest day
+of 13 — but it was a ceiling on the FORM, not on the shop, and a refused order
+is a lost order.
 
-It is worth knowing what would happen on a day that is genuinely busy, and
-what the way out would be, before it happens rather than after. The way out
-that does not disturb a single existing ID: keep the eight characters and
-the `DDMMYY` prefix, and widen only the **alphabet of the last two**, from
-decimal to base-36, so a day could hold 1296 orders (`01`–`99`, then `0A`–
-`ZZ`). Every ID the shop has already issued stays exactly as it is, the
-shape on screen does not change, and the only edits would be the check
-constraint (`^[0-9]{8}$` → `^[0-9]{6}[0-9A-Z]{2}$`) and the allocator's
-own counter. That is a change to the format, so it is written down here and
-**not applied** — it is the owner's decision, and it should be made with the
-day's real numbers in front of the owner rather than in advance.
+So the number now grows a third digit on the days that need one: orders 01..99
+keep the eight-digit ID they have always had, and from the hundredth the ID is
+nine digits (`DDMMYYNNN` — `211026100` is the hundredth order of the 21st of
+October 2026). A day can hold 999 orders; beyond that the order is refused
+with a clear message rather than a duplicate or a malformed ID. **No order the
+shop has already issued was renumbered** — the widening only touches days that
+have never happened.
+
+The other way out, if the owner would rather the ID stayed exactly eight
+characters, is to keep the eight characters and the `DDMMYY` prefix and widen
+only the **alphabet of the last two**, from decimal to base-36, so a day could
+hold 1296 orders (`01`–`99`, then `0A`–`ZZ`). Every ID already issued stays
+exactly as it is and the shape on screen never changes; the edits would be the
+check constraint (`^[0-9]{8}$` → `^[0-9]{6}[0-9A-Z]{2}$`) and the allocator's
+own counter. That is a change to what the customer reads — a letter in an
+order ID — so it is written down here and **not applied**: it is the owner's
+decision, and it should be made with the day's real numbers in front of the
+owner rather than in advance.
 
 ## Product IDs
 

@@ -14,6 +14,11 @@ const MIG = 'supabase/migrations/20261020190000_order_ids.sql'
 const SQL = read(MIG)
 const PREV = 'supabase/migrations/20261020090000_refuse_unpayable_orders.sql'
 
+/** The migrations, oldest first — the order the database applies them in. */
+const migrationFiles = () => fs.readdirSync(path.join(process.cwd(), 'supabase', 'migrations'))
+  .filter((f) => f.endsWith('.sql'))
+  .sort()
+
 /** The create_order definition inside a migration, as raw lines. */
 function createOrderLines(label) {
   const lines = read(label).split('\n')
@@ -24,43 +29,57 @@ function createOrderLines(label) {
   return lines.slice(s, e + 1)
 }
 
-/** The migrations, oldest first — the order the database applies them in. */
-const migrationFiles = () => fs.readdirSync(path.join(process.cwd(), 'supabase', 'migrations'))
-  .filter((f) => f.endsWith('.sql'))
-  .sort()
+/**
+ * The allocator the shop actually runs.
+ *
+ * The allocator was written once and widened once — by the migration that
+ * let a day hold more than 99 orders — and the LAST definition is the one
+ * in force. A later migration that went back to making the number up would
+ * leave every test that reads a single file passing, so the tests that
+ * describe the live behaviour read the last definition, not the first.
+ */
+const ALLOC_FILE = migrationFiles()
+  .filter((f) => read(`supabase/migrations/${f}`).includes('create or replace function public.next_order_reference'))
+  .pop()
+const ALLOC = read(`supabase/migrations/${ALLOC_FILE}`)
 
 // ---------------------------------------------------------------------------
 // The format
 // ---------------------------------------------------------------------------
 
-test('the ID is built as DDMMYY + a two-digit number for that day', () => {
+test('the ID is built as DDMMYY + the number for that day', () => {
   // The day, the month and the year are taken in the shop's own time zone.
-  assert.match(SQL, /to_char\(v_at at time zone 'Asia\/Kolkata', 'DDMMYY'\)/,
+  assert.match(ALLOC, /to_char\(v_at at time zone 'Asia\/Kolkata', 'DDMMYY'\)/,
     "the day, month and year come from the shop's time zone")
-  // The number for that day is zero-padded to two digits.
-  assert.match(SQL, /lpad\(v_next::text, 2, '0'\)/, 'the number is two digits')
-  assert.match(SQL, /return v_day \|\| lpad\(v_next::text, 2, '0'\)/,
+  // The number for that day is zero-padded to two digits, and only grows to
+  // a third digit when the day needs one.
+  assert.match(ALLOC, /lpad\(v_next::text, 2, '0'\)/, 'the number is two digits')
+  assert.match(ALLOC, /return v_day \|\| lpad\(v_next::text, 2, '0'\)/,
     'and the ID is the day followed by the number')
+  assert.match(ALLOC, /if v_next < 100 then[\s\S]*return v_day \|\| lpad\(v_next::text, 3, '0'\)/,
+    'and from the hundredth order of a day the number is three digits')
 })
 
 test('the number for a day starts at 01 and counts up', () => {
-  assert.match(SQL, /coalesce\(max\(nullif\(substr\(reference, 7, 2\), ''\)::integer\), 0\) \+ 1/,
+  assert.match(ALLOC, /coalesce\(max\(nullif\(substr\(reference, 7\), ''\)::integer\), 0\) \+ 1/,
     'the next number is one after the highest already used for that day')
-  // The 7th and 8th characters are the number: DDMMYY is six.
-  assert.match(SQL, /substr\(reference, 7, 2\)/, 'the number is characters 7 and 8')
+  // The number is the whole tail of the ID: DDMMYY is six characters, and a
+  // day that has passed 99 carries a three-digit number after them.
+  assert.match(ALLOC, /substr\(reference, 7\)/, 'the number is everything after the day')
+  assert.match(ALLOC, /left\(reference, 6\) = v_day/, "and the day is the ID's first six characters")
 })
 
 test('the ID is the order\'s own clock, and a caller cannot choose it', () => {
-  assert.match(SQL, /new\.reference := public\.next_order_reference\(new\.created_at\)/,
+  assert.match(ALLOC, /new\.reference := public\.next_order_reference\(new\.created_at\)/,
     "the order's own created_at is the clock")
-  assert.match(SQL, /new\.reference !~ '\^\[0-9\]\{8\}\$'/,
-    'anything that is not already an 8-digit number is replaced')
+  assert.match(ALLOC, /new\.reference !~ '\^\[0-9\]\{8,9\}\$'/,
+    'anything that is not already an eight- or nine-digit number is replaced')
 })
 
 test('the format is enforced by the database', () => {
-  assert.match(SQL, /add constraint orders_reference_chk check \(reference ~ '\^\[0-9\]\{8\}\$'\)/,
-    'the constraint only allows the new format')
-  assert.match(SQL, /drop constraint if exists orders_reference_chk/,
+  assert.match(ALLOC, /add constraint orders_reference_chk check \(reference ~ '\^\[0-9\]\{8,9\}\$'\)/,
+    'the constraint allows the eight-digit ID and the nine-digit one')
+  assert.match(ALLOC, /drop constraint if exists orders_reference_chk/,
     'and the old constraint is replaced, not left to fight it')
 })
 
@@ -69,11 +88,11 @@ test('the format is enforced by the database', () => {
 // ---------------------------------------------------------------------------
 
 test('two orders placed at the same moment cannot be given the same number', () => {
-  assert.match(SQL, /pg_advisory_xact_lock\(hashtext\('ruhi\.collection\.order_reference'\), hashtext\(v_day\)\)/,
+  assert.match(ALLOC, /pg_advisory_xact_lock\(hashtext\('ruhi\.collection\.order_reference'\), hashtext\(v_day\)\)/,
     "the day's number is allocated under a lock, held until the transaction ends")
   // The number is read AFTER the lock is taken, so the other order is counted.
-  const lockAt = SQL.indexOf('pg_advisory_xact_lock')
-  const readAt = SQL.indexOf('coalesce(max(nullif(substr(reference, 7, 2)')
+  const lockAt = ALLOC.indexOf('pg_advisory_xact_lock')
+  const readAt = ALLOC.indexOf('coalesce(max(nullif(substr(reference, 7)')
   assert.ok(lockAt > 0 && readAt > lockAt, 'the highest number used is read after the lock is taken')
   // And the unique index has the final word.
   assert.match(read('supabase/migrations/20260928181500_orders_and_checkout.sql'),
@@ -81,16 +100,16 @@ test('two orders placed at the same moment cannot be given the same number', () 
     'the order reference is unique in the database')
 })
 
-test('a hundredth order in one day is refused, not given a broken number', () => {
-  assert.match(SQL, /if v_next > 99 then[\s\S]*raise exception 'We have reached the limit of 99 orders for today/,
+test('a day can hold more than 99 orders, and says so when it has used them all', () => {
+  assert.match(ALLOC, /if v_next > 999 then[\s\S]*raise exception 'We have reached the limit of 999 orders for today/,
     'the limit is refused with a sentence the shop can read')
-  assert.match(SQL, /errcode = 'P0001'/, 'and it is the friendly kind of error')
+  assert.match(ALLOC, /errcode = 'P0001'/, 'and it is the friendly kind of error')
 })
 
 test('the number is the database\'s own business', () => {
-  assert.match(SQL, /revoke all on function public\.next_order_reference\(timestamptz\) from public, anon, authenticated/,
+  assert.match(ALLOC, /revoke all on function public\.next_order_reference\(timestamptz\) from public, anon, authenticated/,
     'a browser cannot ask what the next number would be')
-  assert.match(SQL, /security definer[\s\S]{0,200}set search_path = public, pg_temp/,
+  assert.match(ALLOC, /security definer[\s\S]{0,200}set search_path = public, pg_temp/,
     'and the function cannot be led anywhere by a search path')
 })
 
@@ -139,11 +158,34 @@ test('the create_order that actually runs still asks the database for the ID', (
 
 test('the allocator and its trigger are defined once, and nothing later replaces them', () => {
   const defines = (needle) => migrationFiles().filter((f) => read(`supabase/migrations/${f}`).includes(needle))
-  const only = ['20261020190000_order_ids.sql']
+  // The allocator was written once, and widened once, by the migration that
+  // let a day hold more than 99 orders. Nothing else may touch it.
+  const only = ['20261020190000_order_ids.sql', '20261021180000_order_id_daily_capacity.sql']
   assert.deepEqual(defines('create or replace function public.next_order_reference'), only,
-    'the allocator is defined once')
-  assert.deepEqual(defines('create trigger orders_assign_reference'), only,
-    'and so is the trigger that gives every order its number')
+    'the allocator is defined once, and widened once')
+  assert.deepEqual(defines('create or replace function public.assign_order_reference'), only,
+    'and so is the function behind the trigger that gives every order its number')
+  // The TRIGGER itself is still created once and never again — what was
+  // widened is the function it calls.
+  assert.deepEqual(defines('create trigger orders_assign_reference'), ['20261020190000_order_ids.sql'],
+    'and the trigger that gives every order its number is created once')
+  assert.equal(ALLOC_FILE, only[only.length - 1],
+    'and the last word on it is the last migration that defines it')
+})
+
+test('the migration that widened the day touches nothing but the order ID', () => {
+  // The widening migration may only widen the constraint, replace the
+  // allocator and its trigger, and add an index. It may not touch a single
+  // order, and it may not touch anything else at all.
+  assert.doesNotMatch(ALLOC, /update public\.orders/i, 'no order is rewritten')
+  assert.doesNotMatch(ALLOC, /insert into public\.orders/i, 'and no order is written')
+  assert.doesNotMatch(ALLOC, /delete from/i, 'nothing is deleted')
+  assert.doesNotMatch(ALLOC, /drop table/i, 'no table is dropped')
+  assert.doesNotMatch(ALLOC, /truncate/i, 'nothing is truncated')
+  assert.doesNotMatch(ALLOC, /alter table public\.orders drop column/i,
+    'the internal primary key column is not removed')
+  assert.doesNotMatch(ALLOC, /update public\.order_items/i, 'no order item is touched')
+  assert.doesNotMatch(ALLOC, /update public\.products/i, 'no product is touched')
 })
 
 // ---------------------------------------------------------------------------

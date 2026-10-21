@@ -246,7 +246,9 @@ if (refused.length) {
 section('5. the numbers of the day')
 // ---------------------------------------------------------------------------
 const today = await q(`select to_char(now() at time zone 'Asia/Kolkata', 'DDMMYY') as day`).then((r) => r.rows[0].day)
-const todays = await q(`select reference from public.orders where reference like $1 order by reference`, [`${today}%`])
+// Ordered by the NUMBER, not by the text: a day that has passed 99 carries
+// nine-digit IDs, and '211026100' sorts before '21102611' as a string.
+const todays = await q(`select reference from public.orders where reference like $1 order by substr(reference, 7)::int`, [`${today}%`])
 const numbers = todays.rows.map((r) => Number(r.reference.slice(6)))
 expect('every number belongs to today', todays.rows.every((r) => r.reference.startsWith(today)), true)
 expect('no number is repeated', new Set(numbers).size, numbers.length)

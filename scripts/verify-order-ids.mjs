@@ -115,7 +115,7 @@ console.log('\n4. A payment retry reuses the order and takes no new number')
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n5. The database refuses a duplicate, and stops at 99 a day')
+console.log('\n5. The database refuses a duplicate')
 {
   const rows = await query(`
     begin;
@@ -140,8 +140,11 @@ console.log('\n5. The database refuses a duplicate, and stops at 99 a day')
   ok(`the orders that had an old ID keep it: ${r.previous_kept}`)
 }
 
-console.log('\n5b. A hundredth order in one day is refused')
+console.log('\n5b. A hundredth order in one day, and the ceiling beyond it')
 {
+  // A day may hold more than 99 orders: the number grows a third digit and
+  // the ID is nine long (DDMMYYNNN), and the day still refuses an order
+  // only when it has used its last number.
   const rows = await query(`
     begin;
     create temporary table probe (what text primary key, value text);
@@ -158,16 +161,33 @@ console.log('\n5b. A hundredth order in one day is refused')
           return;
         end;
       end loop;
-      insert into probe values ('the_100th', 'ACCEPTED -> BROKEN');
+      insert into probe values ('the_100th', 'accepted');
     end;
     $$;
     insert into probe select 'the_99th', reference from public.orders where email = 'limit-99@example.invalid';
+    insert into probe select 'the_100th_id', reference from public.orders where email = 'limit-100@example.invalid';
+    -- a day that has used its very last number
+    insert into public.orders (reference, full_name, email, phone, address, city, state, pincode, subtotal, shipping, discount, total, created_at)
+    values ('020426999', 'Last of the day', 'limit-999@example.invalid', '90000999',
+            'Limit Street', 'Pune', 'MH', '411001', 100, 0, 0, 100, '2026-04-02 10:00:00+00'::timestamptz);
+    do $$
+    begin
+      insert into public.orders (reference, full_name, email, phone, address, city, state, pincode, subtotal, shipping, discount, total, created_at)
+      values (null, 'Too many', 'limit-1000@example.invalid', '90001000',
+              'Limit Street', 'Pune', 'MH', '411001', 100, 0, 0, 100, '2026-04-02 10:00:00+00'::timestamptz);
+      insert into probe values ('the_1000th', 'ACCEPTED -> BROKEN');
+    exception when others then
+      insert into probe values ('the_1000th', 'refused: ' || sqlerrm);
+    end;
+    $$;
     select what, value from probe order by what;
     rollback;`)
   const r = Object.fromEntries(rows.map((x) => [x.what, x.value]))
   check('the 99th order of the day', r.the_99th, '02042699')
-  if (String(r.the_100th).startsWith('refused')) ok(`the 100th order was refused: ${r.the_100th}`)
-  else bad(`the 100th order was ${r.the_100th}`)
+  check('the 100th order of the day', r.the_100th_id, '020426100')
+  check('and it was accepted', r.the_100th, 'accepted')
+  if (String(r.the_1000th).startsWith('refused')) ok(`the thousandth order was refused: ${r.the_1000th}`)
+  else bad(`the thousandth order was ${r.the_1000th}`)
 }
 
 // ---------------------------------------------------------------------------
