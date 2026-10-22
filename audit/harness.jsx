@@ -9,7 +9,7 @@
 //
 // The scripts beside it also intercept the browser's requests, so the panels
 // can be driven with made-up rows without touching the database.
-import { StrictMode } from 'react'
+import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ProductsProvider, useProducts } from '../src/context/ProductsContext'
 import { CategoriesProvider } from '../src/context/CategoriesContext'
@@ -21,6 +21,9 @@ import CategoryImagesPanel from '../src/admin/CategoryImagesPanel'
 import BestsellerPanel from '../src/admin/BestsellerPanel'
 import OrdersPanel from '../src/admin/OrdersPanel'
 import ReviewsPanel from '../src/admin/ReviewsPanel'
+import ProductEditor from '../src/admin/ProductEditor'
+import { ProductRow, GroupCard } from '../src/admin/ProductList'
+import { groupRows } from '../src/lib/productGrouping'
 import '../src/index.css'
 
 const notify = (kind, message) => {
@@ -34,6 +37,69 @@ function Panel({ name, children }) {
       <h1 style={{ fontSize: 28 }}>{name}</h1>
       {children}
     </section>
+  )
+}
+
+// The products panel: the shop's own list of products and the editor that
+// opens on one of them, with the real catalogue behind them. It is here so a
+// browser can read the Product ID off the list and off the editor — the two
+// places an owner looks for it.
+function ProductsPanel() {
+  const { all } = useProducts()
+  const [editing, setEditing] = useState(null)
+  const groups = groupRows(all)
+  return (
+    <>
+      <Panel name="products">
+        <ul>
+          {groups.slice(0, 6).map((g) => (
+            g.rows.length === 1 ? (
+              <ProductRow
+                key={g.rows[0].id}
+                p={g.rows[0]}
+                busy={false}
+                onToggle={() => {}}
+                onEdit={() => setEditing({ rows: g.rows })}
+                onDelete={() => {}}
+              />
+            ) : (
+              <GroupCard
+                key={g.key}
+                g={g}
+                expanded
+                onExpand={() => {}}
+                busyId={null}
+                onToggleGroup={() => {}}
+                onToggleVariant={() => {}}
+                onEdit={() => setEditing({ rows: g.rows })}
+                onEditVariant={(r) => setEditing({ rows: g.rows, focusKey: r.id })}
+                onAddColour={() => setEditing({ rows: g.rows, addColour: true })}
+                onDeleteGroup={() => {}}
+                onRemoveVariant={() => {}}
+              />
+            )
+          ))}
+        </ul>
+        <button
+          id="open-the-editor"
+          onClick={() => setEditing({ rows: groups[0]?.rows || [] })}
+          style={{ margin: 12 }}
+        >
+          Edit the first product
+        </button>
+      </Panel>
+      <ProductEditor
+        open={!!editing}
+        isNew={false}
+        initial={editing ? { rows: editing.rows || [] } : null}
+        focusKey={editing?.focusKey || ''}
+        addColour={!!editing?.addColour}
+        takenIds={new Set()}
+        canManageCategories={false}
+        onClose={() => setEditing(null)}
+        onSave={() => setEditing(null)}
+      />
+    </>
   )
 }
 
@@ -51,6 +117,7 @@ function Inside() {
       {/* The dashboard hands this panel the same raw catalogue rows it does
           the best sellers one — a review is shown under the product it names. */}
       <Panel name="reviews"><ReviewsPanel notify={notify} products={all} /></Panel>
+      <ProductsPanel />
     </>
   )
 }

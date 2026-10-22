@@ -220,6 +220,10 @@ section('5. upper-case, half-typed, and nonsense terms')
 // ---------------------------------------------------------------------------
 const searchFrom = async (term) => {
   await send('Page.navigate', { url: `${BASE}/shop?q=${encodeURIComponent(term)}` })
+  // The page paints the bundled catalogue first and the database answers
+  // after, so the reading is taken once the page has stopped changing AND
+  // the catalogue has arrived — otherwise an empty state that has not been
+  // drawn yet is read as "no results".
   let last = ''
   let out = {}
   for (let i = 0; i < 40; i += 1) {
@@ -227,10 +231,10 @@ const searchFrom = async (term) => {
     out = await evaluate(`(() => {
       const cards = [...new Set([...document.querySelectorAll('a[href^="/product/"] h3')].map(h => h.textContent.trim()))];
       const text = (document.querySelector('main') || document.body).innerText || '';
-      return { cards, text: text.replace(/\\s+/g, ' ') };
+      return { cards, text: text.replace(/\\s+/g, ' '), loading: /still loading|Loading products/i.test(text) };
     })()`)
     const now = JSON.stringify(out)
-    if (now === last) break
+    if (now === last && !out.loading && out.text.length > 0) break
     last = now
   }
   return out

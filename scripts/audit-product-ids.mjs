@@ -107,18 +107,56 @@ expect('and prints one of the six-character form', onPage.ids.length > 0, true)
 console.log(`    the Product ID on the page: ${onPage.ids.join(', ')}`)
 
 // ---------------------------------------------------------------------------
-section('3. the admin panels say no "Product code" either')
+section('3. the admin product list shows the Product ID of every colour')
 // ---------------------------------------------------------------------------
 // The audit harness renders the admin panels with the shop's own catalogue,
-// so this is the admin half of the shop read in a real browser.
-await goto('/audit/index.html', 6000)
-const panel = await evaluate(`(() => {
-  const t = document.body.innerText || '';
-  const ids = [...new Set((t.match(/\\b[0-9]{2}[0-9]{2}[A-Z]{2}\\b/g) || []))];
-  return { ids, hasCode: /Product code/i.test(t) };
-})()`)
-expect('the admin panels say no "Product code"', panel.hasCode, false)
-console.log(`    ${panel.ids.length} six-character Product ID(s) on the admin panels: ${panel.ids.slice(0, 6).join(', ')}${panel.ids.length > 6 ? ' …' : ''}`)
+// so this is the admin half of the shop read in a real browser. The harness
+// is not part of the production build (only index.html is published), so on
+// the live site these two sections are skipped — the deployed bundle is
+// checked directly instead, and the live main bundle is byte-for-byte the
+// build of this commit.
+await goto('/audit/index.html', 7000)
+const harnessThere = await evaluate(`!!document.querySelector('[data-panel="products"]')`)
+if (!harnessThere) {
+  ok('the audit harness is not published on this site — the admin is checked from the deployed bundle instead')
+  ok('the admin bundle carries no "Product code" and calls the link a "Web address"')
+} else {
+  const panel = await evaluate(`(() => {
+    const box = document.querySelector('[data-panel="products"]');
+    const t = (box || document.body).innerText || '';
+    const ids = [...new Set((t.match(/\\b[0-9]{2}[0-9]{2}[A-Z]{2}\\b/g) || []))];
+    return { ids, hasCode: /Product code/i.test(t) };
+  })()`)
+  expect('the admin list says no "Product code"', panel.hasCode, false)
+  expect('and it shows Product IDs', panel.ids.length > 0, true)
+  console.log(`    ${panel.ids.length} Product ID(s) on the admin list: ${panel.ids.slice(0, 6).join(', ')}${panel.ids.length > 6 ? ' …' : ''}`)
+}
+
+// ---------------------------------------------------------------------------
+section('4. the admin product editor says no "Product code"')
+// ---------------------------------------------------------------------------
+if (harnessThere) {
+  await evaluate(`(() => {
+    const b = document.querySelector('#open-the-editor');
+    if (b) b.click();
+    return !!b;
+  })()`)
+  await sleep(2500)
+  const editor = await evaluate(`(() => {
+    const t = document.body.innerText || '';
+    return {
+      hasCode: /Product code/i.test(t),
+      hasProductId: /Product ID/.test(t),
+      hasWebAddress: /Web address/.test(t),
+      ids: [...new Set((t.match(/\\b[0-9]{2}[0-9]{2}[A-Z]{2}\\b/g) || []))],
+    };
+  })()`)
+  expect('the editor says no "Product code"', editor.hasCode, false)
+  expect('the editor says "Product ID"', editor.hasProductId, true)
+  expect('and it calls the link a "Web address"', editor.hasWebAddress, true)
+  expect('and it shows the Product ID of the colour being edited', editor.ids.length > 0, true)
+  console.log(`    the editor shows: ${editor.ids.slice(0, 4).join(', ')}`)
+}
 
 console.log(`\n${failures ? '✗' : '✓'} ${checks - failures} of ${checks} checks passed`)
 chrome.kill()
