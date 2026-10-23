@@ -10,6 +10,7 @@
 // The scripts beside it also intercept the browser's requests, so the panels
 // can be driven with made-up rows without touching the database.
 import { StrictMode, useState } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { createRoot } from 'react-dom/client'
 import { ProductsProvider, useProducts } from '../src/context/ProductsContext'
 import { CategoriesProvider } from '../src/context/CategoriesContext'
@@ -19,6 +20,7 @@ import BannerPanel from '../src/admin/BannerPanel'
 import CategoriesPanel from '../src/admin/CategoriesPanel'
 import CategoryImagesPanel from '../src/admin/CategoryImagesPanel'
 import BestsellerPanel from '../src/admin/BestsellerPanel'
+import { BestSellers } from '../src/components/Sections'
 import OrdersPanel from '../src/admin/OrdersPanel'
 import ReviewsPanel from '../src/admin/ReviewsPanel'
 import ProductEditor from '../src/admin/ProductEditor'
@@ -113,6 +115,11 @@ function Inside() {
       <Panel name="category-images"><CategoryImagesPanel notify={notify} /></Panel>
       <Panel name="bestsellers"><BestsellerPanel notify={notify} products={all} /></Panel>
       <Panel name="categories"><CategoriesPanel notify={notify} /></Panel>
+      {/* The homepage's Best Sellers row, on its own. It is the surface the
+          four-across / arrows-only-past-four rule renders on, so a browser can
+          prove the row for 0, 1, 4 and 5 designs without the rest of the page.
+          It links to products, so it needs a router of its own. */}
+      <Panel name="home-bestsellers"><MemoryRouter><BestSellers /></MemoryRouter></Panel>
       <Panel name="orders"><OrdersPanel notify={notify} /></Panel>
       {/* The dashboard hands this panel the same raw catalogue rows it does
           the best sellers one — a review is shown under the product it names. */}
