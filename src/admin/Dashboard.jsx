@@ -15,7 +15,6 @@ import { ProductRow, GroupCard } from './ProductList'
 import OrdersPanel from './OrdersPanel'
 import BannerPanel from './BannerPanel'
 import CategoriesPanel from './CategoriesPanel'
-import CategoryImagesPanel from './CategoryImagesPanel'
 import BestsellerPanel from './BestsellerPanel'
 import CouponsPanel from './CouponsPanel'
 import ReviewsPanel from './ReviewsPanel'
@@ -107,9 +106,13 @@ const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
 // managers see only the Products tab, exactly as before. Promoting a design to
 // the homepage is a shop-window decision, not a catalogue edit — and deciding
 // what the public reads under a product is less still.
+//
+// Categories are ONE section: the manager and the photographs of those same
+// categories live together in CategoriesPanel, so there is no second tab to
+// chase the same rows through.
 const SECTIONS = [
   ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'],
-  ['banners', 'Banners'], ['category-images', 'Category images'],
+  ['banners', 'Banners'],
   ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'], ['reviews', 'Reviews'],
 ]
 
@@ -174,7 +177,10 @@ export default function Dashboard({ showOrders }) {
   useEffect(() => {
     if (!showOrders) return
     const wanted = new URLSearchParams(window.location.search).get('section')
-    if (wanted && SECTIONS.some(([k]) => k === wanted)) setSection(wanted)
+    // A link written while the photographs had a tab of their own still lands
+    // somewhere useful — the combined Categories section, where they now are.
+    const section = wanted === 'category-images' ? 'categories' : wanted
+    if (section && SECTIONS.some(([k]) => k === section)) setSection(section)
   }, [showOrders])
 
   const notify = (type, message) => setToast({ type, message, id: Date.now() })
@@ -394,9 +400,8 @@ export default function Dashboard({ showOrders }) {
         <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'orders' && <OrdersPanel notify={notify} />}
-          {section === 'categories' && <CategoriesPanel />}
+          {section === 'categories' && <CategoriesPanel notify={notify} />}
           {section === 'banners' && <BannerPanel notify={notify} />}
-          {section === 'category-images' && <CategoryImagesPanel notify={notify} />}
           {section === 'bestsellers' && <BestsellerPanel notify={notify} products={all} />}
           {section === 'coupons' && <CouponsPanel notify={notify} />}
           {section === 'reviews' && <ReviewsPanel notify={notify} products={all} />}

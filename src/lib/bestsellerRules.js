@@ -33,6 +33,18 @@ export const pickId = (pick) => (
 export const pickActive = (pick) => !(pick && typeof pick === 'object' && pick.is_active === false)
 
 /**
+ * The card an id names: the card itself, or ANY colour row inside it.
+ *
+ * This is the ONE matching rule of this module — `locatePicks` resolves
+ * through it, and every caller that has to ask the same question ("does this
+ * id belong to that design?") asks it here, so the panel and the homepage can
+ * never disagree about which picks are live.
+ */
+const cardForId = (list, id) => list.find(
+  (c) => c?.id === id || (Array.isArray(c?.colors) && c.colors.some((v) => v?.id === id)),
+)
+
+/**
  * The list the owner can actually see, mapped back to where each entry lives in
  * the saved id list.
  *
@@ -59,14 +71,40 @@ export function locatePicks(picks, cards) {
   source.forEach((pick, index) => {
     const id = pickId(pick)
     if (!id || seen.has(id)) return
-    const card = list.find(
-      (c) => c?.id === id || (Array.isArray(c?.colors) && c.colors.some((v) => v?.id === id)),
-    )
+    const card = cardForId(list, id)
     if (!card || seen.has(card.id)) return
     seen.add(id)
     seen.add(card.id)
     out.push({ index, pick: id, product_id: id, cardId: card.id, card, active: pickActive(pick) })
   })
+  return out
+}
+
+/**
+ * EVERY saved pick that renders as the design `cardId` — the card's own id,
+ * any colour row of the same design, and any stored duplicate of either.
+ *
+ * `locatePicks` deliberately reports ONE entry per design (that is what keeps
+ * the row on screen honest), so it cannot be used to work out what to REMOVE:
+ * only the first pick would be collected, every other pick naming that design
+ * would survive the save, and the design would come straight back — which is
+ * exactly what "remove does not work correctly" looked like to the owner.
+ *
+ * The ids come back in saved order, so the caller can hand them to
+ * `withoutPicks` and leave everything else untouched.
+ */
+export function picksForCard(picks, cardId, cards) {
+  const list = Array.isArray(cards) ? cards : []
+  const out = []
+  const seen = new Set()
+  for (const pick of Array.isArray(picks) ? picks : []) {
+    const id = pickId(pick)
+    if (!id || seen.has(id)) continue
+    const card = cardForId(list, id)
+    if (!card || card.id !== cardId) continue
+    seen.add(id)
+    out.push(id)
+  }
   return out
 }
 
@@ -104,6 +142,25 @@ export function normalizePicks(productIds) {
   return [...new Set((Array.isArray(productIds) ? productIds : [])
     .map((id) => pickId(id))
     .filter(Boolean))]
+}
+
+/**
+ * The picks left after the ids in `drop` are taken out — and nothing else.
+ *
+ * The id has to be read OFF every pick (`pickId`), because a saved pick may be
+ * either a plain id or a `{ product_id, is_active }` row. Comparing the pick
+ * itself against a Set of id strings matches nothing, so every pick survives
+ * the filter: that is exactly what made the panel's remove button a silent
+ * no-op that never reached the database.
+ *
+ * The input array is never mutated; when nothing matches, the SAME array is
+ * returned so a caller's state update can be skipped.
+ */
+export function withoutPicks(picks, drop) {
+  const source = Array.isArray(picks) ? picks : []
+  const ids = new Set([...(drop || [])].map((id) => pickId(id)).filter(Boolean))
+  if (!ids.size) return source
+  return source.filter((pick) => !ids.has(pickId(pick)))
 }
 
 // ---- the row the homepage shows when the owner has chosen nothing ----------

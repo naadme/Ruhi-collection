@@ -1,5 +1,6 @@
-// Category image management — the admin-only surface behind the
-// "Category Images" section of the dashboard.
+// Category photographs — the photo half of the dashboard's combined
+// "Categories" section (src/admin/CategoriesPanel.jsx, which renders this
+// panel under the category manager).
 //
 // The photographs in the homepage's "Shop by Category" row used to come from
 // a hardcoded map in the source code, so the only way to change them was a
@@ -142,7 +143,7 @@ function CategoryRow({ row, busy, uploading, saved, onUpload, onPick, onClear, o
   )
 }
 
-export default function CategoryImagesPanel({ notify }) {
+export default function CategoryImagesPanel({ notify = () => {}, revision = 0 }) {
   const { reload } = useCategories()
   // The storefront's own rule for a category's photograph: the owner's choice
   // first, then the photograph that ships with the site, then the first product
@@ -189,7 +190,11 @@ export default function CategoryImagesPanel({ notify }) {
     }
   }, [products])
 
-  useEffect(() => { load() }, [load])
+  // Re-read when the catalogue behind the default photograph changes, and
+  // whenever the manager beside this panel saves (a category added, renamed or
+  // deleted in the SAME section) — so the owner never has to refresh the page
+  // to see the row they just created or named.
+  useEffect(() => { load() }, [load, revision])
 
   const setImage = (key, image) =>
     setRows((list) => list.map((r) => (r.key === key ? { ...r, image } : r)))
@@ -262,7 +267,7 @@ export default function CategoryImagesPanel({ notify }) {
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-[34px] md:text-[40px] font-bold tracking-tight leading-none">Category photos</h1>
+          <h2 className="text-[34px] md:text-[40px] font-bold tracking-tight leading-none">Category photos</h2>
           <p className="text-black/55 mt-2 text-[15px]">
             The photographs in the homepage’s “Shop by Category” row, and on the Collections page. With no photo
             chosen, the site shows its default picture for that category.
@@ -324,7 +329,7 @@ export default function CategoryImagesPanel({ notify }) {
             <p className="mt-4 text-[15px] text-black/55">
               {rows.length
                 ? 'No photographs in this state — switch the filter to All to see every category.'
-                : 'No categories yet — add one in the Categories section first.'}
+                : 'No categories yet — add the first one above.'}
             </p>
           )}
         </>

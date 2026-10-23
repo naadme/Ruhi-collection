@@ -11,6 +11,7 @@ import { fetchHomeBanners } from '../lib/banners'
 import { heroSlides, slideAt } from '../lib/heroSlider'
 import { fetchBestsellers, resolveBestsellers } from '../lib/bestsellers'
 import { derivedBestsellers } from '../lib/bestsellerRules'
+import { bestsellerArrows, bestsellerPages, bestsellerSlice } from '../lib/bestsellerCarousel'
 import { inr } from '../lib/pricing'
 import { productHref } from '../lib/productLinks'
 import Img from './Img'
@@ -208,25 +209,74 @@ export const BestSellers = () => {
 
   const items = ownerHasChosen ? chosen : derived
 
+  // The row shows four designs at a time, so a fifth onwards is paged with
+  // the arrows — and with FOUR or fewer there is nothing to page through, so
+  // the arrows are not rendered at all rather than sitting there dead. The
+  // rule lives in src/lib/bestsellerCarousel.js, where it can be tested
+  // without a browser.
+  const gridLoading = loading && source !== 'database'
+  const total = items.length
+  const pages = bestsellerPages(total)
+  const arrows = !gridLoading && bestsellerArrows(total)
+  const [page, setPage] = useState(0)
+  // A design removed from the row (or a whole selection switched off) can
+  // leave the page number beyond the end of a shorter list — pull it back, so
+  // the arrows never point at a page that is no longer there.
+  useEffect(() => { setPage((p) => Math.min(p, pages - 1)) }, [pages])
+  const shown = arrows ? bestsellerSlice(items, page) : items
+  const go = (step) => setPage((p) => Math.min(pages - 1, Math.max(0, p + step)))
+
+  const grid = (
+    <ProductGrid
+      items={shown}
+      loading={gridLoading}
+      empty={
+        ownerHasChosen
+          ? {
+            title: 'No best sellers are showing',
+            body: 'Every design you chose is switched off. Switch one back on in Admin → Bestsellers to put it here.',
+          }
+          : {
+            title: 'Nothing here yet',
+            body: 'The catalogue is still loading — please refresh.',
+          }
+      }
+    />
+  )
+
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 pt-14 pb-10">
       <h2 className="text-center text-[30px] md:text-[34px] font-normal tracking-wide">Best Sellers</h2>
       <div className="mt-10">
-        <ProductGrid
-          items={items}
-          loading={loading && source !== 'database'}
-          empty={
-            ownerHasChosen
-              ? {
-                title: 'No best sellers are showing',
-                body: 'Every design you chose is switched off. Switch one back on in Admin → Bestsellers to put it here.',
-              }
-              : {
-                title: 'Nothing here yet',
-                body: 'The catalogue is still loading — please refresh.',
-              }
-          }
-        />
+        {/* Four or fewer designs are shown exactly as they are, with no
+            arrows; past four the row pages instead. From `md` up the arrows
+            sit either side of the row, and on a phone the grid keeps the full
+            width with the arrows wrapped to a centred row beneath it — one
+            set of buttons either way, so a screen reader never meets the same
+            control twice. */}
+        {arrows ? (
+          <div className="flex flex-wrap items-center justify-center gap-3 md:gap-5 md:justify-start">
+            <button
+              type="button"
+              onClick={() => go(-1)}
+              disabled={page === 0}
+              aria-label="Show previous best sellers"
+              className="order-2 md:order-1 shrink-0 w-11 h-11 rounded-full bg-[#F8EDE6] text-[#4A2C23] grid place-items-center hover:bg-white transition disabled:opacity-40 disabled:hover:bg-[#F8EDE6]"
+            >
+              <ChevronLeft size={22} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+            <div className="order-1 md:order-2 w-full md:w-auto md:flex-1 min-w-0">{grid}</div>
+            <button
+              type="button"
+              onClick={() => go(1)}
+              disabled={page >= pages - 1}
+              aria-label="Show next best sellers"
+              className="order-3 shrink-0 w-11 h-11 rounded-full bg-[#F8EDE6] text-[#4A2C23] grid place-items-center hover:bg-white transition disabled:opacity-40 disabled:hover:bg-[#F8EDE6]"
+            >
+              <ChevronRight size={22} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          </div>
+        ) : grid}
       </div>
       <div className="text-center mt-14"><Link to="/shop" className="btn-outline">Shop all products</Link></div>
     </section>

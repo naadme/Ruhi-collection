@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle, ChevronDown, ChevronUp, Eye, EyeOff, Loader2, Search, Star, Trash2,
 } from 'lucide-react'
-import { fetchBestsellers, locatePicks, MAX_BESTSELLERS, saveBestsellers } from '../lib/bestsellers'
+import { fetchBestsellers, locatePicks, MAX_BESTSELLERS, picksForCard, saveBestsellers, withoutPicks } from '../lib/bestsellers'
 import { groupedCards } from '../lib/productGrouping'
 import { countByStatus, filterByStatus } from '../lib/statusFilter.js'
 import StatusFilter from './StatusFilter.jsx'
@@ -183,22 +183,40 @@ export default function BestsellerPanel({ notify, products = [] }) {
   useEffect(() => { load() }, [load])
 
   const add = (card) => {
+    if (chosenIds.has(card.id)) {
+      notify('error', 'That design is already one of your best sellers.')
+      return
+    }
     if (state.picks.length >= MAX_BESTSELLERS) {
       notify('error', `Choose at most ${MAX_BESTSELLERS} best sellers.`)
       return
     }
-    setState((s) => ({ ...s, picks: [...s.picks, { product_id: card.id, is_active: true }] }))
+    setState((s) => {
+      // Checked again against the state about to be written: two quick clicks
+      // must not land a design on the list twice, and a design already there
+      // under one of its colour rows is the same design, not a second one.
+      if (s.picks.length >= MAX_BESTSELLERS) return s
+      if (locatePicks(s.picks, cards).some((entry) => entry.cardId === card.id)) return s
+      return { ...s, picks: [...s.picks, { product_id: card.id, is_active: true }] }
+    })
   }
   // Removing drops EVERY pick that renders as this card, so it cannot survive a
   // stored duplicate or a pick recorded under one of its colour rows.
   const remove = (cardId) => setState((s) => {
     // Resolved from `s.picks`, not from the render-time memo: two quick clicks
     // must never act on positions computed before the first one landed.
-    const drop = new Set(locatePicks(s.picks, cards)
-      .filter((entry) => entry.cardId === cardId)
-      .map((entry) => entry.product_id))
-    if (!drop.size) return s
-    return { ...s, picks: s.picks.filter((p) => !drop.has(p)) }
+    //
+    // `picksForCard`, not `locatePicks`: the visible list reports ONE entry
+    // per design, so it would collect only the first pick and every other row
+    // of the same design would survive the save and bring it straight back.
+    const drop = picksForCard(s.picks, cardId, cards)
+    if (!drop.length) return s
+    // `withoutPicks` reads the id OFF each pick: a saved pick is a ROW, so
+    // testing the row itself against a set of id strings dropped nothing — the
+    // design stayed on the list, the list stayed clean, and the Save button
+    // never lit up. Removing must leave every OTHER pick exactly where it is.
+    const picks = withoutPicks(s.picks, drop)
+    return picks === s.picks ? s : { ...s, picks }
   })
 
   // Swap the two entries the arrows actually sit between, at their real
