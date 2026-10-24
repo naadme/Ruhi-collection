@@ -77,9 +77,36 @@ export const Hero = () => {
   // the END of the list. Keeping them is what stops the arrows from vanishing
   // the moment a banner is saved (see src/lib/heroSlider.js). With no banners
   // saved the list is exactly the original category slider.
-  const slides = heroSlides(banners, stockedCategoryTiles(categories, products).map((c) => ({
-    key: c.key, image: c.image, to: c.to, label: c.label,
-  })))
+  //
+  // Each fallback slide's photograph IS a product photo. Find the product that
+  // owns that photo and link the slide to its product page, so clicking the
+  // hero carousel image navigates to the matching product detail page.
+  // A grouped product's main image may be a different colour variant than the
+  // category fallback; also check the `colors` array for a match.
+  // If the category image doesn't match any product (e.g. admin uploaded a
+  // custom photo), link to the first product in that category instead.
+  const fallbackSlides = stockedCategoryTiles(categories, products).map((c) => {
+    let product = products.find((p) => p?.image && p.image === c.image)
+    if (!product) {
+      for (const p of products) {
+        if (Array.isArray(p.colors) && p.colors.some((col) => col.image === c.image)) {
+          product = p
+          break
+        }
+      }
+    }
+    // If still no match (custom admin image), use the first product in this category
+    if (!product) {
+      product = products.find((p) => p?.type === c.key)
+    }
+    return {
+      key: c.key,
+      image: c.image,
+      to: product ? productHref(product) : c.to,
+      label: c.label,
+    }
+  })
+  const slides = heroSlides(banners, fallbackSlides)
   const n = slides.length
   // Read-side wrap-around, so the last photo steps back to the first and the
   // first forward to the last without growing the state forever.
