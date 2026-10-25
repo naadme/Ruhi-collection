@@ -86,8 +86,15 @@ function IconBtn({ label, onClick, children, danger, disabled }) {
   )
 }
 
-/** A product with a single row: the dashboard row as it has always looked. */
-export function ProductRow({ p, busy, onToggle, onEdit, onDelete }) {
+/** A product with a single row: the dashboard row as it has always looked.
+ *
+ *  `name` is the design's own name — the title without its " - Colour"
+ *  suffix, which is what `groupRows()` already gives every other list on this
+ *  panel (see src/lib/productGrouping.js). A single-colour product used to be
+ *  handed the raw row instead, so the owner read "Floral Maxi dress - Black"
+ *  in the list while the editor beside it said "Floral Maxi dress". */
+export function ProductRow({ p, name, busy, onToggle, onEdit, onDelete }) {
+  const title = String(name || '').trim() || p.title
   // The category's display name comes from the client's own list, so a
   // renamed category shows its new name here rather than the old one.
   const { typeLabel } = useCategories()
@@ -96,7 +103,7 @@ export function ProductRow({ p, busy, onToggle, onEdit, onDelete }) {
       <Thumb src={p.image} />
 
       <div className="min-w-0 flex-1 basis-[calc(100%-4.5rem)] sm:basis-auto">
-        <p className="font-semibold text-[16px] leading-snug truncate">{p.title}</p>
+        <p className="font-semibold text-[16px] leading-snug truncate">{title}</p>
         <p className="text-[13px] text-black/50 mt-0.5 capitalize">
           {typeLabel(p.type)} ·{' '}
           {/* The Product ID the database assigns — the six characters the
@@ -117,11 +124,11 @@ export function ProductRow({ p, busy, onToggle, onEdit, onDelete }) {
           state={p.is_active ? 'live' : 'hidden'}
           busy={busy}
           onClick={onToggle}
-          label={p.is_active ? `Hide ${p.title}` : `Show ${p.title}`}
+          label={p.is_active ? `Hide ${title}` : `Show ${title}`}
           title={p.is_active ? 'Live — click to hide' : 'Hidden — click to show'}
         />
-        <IconBtn label={`Edit ${p.title}`} onClick={onEdit}><Pencil size={15} /></IconBtn>
-        <IconBtn label={`Delete ${p.title}`} onClick={onDelete} danger><Trash2 size={15} /></IconBtn>
+        <IconBtn label={`Edit ${title}`} onClick={onEdit}><Pencil size={15} /></IconBtn>
+        <IconBtn label={`Delete ${title}`} onClick={onDelete} danger><Trash2 size={15} /></IconBtn>
       </div>
     </li>
   )

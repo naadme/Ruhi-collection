@@ -63,11 +63,12 @@ test('the storefront shows the same description the editor opens with', () => {
   assert.equal(card.desc, form.shared.desc, 'one source of truth')
 })
 
-test('a design with one row is left exactly as it was', () => {
+test('a design with one row keeps its description and never prints the colour in its name', () => {
   const rows = [row({ desc: 'Only one colour.' })]
   const [card] = groupedCards(rows)
   assert.equal(card.desc, 'Only one colour.')
-  assert.equal(card.title, 'Denim Shirt - Black', 'and the title keeps its colour')
+  assert.equal(card.title, 'Denim Shirt', 'the shopper reads the design, never "Denim Shirt - Black"')
+  assert.equal(card.colour, 'Black', 'the colour stays on the card — it simply leaves the name')
 })
 
 test('the owner\'s own wording is never rewritten', () => {

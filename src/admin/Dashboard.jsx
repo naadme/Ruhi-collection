@@ -526,6 +526,7 @@ export default function Dashboard({ showOrders }) {
                 <ProductRow
                   key={g.rows[0].id}
                   p={g.rows[0]}
+                  name={g.name}
                   busy={busyId === g.rows[0].id}
                   onToggle={() => toggleActive(g.rows[0])}
                   onEdit={() => openEdit(g)}

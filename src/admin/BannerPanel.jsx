@@ -20,6 +20,10 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fetchHomeBanners, HOME_HERO_SLOT } from '../lib/banners'
+import {
+  BANNER_POSITION, ZOOM_MAX, ZOOM_MIN,
+  bannerPosition, bannerPositionStyle, focusAfterDrag, focusAfterNudge, positionColumns, samePosition,
+} from '../lib/bannerPosition'
 import { useCategories } from '../context/CategoriesContext'
 import { useProducts } from '../context/ProductsContext'
 import {
@@ -32,9 +36,122 @@ const bucket = 'product-images'
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function BannerRow({ row, index, total, busy, uploading, canReorder, destinations = [], onUrl, onLink, onToggle, onMove, onRemove, onUpload }) {
+/**
+ * One preview of a banner at the shape the homepage really draws it.
+ *
+ * The photograph is drawn with the SAME three rules the storefront uses
+ * (`bannerPositionStyle`), so what is dragged here is exactly what shoppers
+ * see — there is no second implementation that could drift.
+ *
+ * The hero is not one shape: from `md` up it is half the screen at 600–684px
+ * tall, and below that it is the full width of a phone at 380px tall. A
+ * photograph framed for one is cropped differently by the other, so both
+ * shapes are shown and both are draggable, and they always agree.
+ *
+ * `ratio` is the shape to draw — and it has to be the shape the HOMEPAGE
+ * really uses, not a convenient rectangle. A preview that is wider than the
+ * real frame shows the owner a slice of her photograph she will never see,
+ * and hides the top and bottom she will. These are measured from
+ * src/components/Sections.jsx: a 1440px laptop gives 720×684, and any phone
+ * from 390px gives 390×380.
+ *
+ * Dragging moves the PHOTOGRAPH under a fixed frame — the way a print is
+ * moved under a mount — which is why the frame never grows and the uploaded
+ * file is never touched.
+ */
+function FrameBox({ src, label, framing, boxWidth, ratio, onDrag, onKey }) {
+  const boxRef = useRef(null)
+  const dragRef = useRef(null)
+  const [box, setBox] = useState({ w: 0, h: 0 })
+  // The photograph's own dimensions, learned when it loads. The pan is
+  // measured against how much of it falls OUTSIDE the frame, so a tall
+  // photograph in a wide frame has to travel further than a wide one that
+  // almost fits.
+  const [natural, setNatural] = useState({ w: 0, h: 0 })
+
+  const measure = useCallback(() => {
+    const rect = boxRef.current?.getBoundingClientRect()
+    if (rect) setBox((b) => (b.w === rect.width && b.h === rect.height ? b : { w: rect.width, h: rect.height }))
+  }, [])
+
+  useEffect(() => {
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [measure])
+
+  const start = (e) => {
+    if (!src) return
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+    // The framing is captured at the moment the finger goes down, so dragging
+    // is measured against one fixed point however many events arrive.
+    dragRef.current = { x: e.clientX, y: e.clientY, framing }
+  }
+
+  const move = (e) => {
+    const from = dragRef.current
+    if (!from) return
+    onDrag(focusAfterDrag(from.framing, { dx: e.clientX - from.x, dy: e.clientY - from.y }, {
+      naturalWidth: natural.w, naturalHeight: natural.h, boxWidth: box.w, boxHeight: box.h,
+    }))
+  }
+
+  const stop = (e) => {
+    if (!dragRef.current) return
+    dragRef.current = null
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+  }
+
+  const nudge = (e) => {
+    // Arrow keys do what a drag does, for anyone who does not use a pointer.
+    const step = e.shiftKey ? 10 : 1
+    const arrows = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }
+    const by = arrows[e.key]
+    if (!by) return
+    e.preventDefault()
+    onKey(focusAfterNudge(framing, by[0], by[1]))
+  }
+
+  return (
+    <figure className="shrink-0">
+      <figcaption className="text-[11px] font-semibold uppercase tracking-wider text-black/45 mb-1">{label}</figcaption>
+      <div
+        ref={boxRef}
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={stop}
+        onPointerCancel={stop}
+        onKeyDown={nudge}
+        tabIndex={src ? 0 : -1}
+        role={src ? 'img' : undefined}
+        aria-label={src ? `${label} preview — drag to move the photograph, or use the arrow keys. Horizontal ${Math.round(framing.x)} per cent, vertical ${Math.round(framing.y)} per cent.` : undefined}
+        className={`relative overflow-hidden rounded-lg border border-black/15 bg-neutral-100 touch-none select-none ${src ? 'cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-black/40' : ''}`}
+        style={{ width: boxWidth, aspectRatio: ratio }}
+      >
+        {src ? (
+          <img
+            src={src}
+            alt=""
+            draggable="false"
+            onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={bannerPositionStyle(framing)}
+          />
+        ) : (
+          <span className="absolute inset-0 grid place-items-center text-[11px] text-black/35">No image</span>
+        )}
+      </div>
+    </figure>
+  )
+}
+
+function BannerRow({ row, index, total, busy, uploading, canReorder, destinations = [], onUrl, onLink, onToggle, onMove, onRemove, onUpload, onFraming }) {
   const fileRef = useRef(null)
   const problem = bannerLinkProblem(row.link)
+  // Which part of the photograph the homepage keeps. Read defensively: a
+  // banner saved before this existed has no framing at all and is centred,
+  // which is exactly how it renders today.
+  const framing = bannerPosition(row)
   // A photograph typed or pasted by hand is checked the same way its
   // destination is: a typo used to save happily and then show a grey box to
   // every visitor, with nothing here saying so.
@@ -114,6 +231,73 @@ function BannerRow({ row, index, total, busy, uploading, canReorder, destination
         <p className={`text-[12px] ${problem ? 'text-red-700' : 'text-black/45'}`}>
           {problem || describeBannerDestination(row.link)}
         </p>
+
+        {/* Which part of the photograph the homepage keeps.
+            The hero fills its frame and cuts off whatever falls outside, so a
+            tall photograph loses its head and its hem and a wide one loses its
+            ends. Drag either preview to choose what stays; the two shapes are
+            the homepage's own — half the screen from `md` up, a full-width
+            phone below it — and they always agree because there is only one
+            framing to set.
+            Nothing is ever cropped in storage — the file stays exactly as
+            uploaded, and this only decides what the frame shows of it. */}
+        <div className="pt-1">
+          <div className="flex flex-wrap gap-3 items-start">
+            <FrameBox
+              src={row.image}
+              label="Desktop"
+              framing={framing}
+              boxWidth={200}
+              ratio="720 / 684"
+              onDrag={onFraming}
+              onKey={onFraming}
+            />
+            <FrameBox
+              src={row.image}
+              label="Phone"
+              framing={framing}
+              boxWidth={132}
+              ratio="390 / 380"
+              onDrag={onFraming}
+              onKey={onFraming}
+            />
+            <div className="flex-1 min-w-[150px] space-y-2">
+              <label className="block text-[12px] font-semibold uppercase tracking-wider text-black/45" htmlFor={`zoom-${index}`}>
+                Zoom
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id={`zoom-${index}`}
+                  type="range"
+                  min={ZOOM_MIN}
+                  max={ZOOM_MAX}
+                  step={0.05}
+                  value={framing.zoom}
+                  disabled={!row.image}
+                  onChange={(e) => onFraming({ ...framing, zoom: Number(e.target.value) })}
+                  className="flex-1 accent-black disabled:opacity-40"
+                  aria-label={`Zoom for banner ${index + 1}`}
+                />
+                <span className="text-[12px] text-black/55 tabular-nums w-[38px] text-right">
+                  {Math.round(framing.zoom * 100)}%
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onFraming(BANNER_POSITION)}
+                disabled={!row.image || (framing.x === BANNER_POSITION.x && framing.y === BANNER_POSITION.y && framing.zoom === BANNER_POSITION.zoom)}
+                className="inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
+              >
+                Centre it
+              </button>
+              <p className="text-[12px] text-black/45">
+                {framing.x === BANNER_POSITION.x && framing.y === BANNER_POSITION.y && framing.zoom === BANNER_POSITION.zoom
+                  ? 'Centred, as it was uploaded.'
+                  : `Showing ${Math.round(framing.x)}% across, ${Math.round(framing.y)}% down.`}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <input
@@ -305,14 +489,19 @@ export default function BannerPanel({ notify }) {
           link: String(rows[i].link || '').trim() || null,
           position: i,
           is_active: rows[i].is_active !== false,
+          // Which part of the photograph the homepage keeps, and how much it
+          // is enlarged. Three numbers, never a rewritten file (see
+          // src/lib/bannerPosition.js).
+          ...positionColumns(rows[i]),
         }
+        const echoed = 'id, image, link, position, is_active, focus_x, focus_y, zoom'
         if (rows[i].id) {
           const { data, error } = await supabase
-            .from('banners').update(payload).eq('id', rows[i].id).select('id, image, link, position, is_active').single()
+            .from('banners').update(payload).eq('id', rows[i].id).select(echoed).single()
           if (error || !data?.id) throw new Error(error?.message || 'Nothing was saved — your session may have expired.')
           saved.push(data.id)
         } else {
-          const { data, error } = await supabase.from('banners').insert(payload).select('id, image, link, position, is_active').single()
+          const { data, error } = await supabase.from('banners').insert(payload).select(echoed).single()
           if (error || !data?.id) throw new Error(error?.message || 'Nothing was saved — your session may have expired.')
           saved.push(data.id)
         }
@@ -339,7 +528,10 @@ export default function BannerPanel({ notify }) {
     state.rows.length !== original.length ||
     state.rows.some((r, i) => r.image !== (original[i]?.image || '')
       || String(r.link || '') !== (original[i]?.link || '')
-      || (r.is_active !== false) !== (original[i]?.is_active !== false))
+      || (r.is_active !== false) !== (original[i]?.is_active !== false)
+      // The framing too: dragging a photograph and nothing else is a change
+      // worth saving, and dragging it back must be savable as well.
+      || !samePosition(r, original[i]))
 
   // The banners the site is showing right now, in the order it shows them.
   const live = state.rows.filter((r) => r.is_active !== false)
@@ -473,6 +665,7 @@ export default function BannerPanel({ notify }) {
                   destinations={destinations}
                   onUrl={(url) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, image: url } : r)))}
                   onLink={(link) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, link } : r)))}
+                  onFraming={(next) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...next } : r)))}
                   onToggle={() => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, is_active: r.is_active === false } : r)))}
                   onMove={(dir) => move(i, dir)}
                   onRemove={() => removeAt(i)}

@@ -21,6 +21,7 @@
 // store's original slider, unchanged.
 
 import { bannerDestination } from './bannerLinks.js'
+import { bannerPosition } from './bannerPosition.js'
 
 /**
  * @param {Array} banners rows from the `banners` table, in saved order
@@ -44,6 +45,12 @@ export function heroSlides(banners, fallback) {
       // that the site cannot open falls back to the shop, so a banner can
       // never send a shopper to a broken page.
       to: bannerDestination(row.link),
+      // Each banner also has its OWN framing: which part of the photograph the
+      // hero's `cover` crop keeps, and how much it is enlarged. Read
+      // defensively (src/lib/bannerPosition.js) — a banner saved before these
+      // columns existed is centred and un-enlarged, which is exactly how it
+      // has always rendered.
+      position: bannerPosition(row),
       label: 'Shop now',
     }))
   return [...saved, ...base]

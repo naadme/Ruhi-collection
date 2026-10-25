@@ -122,27 +122,44 @@ test('unrelated designs that share a colour never become one listing', () => {
     row('classic-tee-black', 'tops', 'Classic Tee - Black'),
     row('stripes-dress-black', 'dress', 'Stripes Dress - Black'),
   ])
-  assert.equal(cards.length, 3)
-  // A lone coloured row has no design-mates, so it stays exactly as stored —
-  // colour in the title, no card trickery, and never pooled with the other
-  // black garments.
+  assert.equal(cards.length, 3, 'a shared colour pools nothing — three designs, three cards')
+  // Each lone row still names its own DESIGN: the " - Black" suffix is the
+  // catalogue's way of storing the colour, not part of the name the shopper
+  // reads, and it never made these three the same product.
   assert.deepEqual(
     cards.map((c) => c.title),
-    ['Classic Shirt - Black', 'Classic Tee - Black', 'Stripes Dress - Black'],
+    ['Classic Shirt', 'Classic Tee', 'Stripes Dress'],
+  )
+  assert.deepEqual(
+    cards.map((c) => c.colour),
+    ['Black', 'Black', 'Black'],
+    'each card still knows which colour it is',
   )
 })
 
-test('a single-colourway product passes through untouched, colour in title and all', () => {
+test('a single-colourway product shows the design name and still knows its colour', () => {
   const dress = row('denim-dress', 'dress', 'Denim Dress')
   const solo = row('solid-coord-set-red', 'coord', 'Solid Coord set - Red')
 
   const cards = groupedCards([dress, solo])
   assert.equal(cards.length, 2)
-  assert.equal(cards[0].title, 'Denim Dress', 'no colour means no suffix is stripped')
-  assert.equal(cards[1].title, 'Solid Coord set - Red', 'a lone coloured row keeps its colour on show')
+  assert.equal(cards[0].title, 'Denim Dress', 'no colour means no suffix to strip')
+  assert.equal(cards[1].title, 'Solid Coord set', 'a lone coloured row still shows the design, not "… - Red"')
+  assert.equal(cards[1].colour, 'Red', 'the colour is kept, just not printed after the name')
   assert.equal('colors' in cards[0], false, 'no selector is offered when there is nothing to choose')
   assert.equal('colors' in cards[1], false)
   assert.equal(variantFor(undefined, 'denim-dress'), null, 'the product page then falls back to the product itself')
+})
+
+test('a colour that only exists in the title suffix still survives the name losing it', () => {
+  // The bundled catalogue predates the `colour` column, so a row can carry its
+  // colour nowhere but the title. Stripping the suffix must not take the only
+  // copy of it with it — the colour search reads `card.colour`.
+  const cards = groupedCards([
+    row('solid-coord-set-red', 'coord', 'Solid Coord set - Red', { colour: null }),
+  ])
+  assert.equal(cards[0].title, 'Solid Coord set')
+  assert.equal(cards[0].colour, 'Red')
 })
 
 test('products with no colour are never pooled with anything', () => {

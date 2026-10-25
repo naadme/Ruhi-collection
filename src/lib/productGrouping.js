@@ -64,9 +64,11 @@ export const partsOf = (row) => {
   return { name: name || title.trim() || colour, colour }
 }
 
-// Rows -> one entry per design, in input order. A design with a single row is
-// left exactly as it was — including the colour in its title, which would
-// otherwise be thrown away with no swatch to show it.
+// Rows -> one entry per design, in input order. Nothing is merged on a guess
+// and nothing is rewritten: every row arrives exactly as it was stored, with
+// its own colour and its own title. What the entry ADDS is `name` — the design
+// name with the " - Colour" suffix decoded — which is what every list, card
+// and editor reads as the product's name (see `groupedCards` below).
 export function groupRows(rows) {
   const buckets = new Map()
   ;(rows || []).forEach((row) => {
@@ -150,10 +152,10 @@ export const designBadge = (rows) => {
 /**
  * One design -> the single card the storefront shows.
  *
- * A design with no colour, or only one row, is returned untouched (its title,
- * id and image stay exactly as stored — nothing to choose, so nothing to
- * rewrite). A design with several colours becomes ONE card, and ONE row
- * speaks for it: the cheapest colour row.
+ * A design with no colour is returned untouched (its title, id and image stay
+ * exactly as stored — there is no suffix to decode). A design that carries a
+ * colour becomes ONE card; where several colours exist ONE row speaks for it:
+ * the cheapest colour row.
  *
  * EVERY row-specific field on the card comes from that one row — its id, its
  * price, its photograph, its gallery, its sizes — so the card a shopper taps
@@ -178,7 +180,27 @@ export function groupedCards(rows) {
   const out = []
   for (const { parts, rows: group } of groupRows(rows)) {
     const lead = group[0]
-    if (!parts || group.length < 2) { out.push(lead); continue }
+    // A row that names no colour IS the design — there is no suffix to decode,
+    // so its stored title is already the name the shopper should read.
+    if (!parts) { out.push(lead); continue }
+
+    // ONE colour row still has a design name. The stored title is written as
+    // "Design - Colour" (see src/lib/productForm.js `buildTitle`), and for
+    // years that suffix was only decoded when a design had several colours to
+    // choose between — so a design the owner had photographed in a single
+    // colour showed the shopper "Maxi dress - Brown" where she had typed
+    // "Maxi dress". The name is the design's in every case; only the choice
+    // of a second colour is what makes a selector.
+    //
+    // The colour leaves the NAME but never the card: it is written back into
+    // `colour` when the row does not already carry it, so the colour search,
+    // the cart's colour line and the editor all still read the same value
+    // they read before the suffix stopped being printed.
+    if (group.length < 2) {
+      out.push({ ...lead, title: parts.name, colour: lead.colour || parts.colour })
+      continue
+    }
+
     const priced = group.reduce(
       (best, r) => ((Number(r.price) || 0) < (Number(best.price) || 0) ? r : best),
       lead,

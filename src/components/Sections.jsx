@@ -8,6 +8,8 @@ import { img } from '../data/images'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { fetchHomeBanners } from '../lib/banners'
+import { bannerPositionStyle } from '../lib/bannerPosition'
+import { heroFallbackSlides } from '../lib/heroLinks'
 import { heroSlides, slideAt } from '../lib/heroSlider'
 import { fetchBestsellers, resolveBestsellers } from '../lib/bestsellers'
 import { derivedBestsellers } from '../lib/bestsellerRules'
@@ -78,35 +80,16 @@ export const Hero = () => {
   // the moment a banner is saved (see src/lib/heroSlider.js). With no banners
   // saved the list is exactly the original category slider.
   //
-  // Each fallback slide's photograph IS a product photo. Find the product that
-  // owns that photo and link the slide to its product page, so clicking the
-  // hero carousel image navigates to the matching product detail page.
-  // A grouped product's main image may be a different colour variant than the
-  // category fallback; also check the `colors` array for a match.
-  // If the category image doesn't match any product (e.g. admin uploaded a
-  // custom photo), link to the first product in that category instead.
-  const fallbackSlides = stockedCategoryTiles(categories, products).map((c) => {
-    let product = products.find((p) => p?.image && p.image === c.image)
-    if (!product) {
-      for (const p of products) {
-        if (Array.isArray(p.colors) && p.colors.some((col) => col.image === c.image)) {
-          product = p
-          break
-        }
-      }
-    }
-    // If still no match (custom admin image), use the first product in this category
-    if (!product) {
-      product = products.find((p) => p?.type === c.key)
-    }
-    return {
-      key: c.key,
-      image: c.image,
-      to: product ? productHref(product) : c.to,
-      label: c.label,
-    }
-  })
-  const slides = heroSlides(banners, fallbackSlides)
+  // Each fallback slide's photograph is very often a product's own photograph.
+  // `heroFallbackSlides` finds the row that OWNS it and links the slide to that
+  // product's page — to that colour's own page when the photograph belongs to
+  // one colour — and leaves the slide on its category page when the photograph
+  // belongs to no product at all. It never guesses a product: it used to fall
+  // back to "the first product in the category", so a Tops photograph opened
+  // the Denim Shirt whether or not that was what was pictured.
+  const slides = heroSlides(banners,
+    heroFallbackSlides(stockedCategoryTiles(categories, products), products),
+  )
   const n = slides.length
   // Read-side wrap-around, so the last photo steps back to the first and the
   // first forward to the last without growing the state forever.
@@ -147,7 +130,14 @@ export const Hero = () => {
         </div>
       </div>
       {/* The right half: one photo, `object-cover` so it fills the half at
-          every width without distortion. The link is keyed by category, so
+          every width without distortion. A banner's own framing — which part
+          of the photograph the crop keeps, and how much it is enlarged — is
+          read from the three numbers the owner dragged into place in the admin
+          panel (src/lib/bannerPosition.js), and is applied here and nowhere
+          else, so what she previewed is what this renders. A banner with no
+          framing, and every fallback category photo, renders centred exactly
+          as it always has.
+          The link is keyed by category, so
           a change of photo remounts it and the `fade` keyframe brings the new
           photo in — instantly, with no motion at all, for anyone who asked
           their device for reduced motion. The arrows are siblings of that
@@ -157,7 +147,7 @@ export const Hero = () => {
       <div className="relative overflow-hidden h-[380px] md:h-auto">
         {cur && bannersKnown && (
           <Link key={cur.key} to={cur.to} className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none">
-              <Img src={cur.image} alt={cur.label} loading="eager" className="absolute inset-0 w-full h-full object-cover" />
+              <Img src={cur.image} alt={cur.label} loading="eager" style={bannerPositionStyle(cur.position)} className="absolute inset-0 w-full h-full object-cover" />
           </Link>
         )}
         {n > 1 && (
