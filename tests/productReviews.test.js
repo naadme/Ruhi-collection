@@ -91,8 +91,9 @@ test('a review may be permanently deleted, but only by an admin', () => {
   assert.match(TITLE_SQL, /grant\s+delete on table public\.product_reviews to authenticated/)
   assert.match(TITLE_SQL, /create policy "admins remove reviews"[\s\S]{0,160}for delete[\s\S]{0,120}using \(public\.is_admin\(\)\)/,
     'deletion is gated on is_admin()')
-  assert.match(TITLE_SQL, /with check \(public\.is_admin\(\)\)/,
-    'and the same gate applies to the new row')
+  // DELETE policies use USING only — WITH CHECK is invalid for DELETE.
+  assert.match(TITLE_SQL, /create policy "admins remove reviews"[\s\S]{0,200}using \(public\.is_admin\(\)\)[\s\S]{0,20}(;|commit)/,
+    'and the delete policy has no WITH CHECK (invalid for DELETE)')
   assert.match(TITLE_SQL, /char_length\(v_title\) > 120/, 'an over-long headline is refused')
 })
 

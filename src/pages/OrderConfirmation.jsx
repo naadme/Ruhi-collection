@@ -7,6 +7,8 @@ import { inr, totalFor } from '../lib/pricing'
 import { formatShopDateTime } from '../lib/shopTime'
 import { orderLineDetail, orderLineName } from '../lib/orderLine'
 import { site } from '../data/site'
+import { useAuth } from '../context/AuthContext'
+import ReviewForm from '../components/ReviewForm'
 
 const PACKING = [PackageCheck, 'We start packing', 'Your order is checked and packed at our studio.']
 const SHIPPING = [Truck, 'It ships within 2–3 working days', 'Most orders arrive in 7-10 working days across India.']
@@ -32,6 +34,7 @@ function stepsFor(order) {
 export default function OrderConfirmation() {
   const { reference } = useParams()
   const location = useLocation()
+  const { user } = useAuth()
   // The order we just placed. Signed-in customers can also find it again from
   // their account page, where it lives permanently in the database.
   const order = location.state?.order || loadOrder(reference)
@@ -178,6 +181,24 @@ export default function OrderConfirmation() {
           </div>
         </div>
       </div>
+
+      {/* Review invitation: signed-in customers can write a review for each
+          product they just purchased. Each review is linked to the specific
+          order line and lands as pending until an admin approves it. */}
+      {user && items.length > 0 && (
+        <section className="mt-12 border-t border-black/10 pt-8">
+          <h2 className="text-[18px] font-bold mb-6">Write a Review</h2>
+          <p className="text-[15px] text-black/65 mb-6">
+            Tell us what you think about your purchase. Each review is read by
+            the shop before it appears on the site.
+          </p>
+          {items.map((it, i) => (
+            <div key={`${it.product_id}-${i}`} className="mb-8">
+              <ReviewForm initialOrderItemId={it.id} />
+            </div>
+          ))}
+        </section>
+      )}
 
       <div className="flex flex-wrap gap-3 justify-center mt-12">
         <Link to="/shop" className="bg-brand-green text-white px-10 py-4 rounded-md text-[17px]">Continue shopping</Link>

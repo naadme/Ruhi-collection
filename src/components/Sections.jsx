@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useState } from 'react'
-import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight, Plus, Check } from 'lucide-react'
 import { reviews } from '../data/products'
+import ReviewForm from './ReviewForm'
 import { extraCategoryTiles, stockedCategoryTiles } from '../lib/categoryTiles'
 import { site } from '../data/site'
 import { usePageImage } from '../lib/pageImages'
@@ -335,6 +336,11 @@ export const Reviews = () => {
   // has been deleted or hidden resolves to nothing and simply shows no link,
   // rather than pointing at some other product.
   const { getProduct, getVariant } = useProducts()
+  // Whether the customer is currently writing a review, and whether one has
+  // just been sent. While writing, the review form replaces the button; after
+  // sending, a thank-you message replaces the form.
+  const [writingReview, setWritingReview] = useState(false)
+  const [reviewSent, setReviewSent] = useState(false)
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 py-10">
       <h2 className="text-center text-[42px] font-medium font-ui">Happy Customers</h2>
@@ -357,7 +363,33 @@ export const Reviews = () => {
             </Link>
           ) : null}
         </div>
-      )})}</div>
+        )})}</div>
+
+      {!reviewSent && !writingReview && (
+        <button
+          type="button"
+          onClick={() => setWritingReview(true)}
+          className="mt-12 inline-flex items-center gap-2 border border-black/40 px-5 h-[46px] rounded-lg text-[15px] font-semibold hover:bg-black hover:text-white transition"
+        >
+          <Plus size={16} /> Add Review
+        </button>
+      )}
+
+      {writingReview && !reviewSent && (
+        <div className="mt-8">
+          <ReviewForm onSent={() => { setWritingReview(false); setReviewSent(true) }} />
+        </div>
+      )}
+
+      {reviewSent && (
+        <p className="mt-12 text-[15px] text-black/70 flex items-start gap-2">
+          <Check size={18} className="text-green-700 mt-[2px] shrink-0" />
+          <span>
+            Thank you — your review is with the shop. It will appear on the site as soon as it
+            has been approved.
+          </span>
+        </p>
+      )}
     </section>
   )
 }
