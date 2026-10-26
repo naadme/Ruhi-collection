@@ -14,6 +14,7 @@ import ProductEditor from './ProductEditor'
 import { ProductRow, GroupCard } from './ProductList'
 import OrdersPanel from './OrdersPanel'
 import BannerPanel from './BannerPanel'
+import PageImagesPanel from './PageImagesPanel'
 import CategoriesPanel from './CategoriesPanel'
 import BestsellerPanel from './BestsellerPanel'
 import CouponsPanel from './CouponsPanel'
@@ -112,7 +113,7 @@ const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
 // chase the same rows through.
 const SECTIONS = [
   ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'],
-  ['banners', 'Banners'],
+  ['banners', 'Banners'], ['page-images', 'Page images'],
   ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'], ['reviews', 'Reviews'],
 ]
 
@@ -402,6 +403,7 @@ export default function Dashboard({ showOrders }) {
           {section === 'orders' && <OrdersPanel notify={notify} />}
           {section === 'categories' && <CategoriesPanel notify={notify} />}
           {section === 'banners' && <BannerPanel notify={notify} />}
+          {section === 'page-images' && <PageImagesPanel notify={notify} />}
           {section === 'bestsellers' && <BestsellerPanel notify={notify} products={all} />}
           {section === 'coupons' && <CouponsPanel notify={notify} />}
           {section === 'reviews' && <ReviewsPanel notify={notify} products={all} />}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AlertTriangle, Clock, Loader2, Mail, Phone, Instagram, MessageCircle } from 'lucide-react'
 import Img from '../components/Img'
-import { img } from '../data/images'
+import { usePageImage } from '../lib/pageImages'
 import { site } from '../data/site'
 import { sendContactMessage } from '../lib/contact'
 import { emailOk } from '../lib/checkout'
@@ -77,9 +77,13 @@ export default function Contact() {
   }
 
   const info = [[Phone, site.phone], [Mail, site.email], [Clock, site.hours]]
+  // The strip's photograph comes from the portal's "Page images" section; the
+  // fallback is the flat-lay in src/data/images.js, which is what the page
+  // has always shown until one is saved.
+  const banner = usePageImage('contact_hero')
   return (
     <>
-      <div className="relative h-[160px] md:h-[220px] bg-neutral-300"><Img src={img.contact} alt="" loading="eager" className="absolute inset-0 w-full h-full object-cover" /><div className="absolute inset-0 bg-black/30" />
+      <div className="relative overflow-hidden h-[160px] md:h-[220px] bg-neutral-300"><Img src={banner.image} style={banner.style} alt="" loading="eager" className="absolute inset-0 w-full h-full object-cover" /><div className="absolute inset-0 bg-black/30" />
         <h1 className="relative h-full grid place-items-center text-white font-serif font-bold text-[44px] md:text-[64px]">Contact us</h1></div>
       <section className="max-w-[1200px] mx-auto px-4 py-16 grid lg:grid-cols-[1.4fr_1fr] gap-14">
         <div>

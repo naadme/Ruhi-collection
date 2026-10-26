@@ -10,10 +10,14 @@ export const img = {
   heroStore: p('denim-dress1.jpg'),
   // Editorial sections
   story: p('embroidery-coord-set-blue.jpg'),
-  aboutHero: p('shorts-and-shirt-maroon.jpg'),
+  aboutHero: p('denim-dress1.jpg'),
   aboutA: p('stripes-dress-pink.jpg'),
   aboutB: p('acid-wash-coord-set-olive-green.jpg'),
-  contact: p('shorts-and-shirt-babypink.jpg'),
+  // The Contact page draws this as a thin full-width strip (about 6.5:1), so a
+  // portrait photograph of a person loses head and hem. A flat-lay of the
+  // trousers in all their colours reads as an intentional band of colour at
+  // that shape, and has no face to cut.
+  contact: p('mulmul-cotton-trousers-all-colours1.jpg'),
   // "Shop by category" tiles — one real photo per catalogue type
   catTops: p('denim-shirt-blue.jpg'),
   catCoord: p('acid-wash-coord-set-beige.jpg'),

@@ -32,6 +32,11 @@ const read = (rel) => readFileSync(path.join(process.cwd(), rel), 'utf8')
 const SQL = read('supabase/migrations/20261024120000_banner_positioning.sql')
 const HERO = read('src/components/Sections.jsx')
 const PANEL = read('src/admin/BannerPanel.jsx')
+// The drag control itself now lives in its own module so that every image
+// editor in the portal shares one control — the assertions that are about
+// DRAGGING therefore read it, and the assertions that are about the banner
+// panel's own save, order and switches keep reading the panel.
+const BOX = read('src/admin/FrameBox.jsx')
 const SLIDER = read('src/lib/heroSlider.js')
 
 // ---- what a banner stores ---------------------------------------------------
@@ -269,7 +274,8 @@ test('the panel saves, compares and previews the framing — and only that', () 
   assert.match(PANEL, /onFraming=/, 'the preview hands the framing back')
   // The preview draws with the storefront's own rule — there is no second
   // implementation that could drift away from what shoppers see.
-  assert.match(PANEL, /bannerPositionStyle\(framing\)/)
+  assert.match(BOX, /bannerPositionStyle\(framing\)/)
+  assert.match(PANEL, /<FrameBox\b[\s\S]{0,400}?onDrag=\{onFraming\}/, 'and hands what it drew back to the panel')
   // Nothing else the owner relies on was disturbed.
   assert.match(PANEL, /slot: HOME_HERO_SLOT/, 'the slot is unchanged')
   assert.match(PANEL, /position: i/, 'the order is still the row order')
@@ -300,11 +306,12 @@ test('the panel offers both homepage shapes, because they crop differently', () 
   assert.ok(Number(desktop[2]) / Number(desktop[3]) > 0.9, 'and half a laptop screen is wider than tall')
   assert.notEqual(phone[3], desktop[3], 'the two really are different shapes')
 
-  // Dragging, and a way back, for someone who is not a designer.
-  assert.match(PANEL, /onPointerDown/)
-  assert.match(PANEL, /onPointerMove/)
-  assert.match(PANEL, /onPointerCancel/)
-  assert.match(PANEL, /focusAfterNudge\(/, 'arrow keys do what a drag does')
+  // Dragging, and a way back, for someone who is not a designer. The pointer
+  // handling is the shared control's job; the buttons around it are the panel's.
+  assert.match(BOX, /onPointerDown/)
+  assert.match(BOX, /onPointerMove/)
+  assert.match(BOX, /onPointerCancel/)
+  assert.match(BOX, /focusAfterNudge\(/, 'arrow keys do what a drag does')
   assert.match(PANEL, /Centre it/, 'and one button puts the photograph back')
   assert.match(PANEL, /type="range"/, 'zoom is a slider, not a number to type')
   assert.match(PANEL, new RegExp(`min=\\{ZOOM_MIN\\}[\\s\\S]{0,80}max=\\{ZOOM_MAX\\}`), 'the slider cannot leave the safe range')
@@ -313,7 +320,9 @@ test('the panel offers both homepage shapes, because they crop differently', () 
 test('the panel never re-uploads, resizes or replaces a photograph to frame it', () => {
   // The whole point for the owner: the file she uploaded is the file that
   // stays. Framing is three numbers beside it.
-  assert.ok(!/canvas|toDataURL|createImageBitmap|ImageBitmap|sharp/.test(PANEL), 'no pixels are ever recomputed')
+  for (const [file, source] of [['BannerPanel.jsx', PANEL], ['FrameBox.jsx', BOX]]) {
+    assert.ok(!/canvas|toDataURL|createImageBitmap|ImageBitmap|sharp/.test(source), `${file}: no pixels are ever recomputed`)
+  }
   // The only upload in the panel is the one she presses.
   assert.equal((PANEL.match(/\.upload\(/g) || []).length, 1, 'one upload path, and it is the Replace button')
   assert.match(PANEL, /Only the columns|image: String\(rows\[i\]\.image\)\.trim\(\)/)
@@ -329,7 +338,7 @@ test('every file that frames a banner imports what it uses', () => {
     'positionColumns', 'samePosition', 'coverSize', 'BANNER_POSITION',
     'ZOOM_MIN', 'ZOOM_MAX', 'bannerPositionStyle',
   ]
-  for (const [file, source] of [['BannerPanel.jsx', PANEL], ['Sections.jsx', HERO], ['heroSlider.js', SLIDER]]) {
+  for (const [file, source] of [['BannerPanel.jsx', PANEL], ['FrameBox.jsx', BOX], ['Sections.jsx', HERO], ['heroSlider.js', SLIDER]]) {
     const missing = missingImports(source, named)
     assert.deepEqual(missing, [], `${file} uses but does not import: ${missing.join(', ')}`)
   }

@@ -4,6 +4,7 @@ import { collectionTiles } from '../data/products'
 import { collectionPageTiles } from '../lib/categoryTiles'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
+import { imageFramingStyle } from '../lib/imageFraming'
 import usePageTitle from '../hooks/usePageTitle'
 
 // Tiles are defined once in src/data/products.js; the style counts come from
@@ -44,7 +45,7 @@ export default function Collections() {
           .filter(({ n }) => n > 0 || products.length === 0)
           .map(({ c, n }) => (
             <Link key={c.to} to={c.to} className="group relative block aspect-[4/3] overflow-hidden bg-neutral-200">
-              <Img src={c.image} alt={c.title} loading="eager" sizes="(max-width: 640px) 100vw, 400px" className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" />
+              <Img src={c.image} style={imageFramingStyle(categories.find((k) => k.key === c.key)?.image_framing, c.image)} alt={c.title} loading="eager" sizes="(max-width: 640px) 100vw, 400px" className="absolute inset-0 w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               <div className="absolute bottom-0 p-6 md:p-8 text-white">
                 <h2 className="text-[30px] md:text-[38px]">{c.title}</h2>

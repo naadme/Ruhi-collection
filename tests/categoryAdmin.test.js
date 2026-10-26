@@ -70,14 +70,15 @@ test('the database gives every category a photograph that is on', () => {
 
 test('the panel saves the photograph and the switch together', () => {
   const store = read('src/lib/categoryImageStore.js')
-  assert.match(store, /export const saveCategoryImage = async \(key, image, isActive\)/,
-    'one write carries both')
+  assert.match(store, /export const saveCategoryImage = async \(key, image, isActive, framing\)/,
+    'one write carries the photograph, the switch and the framing')
   assert.match(store, /if \(isActive !== undefined\) payload\.image_active = isActive !== false/,
     'and a caller that only wants to change the photograph cannot switch it by accident')
+  assert.match(store, /image_framing/, 'and a photograph’s framing travels with it')
 
   const panel = read('src/admin/CategoryImagesPanel.jsx')
-  assert.match(panel, /await saveCategoryImage\(row\.key, row\.image, row\.is_active !== false\)/,
-    'the panel writes both')
+  assert.match(panel, /await saveCategoryImage\(row\.key, row\.image, row\.is_active !== false, row\.framing\)/,
+    'the panel writes both, plus the framing')
   assert.match(panel, /setActive\(row\.key, row\.is_active === false\)/,
     'and the switch changes the draft')
 })

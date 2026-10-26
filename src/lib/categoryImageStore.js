@@ -63,15 +63,18 @@ export const uploadCategoryImage = async (file) => {
  * only wants to change the picture cannot accidentally switch the picture
  * off (or back on) by accident.
  */
-export const saveCategoryImage = async (key, image, isActive) => {
+export const saveCategoryImage = async (key, image, isActive, framing) => {
   const value = String(image ?? '').trim() || null
   const payload = { image: value }
   if (isActive !== undefined) payload.image_active = isActive !== false
+  // One framing per photograph, keyed by its address — an entry whose
+  // photograph has been replaced simply stops applying.
+  if (framing && Object.keys(framing).length) payload.image_framing = framing
   const { data, error } = await supabase
     .from('categories')
     .update(payload)
     .eq('key', key)
-    .select('key, label, image, image_active')
+    .select('key, label, image, image_active, image_framing')
     .single()
   if (error || !data?.key) {
     throw new Error(error?.message || 'Nothing was saved — your session may have expired.')

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, X, Upload, Link2, Trash2, Check, Plus, ArrowLeft, ArrowRight } from 'lucide-react'
+import FrameBox from './FrameBox.jsx'
+import { BANNER_POSITION, ZOOM_MIN, ZOOM_MAX } from '../lib/bannerPosition'
 import useOverlay from '../hooks/useOverlay'
 import { supabase } from '../lib/supabase'
 import { TYPES } from '../data/products'
@@ -29,7 +31,7 @@ function Section({ title, children }) {
 // One photo slot inside a colour's photo list: preview, replace, remove,
 // reorder and a direct-URL field — the same controls the single-image fields
 // always had, now per photo.
-function PhotoSlot({ index, total, url, busy, onPick, onUrl, onRemove, onMove }) {
+function PhotoSlot({ index, total, url, busy, framing, onPick, onUrl, onRemove, onMove, onFraming }) {
   const fileRef = useRef(null)
   const slotLabel =
     index === 0 ? 'Main image (shop card)' : index === 1 ? 'Second image (card hover)' : `Extra photo ${index - 1}`
@@ -109,6 +111,53 @@ function PhotoSlot({ index, total, url, busy, onPick, onUrl, onRemove, onMove })
             className={`${inputCls} h-[40px] pl-8 text-[13px]`}
           />
         </div>
+        {/* Which part of this photograph its frame keeps — one framing per
+            photograph, stored beside its address and drawn by the storefront
+            with the same rule the homepage banner uses. */}
+        <div className="pt-1 flex flex-wrap gap-3 items-start">
+          <FrameBox
+            src={url}
+            label={`Photo ${index + 1}`}
+            framing={framing}
+            boxWidth={64}
+            ratio="3 / 4"
+            onDrag={onFraming}
+            onKey={onFraming}
+          />
+          <div className="flex-1 min-w-[150px] space-y-2">
+            <label className="block text-[12px] font-semibold uppercase tracking-wider text-black/45" htmlFor={`zoom-${index}-${index ? '' : 'main'}`}>
+              Zoom
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id={`zoom-${index}-${index ? '' : 'main'}`}
+                type="range"
+                min={ZOOM_MIN}
+                max={ZOOM_MAX}
+                step={0.05}
+                value={framing.zoom}
+                disabled={!url}
+                onChange={(e) => onFraming({ ...framing, zoom: Number(e.target.value) })}
+                className="flex-1 accent-black disabled:opacity-40"
+                aria-label={`Zoom for photo ${index + 1}`}
+              />
+              <span className="text-[12px] text-black/55 tabular-nums w-[38px] text-right">
+                {Math.round(framing.zoom * 100)}%
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onFraming(BANNER_POSITION)}
+              disabled={
+                !url ||
+                (framing.x === BANNER_POSITION.x && framing.y === BANNER_POSITION.y && framing.zoom === BANNER_POSITION.zoom)
+              }
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
+            >
+              Centre it
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -118,14 +167,15 @@ function PhotoSlot({ index, total, url, busy, onPick, onUrl, onRemove, onMove })
 // order. The first is the shop card image, the second its hover image, and all
 // of them appear in the product gallery — for this colour only, because every
 // colour is its own database row with its own gallery.
-function PhotoList({ photos, uploading, onPick, onUrl, onRemove, onMove, onAdd }) {
+function PhotoList({ photos, framings, uploading, onPick, onUrl, onRemove, onMove, onAdd, onFraming }) {
   const addRef = useRef(null)
   return (
     <div>
       <span className={labelCls}>Photos (up to {MAX_IMAGES_PER_COLOUR})</span>
       <p className="block text-[12px] text-black/45 mt-1">
         The first photo is the shop card image, the second is its hover image, and all of them appear in the
-        product gallery — in this order. Each colour keeps its own photos.
+        product gallery — in this order. Each colour keeps its own photos, and each photograph keeps its own
+        framing — drag either preview to choose what its frame keeps.
       </p>
       <div className="mt-2 space-y-3">
         {photos.map((url, i) => (
@@ -134,11 +184,13 @@ function PhotoList({ photos, uploading, onPick, onUrl, onRemove, onMove, onAdd }
             index={i}
             total={photos.length}
             url={url}
+            framing={framings[i] || BANNER_POSITION}
             busy={uploading === i}
             onPick={(f) => onPick(i, f)}
             onUrl={(u) => onUrl(i, u)}
             onRemove={() => onRemove(i)}
             onMove={onMove}
+            onFraming={(next) => onFraming(i, next)}
           />
         ))}
         {photos.length < MAX_IMAGES_PER_COLOUR && (
@@ -314,6 +366,7 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
 
           <PhotoList
             photos={v.photos}
+            framings={v.photos.map((u) => v.framing[u])}
             uploading={
               uploading && uploading.startsWith(`${v.key}:`)
                 ? Number(uploading.slice(v.key.length + 1))
@@ -321,10 +374,16 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
             }
             onPick={(i, f) => onUpload(v, i, f)}
             onAdd={(f) => onUpload(v, v.photos.length, f)}
-            onUrl={(i, url) =>
-              onChange({ photos: v.photos.map((p, j) => (j === i ? url : p)) })
-            }
-            onRemove={(i) => onChange({ photos: v.photos.filter((_, j) => j !== i) })}
+            onUrl={(i, url) => {
+              const nextFraming = { ...v.framing }
+              delete nextFraming[v.photos[i]]
+              onChange({ photos: v.photos.map((p, j) => (j === i ? url : p)), framing: nextFraming })
+            }}
+            onRemove={(i) => {
+              const nextFraming = { ...v.framing }
+              delete nextFraming[v.photos[i]]
+              onChange({ photos: v.photos.filter((_, j) => j !== i), framing: nextFraming })
+            }}
             onMove={(i, dir) => {
               const j = i + dir
               if (j < 0 || j >= v.photos.length) return
@@ -332,6 +391,9 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
               ;[next[i], next[j]] = [next[j], next[i]]
               onChange({ photos: next })
             }}
+            onFraming={(i, next) =>
+              onChange({ framing: { ...v.framing, [v.photos[i]]: next } })
+            }
           />
 
           <VisibilitySwitch
@@ -458,9 +520,14 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
       })
       if (upErr) throw upErr
       const { data } = supabase.storage.from(bucket).getPublicUrl(path)
+      const old = photos[at]
       while (photos.length <= at) photos.push('')
       photos[at] = data.publicUrl
-      setVariant(v.key, { photos })
+      // The new photograph has no framing of its own yet; the old address's
+      // entry stops applying the moment its photograph is replaced.
+      const framing = { ...v.framing }
+      delete framing[old]
+      setVariant(v.key, { photos, framing })
     } catch (e) {
       setError(e?.message || 'Upload failed. Please try again.')
     } finally {

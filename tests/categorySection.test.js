@@ -77,7 +77,7 @@ test('every guarantee the photograph half had is still exactly where it was', ()
   assert.match(PHOTOS, /The site’s default photo/)
   // A photo is not published until Save is pressed, and the row says so.
   assert.match(PHOTOS, /Not saved yet/)
-  assert.match(PHOTOS, /await saveCategoryImage\(row\.key, row\.image, row\.is_active !== false\)/)
+  assert.match(PHOTOS, /await saveCategoryImage\(row\.key, row\.image, row\.is_active !== false, row\.framing\)/)
   assert.match(PHOTOS, /setActive\(row\.key, row\.is_active === false\)/)
   // Uploads, the site's own photographs, the on/off switch and the clear.
   assert.match(PHOTOS, /uploadCategoryImage/)

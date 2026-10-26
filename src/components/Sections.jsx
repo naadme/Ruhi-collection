@@ -4,7 +4,7 @@ import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, Che
 import { reviews } from '../data/products'
 import { extraCategoryTiles, stockedCategoryTiles } from '../lib/categoryTiles'
 import { site } from '../data/site'
-import { img } from '../data/images'
+import { usePageImage } from '../lib/pageImages'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { fetchHomeBanners } from '../lib/banners'
@@ -299,23 +299,31 @@ export const BestSellers = () => {
     </section>
   )
 }
-export const OurStory = () => (
-  <section className="max-w-page mx-auto px-4 md:px-7 py-16 grid lg:grid-cols-[1fr_1fr] gap-10 lg:gap-20 items-center">
-    <div>
-      <p className="text-brand-yellow font-ui tracking-[.12em] text-lg">OUR STORY</p>
-      <h2 className="font-ui text-[42px] md:text-[62px] leading-tight mt-6 mb-8 tracking-normal">Crafting fashion with passion</h2>
-      <p className="text-[22px] leading-[39px] text-black/70">Ruhi Womens Clothing is a clothing brand dedicated to creating high-quality, stylish apparel that reflects your unique personality. Our journey started with a simple vision: to make fashion accessible, sustainable, and meaningful.</p>
-      <p className="text-[22px] leading-[39px] text-black/70 mt-6">Every piece in our collection is carefully designed and crafted with attention to detail, ensuring you look and feel your best every day.</p>
-      {/* Compact pair, sized to the site's small reference button (~40px tall,
-          tight padding, text-sized type) instead of the old 88px blocks. Both
-          share the same fixed height so the filled and the outlined button
-          sit level, `gap-3` keeps them side by side, and `flex-wrap` lets the
-          row drop to two lines rather than squeeze on a very narrow screen. */}
-      <div className="flex flex-wrap gap-3 mt-10"><Link to="/shop" className="inline-flex items-center justify-center h-10 px-6 rounded-lg bg-brand-yellow font-bold text-[15px] transition hover:opacity-90">Shop Now</Link><Link to="/about" className="inline-flex items-center justify-center h-10 px-6 rounded-lg border-2 border-black/10 font-bold text-[15px] transition hover:bg-black/5">About</Link></div>
-    </div>
-    <Img src={img.story} alt="Our story" className="w-full aspect-square object-cover shadow-[0_30px_60px_rgba(74,44,35,.12)]" />
-  </section>
-)
+export const OurStory = () => {
+  // The square picture beside the story is managed from the portal's "Page
+  // images" section; until one is saved there it is the photograph in
+  // src/data/images.js, framed as it always has been.
+  const story = usePageImage('story')
+  return (
+    <section className="max-w-page mx-auto px-4 md:px-7 py-16 grid lg:grid-cols-[1fr_1fr] gap-10 lg:gap-20 items-center">
+      <div>
+        <p className="text-brand-yellow font-ui tracking-[.12em] text-lg">OUR STORY</p>
+        <h2 className="font-ui text-[42px] md:text-[62px] leading-tight mt-6 mb-8 tracking-normal">Crafting fashion with passion</h2>
+        <p className="text-[22px] leading-[39px] text-black/70">Ruhi Womens Clothing is a clothing brand dedicated to creating high-quality, stylish apparel that reflects your unique personality. Our journey started with a simple vision: to make fashion accessible, sustainable, and meaningful.</p>
+        <p className="text-[22px] leading-[39px] text-black/70 mt-6">Every piece in our collection is carefully designed and crafted with attention to detail, ensuring you look and feel your best every day.</p>
+        {/* Compact pair, sized to the site's small reference button (~40px tall,
+            tight padding, text-sized type) instead of the old 88px blocks. Both
+            share the same fixed height so the filled and the outlined button
+            sit level, `gap-3` keeps them side by side, and `flex-wrap` lets the
+            row drop to two lines rather than squeeze on a very narrow screen. */}
+        <div className="flex flex-wrap gap-3 mt-10"><Link to="/shop" className="inline-flex items-center justify-center h-10 px-6 rounded-lg bg-brand-yellow font-bold text-[15px] transition hover:opacity-90">Shop Now</Link><Link to="/about" className="inline-flex items-center justify-center h-10 px-6 rounded-lg border-2 border-black/10 font-bold text-[15px] transition hover:bg-black/5">About</Link></div>
+      </div>
+      <div className="w-full aspect-square overflow-hidden shadow-[0_30px_60px_rgba(74,44,35,.12)]">
+        <Img src={story.image} style={story.style} alt="Our story" className="w-full h-full object-cover" />
+      </div>
+    </section>
+  )
+}
 export const Reviews = () => {
   // Titles, prices and thumbnails come from the live catalogue rather than
   // hard-coded strings, so a card can never advertise one product and link to

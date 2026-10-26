@@ -5,6 +5,7 @@ import Img from './Img'
 import { inr } from '../lib/pricing'
 import { productHref } from '../lib/productLinks'
 import { useWishlist } from '../context/WishlistContext'
+import { imageFramingStyle } from '../lib/imageFraming'
 // Grids rebuild their `items` array on every render, so without this each card
 // would re-render whenever any sibling's parent re-rendered. Wishlist changes
 // still reach every card — a context update is never blocked by memo().
@@ -29,8 +30,8 @@ function ProductCard({ product: p }) {
   const card = (
     <>
       <div className="relative aspect-[3/4] overflow-hidden bg-neutral-100">
-        <Img src={p.image} alt={p.title} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 group-hover:opacity-0" />
-        <Img src={p.hover} alt="" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+        <Img src={p.image} style={imageFramingStyle(p.image_framing, p.image)} alt={p.title} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 group-hover:opacity-0" />
+        <Img src={p.hover} style={imageFramingStyle(p.image_framing, p.hover)} alt="" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
         {p.badge && <span className="absolute top-2 left-1 bg-brand-badge text-white text-[10px] font-bold px-1.5 py-[3px] rounded-sm font-ui">{p.badge}</span>}
         {rated && <span className="absolute bottom-2 left-2 bg-white/90 rounded-md px-2 py-0.5 text-[11px] flex items-center gap-1 font-ui"><Star size={11} fill="#C08576" stroke="#C08576" />{rating.toFixed(1)} ({p.reviews})</span>}
       </div>

@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Ban, Check, EyeOff, Loader2, RefreshCw, Search, Star } from 'lucide-react'
 import { fetchAllReviews, setReviewStatus } from '../lib/reviewStore'
+import { homepageReviews, isSiteReview } from '../lib/siteReviews'
 import { MODERATION_FILTERS, moderationCopy, starLabel } from '../lib/reviews'
 import { formatShopDate } from '../lib/shopTime'
 
@@ -87,9 +88,20 @@ export default function ReviewsPanel({ notify, products = [] }) {
     setState((s) => ({ ...s, loading: true, error: '' }))
     try {
       const rows = await fetchAllReviews()
-      setState({ loading: false, reviews: rows, error: '' })
+      // The homepage's own testimonials come first: they are the reviews a
+      // visitor sees before she opens a product, so they are the ones the
+      // client looks for when she opens this panel. They are read from the
+      // same copy the homepage reads (src/lib/siteReviews.js) and are never
+      // written to the database — shown here, not stored twice.
+      setState({ loading: false, reviews: [...homepageReviews(), ...rows], error: '' })
     } catch (e) {
-      setState({ loading: false, reviews: [], error: e?.message || 'The reviews could not be loaded.' })
+      // Even a failed read must not hide the reviews that are on the site
+      // right now — those do not come from the database.
+      setState({
+        loading: false,
+        reviews: homepageReviews(),
+        error: e?.message || 'The reviews could not be loaded.',
+      })
     }
   }, [])
 
@@ -111,6 +123,11 @@ export default function ReviewsPanel({ notify, products = [] }) {
     for (const r of state.reviews) if (out[r.status] !== undefined) out[r.status] += 1
     return out
   }, [state.reviews])
+
+  // How many of what is listed is the site's own homepage copy, so the
+  // client is never left wondering why the same four names sit at the top
+  // with nothing to approve.
+  const siteCount = useMemo(() => state.reviews.filter(isSiteReview).length, [state.reviews])
 
   const shown = useMemo(() => {
     const needle = String(query || '').trim().toLowerCase()
@@ -150,6 +167,12 @@ export default function ReviewsPanel({ notify, products = [] }) {
               ? `${counts.pending} waiting for you · ${counts.approved} published · ${counts.rejected} rejected`
               : 'Nothing has been written yet.'}
           </p>
+          {siteCount > 0 && (
+            <p className="text-black/45 mt-1 text-[14px]">
+              {siteCount} homepage {siteCount === 1 ? 'testimonial is' : 'testimonials are'} listed first — they
+              are always on the site. Customer reviews follow below.
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -225,24 +248,43 @@ export default function ReviewsPanel({ notify, products = [] }) {
         <ul className="mt-6 space-y-3">
           {shown.map((r) => {
             const product = byProduct.get(r.product_id)
-            const [word, cls] = moderationCopy(r.status)
+            // The homepage's testimonials are site copy: they carry no rating,
+            // no submission date and no moderation decision, and they are
+            // already on the site — so they are labelled for what they are
+            // instead of being offered decisions the database has no row for.
+            const site = isSiteReview(r)
+            const [word, cls] = site
+              ? ['Homepage', 'bg-neutral-100 text-black/70 border-black/20']
+              : moderationCopy(r.status)
+            // A testimonial shows the photograph the homepage shows beside it,
+            // which is not always the product's own main image.
+            const photo = (site && r.image) || product?.image
             return (
               <li key={r.id} className="bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start">
                 <div className="w-[64px] h-[80px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
-                  {product?.image
-                    ? <img src={product.image} alt="" className="w-full h-full object-cover" />
+                  {photo
+                    ? <img src={photo} alt="" className="w-full h-full object-cover" />
                     : <Star size={18} className="text-black/20" />}
                 </div>
 
                 <div className="flex-1 min-w-[260px]">
                   <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <b className="font-ui text-[15px]">{r.customer_name}</b>
-                    <span role="img" aria-label={starLabel(r.rating)} className="inline-flex items-center gap-[1px]">
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <Star key={n} size={13} strokeWidth={0} fill={n <= Number(r.rating) ? '#f59e0b' : '#e5e5e5'} />
-                      ))}
-                    </span>
-                    <span className="text-[13px] text-black/45">{formatShopDate(r.created_at)}</span>
+                    {/* A testimonial has no stars. Showing five grey ones
+                        would read as "she gave it zero", which is not what
+                        the site says about it. */}
+                    {r.rating != null && (
+                      <span role="img" aria-label={starLabel(r.rating)} className="inline-flex items-center gap-[1px]">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star key={n} size={13} strokeWidth={0} fill={n <= Number(r.rating) ? '#f59e0b' : '#e5e5e5'} />
+                        ))}
+                      </span>
+                    )}
+                    {r.created_at ? (
+                      <span className="text-[13px] text-black/45">{formatShopDate(r.created_at)}</span>
+                    ) : (
+                      <span className="text-[13px] text-black/45">Always on the site</span>
+                    )}
                     <span className={`rounded-full border px-2 py-[1px] text-[11px] font-medium ${cls}`}>{word}</span>
                   </p>
                   <p className="text-[14px] text-black/65 mt-0.5">
@@ -256,11 +298,21 @@ export default function ReviewsPanel({ notify, products = [] }) {
                 </div>
 
                 <div className="shrink-0 flex flex-col items-end gap-2">
-                  <Actions review={r} busy={busyId === r.id} onDecide={decide} />
-                  {busyId === r.id && (
-                    <span className="text-[12px] text-black/45 inline-flex items-center gap-1">
-                      <Loader2 size={12} className="animate-spin" /> Saving…
-                    </span>
+                  {site ? (
+                    // Nothing to decide: this is the site's own copy, always
+                    // shown, with no database row to write a status to.
+                    <p className="text-[12px] text-black/45 text-right max-w-[170px] leading-4">
+                      Homepage testimonial — always on the site, so there is nothing to approve.
+                    </p>
+                  ) : (
+                    <>
+                      <Actions review={r} busy={busyId === r.id} onDecide={decide} />
+                      {busyId === r.id && (
+                        <span className="text-[12px] text-black/45 inline-flex items-center gap-1">
+                          <Loader2 size={12} className="animate-spin" /> Saving…
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </li>

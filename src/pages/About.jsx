@@ -1,13 +1,19 @@
 import { Link } from 'react-router-dom'
 import Img from '../components/Img'
-import { img } from '../data/images'
+import { usePageImage } from '../lib/pageImages'
 import usePageTitle from '../hooks/usePageTitle'
 export default function About() {
   usePageTitle('About', 'The story behind Ruhi Womens Clothing — thoughtfully made everyday fashion, checked for fabric, stitching and fit before it ships.')
+  // The three photographs this page shows are managed from the portal's
+  // "Page images" section (src/admin/PageImagesPanel.jsx). Until one is saved
+  // there, the same photograph and framing as before are used.
+  const hero = usePageImage('about_hero')
+  const first = usePageImage('about_a')
+  const second = usePageImage('about_b')
   return (
     <>
-      <section className="relative h-[70vh] min-h-[440px] bg-neutral-300">
-        <Img src={img.aboutHero} alt="Ruhi Womens Clothing studio" loading="eager" className="absolute inset-0 w-full h-full object-cover" />
+      <section className="relative overflow-hidden h-[70vh] min-h-[440px] bg-neutral-300">
+        <Img src={hero.image} style={hero.style} alt="Ruhi Womens Clothing studio" loading="eager" className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute inset-0 bg-black/35" />
         <div className="relative h-full max-w-page mx-auto px-4 md:px-12 flex flex-col justify-end pb-14 text-white">
           <p className="tracking-[.3em] text-sm">ABOUT RUHI WOMENS CLOTHING</p>
@@ -20,8 +26,12 @@ export default function About() {
           <p>Every piece is checked for fabric, stitching and fit before it ships. We keep our range focused so each style earns its place in your wardrobe — from office days to weekends away.</p></div>
       </section>
       <section className="max-w-page mx-auto px-4 md:px-7 grid md:grid-cols-12 gap-4 items-start">
-        <Img src={img.aboutA} alt="" className="md:col-span-7 w-full aspect-[4/3] object-cover" />
-        <Img src={img.aboutB} alt="" className="md:col-span-5 w-full aspect-[4/5] object-cover md:mt-24" />
+        <div className="md:col-span-7 w-full aspect-[4/3] overflow-hidden">
+          <Img src={first.image} style={first.style} alt="" className="w-full h-full object-cover" />
+        </div>
+        <div className="md:col-span-5 w-full aspect-[4/5] overflow-hidden md:mt-24">
+          <Img src={second.image} style={second.style} alt="" className="w-full h-full object-cover" />
+        </div>
       </section>
       <section className="bg-[#FDF7F3] py-20 text-center px-4"><h2 className="font-serif text-[40px] md:text-[56px]">Find your next favourite.</h2>
         <Link to="/shop" className="inline-block bg-brand-yellow font-bold text-xl px-12 py-5 rounded-lg mt-8">Shop now</Link></section>

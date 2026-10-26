@@ -21,6 +21,7 @@
 // keep their exact titles and URLs.
 
 import { designDescription, splitTitle } from './productGrouping.js'
+import { framingEqual } from './imageFraming.js'
 
 export const SIZE_DEFAULT = ['S', 'M', 'L', 'XL']
 /** Every size the store may offer, in display order. Each product picks its
@@ -203,6 +204,8 @@ export const createPayload = (shared, variant) => {
     // only the two classic photos the storefront's own fallback suffices,
     // exactly as before.
     ...(photos.length > 2 || variant.galleryDirty ? { gallery: photos } : {}),
+    // Framing travels with the photographs that have one.
+    ...(Object.keys(variant.framing).length ? { image_framing: variant.framing } : {}),
   }
 }
 
@@ -225,6 +228,13 @@ export const updatePayload = (shared, changedShared, variant) => {
     out.image = nxtPhotos[0] || null
     out.hover = nxtPhotos[1] || null
     out.gallery = nxtPhotos
+  }
+  // One framing per photograph: written whenever a photograph was framed or
+  // reframed, and cleared back to nothing when every framing was removed.
+  const curFraming = (variant.original && variant.original.image_framing) || {}
+  const nxtFraming = variant.framing || {}
+  if (!framingEqual(curFraming, nxtFraming)) {
+    out.image_framing = Object.keys(nxtFraming).length ? nxtFraming : null
   }
   return out
 }
@@ -391,6 +401,10 @@ export const blankVariant = (key) => ({
   price: '',
   compare: '',
   photos: [],
+  // Which part of each of this colour's photographs its frame keeps, keyed
+  // by the photograph's own address — an entry whose photo has been replaced
+  // simply stops applying.
+  framing: {},
   galleryDirty: false,
   is_active: true,
   removed: false,
@@ -407,6 +421,9 @@ export const variantFromRow = (row, key) => ({
   // Main + hover + any extra gallery photos, in display order. A row written
   // before the gallery column existed loads as just main + hover.
   photos: photosOf(row),
+  // One framing per photograph this colour holds, keyed by the photograph's
+  // own address.
+  framing: row.image_framing || {},
   galleryDirty: false,
   is_active: row.is_active !== false,
   removed: false,

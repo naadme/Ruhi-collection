@@ -20,9 +20,11 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { fetchHomeBanners, HOME_HERO_SLOT } from '../lib/banners'
+import { stockedCategoryTiles } from '../lib/categoryTiles'
+import { heroFallbackSlides } from '../lib/heroLinks'
 import {
   BANNER_POSITION, ZOOM_MAX, ZOOM_MIN,
-  bannerPosition, bannerPositionStyle, focusAfterDrag, focusAfterNudge, positionColumns, samePosition,
+  bannerPosition, positionColumns, samePosition,
 } from '../lib/bannerPosition'
 import { useCategories } from '../context/CategoriesContext'
 import { useProducts } from '../context/ProductsContext'
@@ -31,119 +33,11 @@ import {
 } from '../lib/bannerLinks.js'
 import { countByStatus, filterByStatus } from '../lib/statusFilter.js'
 import StatusFilter from './StatusFilter.jsx'
+import FrameBox from './FrameBox.jsx'
 
 const bucket = 'product-images'
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
-
-/**
- * One preview of a banner at the shape the homepage really draws it.
- *
- * The photograph is drawn with the SAME three rules the storefront uses
- * (`bannerPositionStyle`), so what is dragged here is exactly what shoppers
- * see — there is no second implementation that could drift.
- *
- * The hero is not one shape: from `md` up it is half the screen at 600–684px
- * tall, and below that it is the full width of a phone at 380px tall. A
- * photograph framed for one is cropped differently by the other, so both
- * shapes are shown and both are draggable, and they always agree.
- *
- * `ratio` is the shape to draw — and it has to be the shape the HOMEPAGE
- * really uses, not a convenient rectangle. A preview that is wider than the
- * real frame shows the owner a slice of her photograph she will never see,
- * and hides the top and bottom she will. These are measured from
- * src/components/Sections.jsx: a 1440px laptop gives 720×684, and any phone
- * from 390px gives 390×380.
- *
- * Dragging moves the PHOTOGRAPH under a fixed frame — the way a print is
- * moved under a mount — which is why the frame never grows and the uploaded
- * file is never touched.
- */
-function FrameBox({ src, label, framing, boxWidth, ratio, onDrag, onKey }) {
-  const boxRef = useRef(null)
-  const dragRef = useRef(null)
-  const [box, setBox] = useState({ w: 0, h: 0 })
-  // The photograph's own dimensions, learned when it loads. The pan is
-  // measured against how much of it falls OUTSIDE the frame, so a tall
-  // photograph in a wide frame has to travel further than a wide one that
-  // almost fits.
-  const [natural, setNatural] = useState({ w: 0, h: 0 })
-
-  const measure = useCallback(() => {
-    const rect = boxRef.current?.getBoundingClientRect()
-    if (rect) setBox((b) => (b.w === rect.width && b.h === rect.height ? b : { w: rect.width, h: rect.height }))
-  }, [])
-
-  useEffect(() => {
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [measure])
-
-  const start = (e) => {
-    if (!src) return
-    e.currentTarget.setPointerCapture?.(e.pointerId)
-    // The framing is captured at the moment the finger goes down, so dragging
-    // is measured against one fixed point however many events arrive.
-    dragRef.current = { x: e.clientX, y: e.clientY, framing }
-  }
-
-  const move = (e) => {
-    const from = dragRef.current
-    if (!from) return
-    onDrag(focusAfterDrag(from.framing, { dx: e.clientX - from.x, dy: e.clientY - from.y }, {
-      naturalWidth: natural.w, naturalHeight: natural.h, boxWidth: box.w, boxHeight: box.h,
-    }))
-  }
-
-  const stop = (e) => {
-    if (!dragRef.current) return
-    dragRef.current = null
-    e.currentTarget.releasePointerCapture?.(e.pointerId)
-  }
-
-  const nudge = (e) => {
-    // Arrow keys do what a drag does, for anyone who does not use a pointer.
-    const step = e.shiftKey ? 10 : 1
-    const arrows = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }
-    const by = arrows[e.key]
-    if (!by) return
-    e.preventDefault()
-    onKey(focusAfterNudge(framing, by[0], by[1]))
-  }
-
-  return (
-    <figure className="shrink-0">
-      <figcaption className="text-[11px] font-semibold uppercase tracking-wider text-black/45 mb-1">{label}</figcaption>
-      <div
-        ref={boxRef}
-        onPointerDown={start}
-        onPointerMove={move}
-        onPointerUp={stop}
-        onPointerCancel={stop}
-        onKeyDown={nudge}
-        tabIndex={src ? 0 : -1}
-        role={src ? 'img' : undefined}
-        aria-label={src ? `${label} preview — drag to move the photograph, or use the arrow keys. Horizontal ${Math.round(framing.x)} per cent, vertical ${Math.round(framing.y)} per cent.` : undefined}
-        className={`relative overflow-hidden rounded-lg border border-black/15 bg-neutral-100 touch-none select-none ${src ? 'cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-black/40' : ''}`}
-        style={{ width: boxWidth, aspectRatio: ratio }}
-      >
-        {src ? (
-          <img
-            src={src}
-            alt=""
-            draggable="false"
-            onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
-            className="absolute inset-0 w-full h-full object-cover"
-            style={bannerPositionStyle(framing)}
-          />
-        ) : (
-          <span className="absolute inset-0 grid place-items-center text-[11px] text-black/35">No image</span>
-        )}
-      </div>
-    </figure>
-  )
-}
 
 function BannerRow({ row, index, total, busy, uploading, canReorder, destinations = [], onUrl, onLink, onToggle, onMove, onRemove, onUpload, onFraming }) {
   const fileRef = useRef(null)
@@ -536,6 +430,19 @@ export default function BannerPanel({ notify }) {
   // The banners the site is showing right now, in the order it shows them.
   const live = state.rows.filter((r) => r.is_active !== false)
 
+  // What the hero slides through AFTER its banners.
+  //
+  // The homepage is `banners` FIRST and then the category photographs, so a
+  // client counting the photographs on her live hero finds more of them than
+  // this panel used to list — the extra ones are not missing records, they are
+  // generated from the `categories` table (src/lib/heroSlider.js). They are
+  // read off with the EXACT call the homepage makes, so this list can never
+  // drift from what shoppers see.
+  const fallbacks = useMemo(
+    () => heroFallbackSlides(stockedCategoryTiles(categories, products), products),
+    [categories, products],
+  )
+
   // The filter shows a subset of the banners; it never changes them. The
   // order, the photograph and the destination of every banner are exactly as
   // they were, and a banner keeps its place in that order whether it is
@@ -685,6 +592,51 @@ export default function BannerPanel({ notify }) {
             <p className="mt-4 text-[15px] text-black/55">
               No banners yet — add one above and it will be the first thing shoppers see.
             </p>
+          )}
+
+          {/* The rest of the hero, so this list holds EVERY photograph a
+              shopper slides past rather than only the rows stored here.
+              These are not banner records — they are the category
+              photographs the homepage appends after the banners — so they are
+              shown read-only and marked as such. Listing them stops them
+              looking like records that went missing, and stops anyone trying
+              to "fix" the gap by duplicating a real banner. */}
+          {fallbacks.length > 0 && (
+            <section className="mt-8 border-t border-black/10 pt-6">
+              <h2 className="text-[21px] font-bold">Also on the homepage hero</h2>
+              <p className="text-black/55 mt-1 text-[14px] max-w-[70ch]">
+                After the banners above, the hero continues through your category photographs, in this order.
+                These are not banner records, so there is nothing to edit or duplicate here — change a
+                photograph in{' '}
+                <a href="/admin?section=categories" className="underline underline-offset-2 hover:text-black">
+                  Categories
+                </a>
+                .
+              </p>
+              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+                {fallbacks.map((slide, i) => (
+                  <li
+                    key={slide.key || `${slide.to}-${i}`}
+                    className="bg-white border border-black/10 rounded-xl p-3 flex items-center gap-3"
+                  >
+                    <span className="font-mono text-[13px] text-black/35 w-6 shrink-0 text-right">
+                      {live.length + i + 1}
+                    </span>
+                    {slide.image ? (
+                      <img src={slide.image} alt="" className="w-[76px] h-[56px] object-cover rounded-lg bg-neutral-100 shrink-0" />
+                    ) : (
+                      <span className="w-[76px] h-[56px] rounded-lg bg-neutral-100 shrink-0" />
+                    )}
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-semibold truncate">{slide.label || slide.key}</span>
+                      <span className="block text-[13px] text-black/55 truncate">
+                        {describeBannerDestination(slide.to)}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
         </>
       )}

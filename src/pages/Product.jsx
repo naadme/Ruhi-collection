@@ -8,6 +8,7 @@ import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
+import { imageFramingStyle } from '../lib/imageFraming'
 import ProductCard from '../components/ProductCard'
 import ReviewsSection from '../components/ReviewsSection'
 import { inr } from '../lib/pricing'
@@ -28,7 +29,7 @@ function Gallery({ product }) {
   return (
     <div>
       <div className="relative w-full aspect-[3/4] bg-neutral-100 overflow-hidden">
-        <Img src={src} alt={`${product.title} — view ${active + 1}`} loading="eager" className="w-full h-full object-cover" />
+        <Img src={src} style={imageFramingStyle(product.image_framing, src)} alt={`${product.title} — view ${active + 1}`} loading="eager" className="w-full h-full object-cover" />
         {product.badge && (
           <span className="absolute top-3 left-3 bg-brand-badge text-white text-[11px] font-bold px-2 py-1 rounded-sm font-ui">{product.badge}</span>
         )}
@@ -43,7 +44,7 @@ function Gallery({ product }) {
               aria-current={active === i}
               className={`w-20 h-24 overflow-hidden border-2 rounded-lg transition ${active === i ? 'border-black' : 'border-transparent opacity-60 hover:opacity-100'}`}
             >
-              <Img src={s} alt="" className="w-full h-full object-cover" />
+              <Img src={s} style={imageFramingStyle(product.image_framing, s)} alt="" className="w-full h-full object-cover" />
             </button>
           ))}
         </div>

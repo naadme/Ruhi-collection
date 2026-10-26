@@ -14,7 +14,7 @@
 // `categories` row, which only an admin can write (the table's own RLS).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Eye, EyeOff, Loader2, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, Eye, EyeOff, Loader2, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useCategories } from '../context/CategoriesContext'
 import { useProducts } from '../context/ProductsContext'
 import { fetchCategories } from '../lib/categories'
@@ -23,11 +23,14 @@ import { saveCategoryImage, uploadCategoryImage } from '../lib/categoryImageStor
 import { categoryImage } from '../lib/categoryTiles.js'
 import { countByStatus, filterByStatus } from '../lib/statusFilter.js'
 import StatusFilter from './StatusFilter.jsx'
+import FrameBox from './FrameBox.jsx'
+import { BANNER_POSITION, ZOOM_MIN, ZOOM_MAX, bannerPosition } from '../lib/bannerPosition'
+import { imageFramingStyle, framingEqual } from '../lib/imageFraming'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
 
-function CategoryRow({ row, busy, uploading, saved, onUpload, onPick, onClear, onToggle }) {
+function CategoryRow({ row, busy, uploading, saved, onUpload, onPick, onClear, onToggle, framing, onFraming }) {
   const fileRef = useRef(null)
   // The picture the homepage shows for this category RIGHT NOW: the owner's
   // own choice when there is one AND it is switched on, and the site's
@@ -38,6 +41,7 @@ function CategoryRow({ row, busy, uploading, saved, onUpload, onPick, onClear, o
   const active = row.is_active !== false
   const shown = (active && row.image) || row.defaultImage || ''
   const isDefault = shown !== row.image || !row.image
+  const frame = bannerPosition(row.framing || {})
   // A photo picked (or uploaded) in this panel is not on the site until the
   // owner presses Save, and the row has to say so rather than look saved.
   const unsaved = !saved
@@ -48,6 +52,7 @@ function CategoryRow({ row, busy, uploading, saved, onUpload, onPick, onClear, o
           <img
             src={shown}
             alt=""
+            style={imageFramingStyle(row.framing || {}, shown)}
             className="w-full h-full object-cover"
             onError={(e) => {
               e.currentTarget.style.display = 'none'
@@ -95,6 +100,55 @@ function CategoryRow({ row, busy, uploading, saved, onUpload, onPick, onClear, o
             : 'The site’s default photo — upload one or pick one of the site’s photos to change it.'}
         </p>
       </div>
+      {/* Which part of this category’s photograph its frame keeps, drawn with
+          the same rule the storefront uses. Categories tile at 4:3 on both
+          desktop and phone, so one preview is enough. */}
+      {shown && (
+        <div className="w-full flex flex-wrap gap-3 items-start pt-1">
+          <FrameBox
+            src={shown}
+            label={row.label}
+            framing={frame}
+            boxWidth={120}
+            ratio="4 / 3"
+            onDrag={onFraming}
+            onKey={onFraming}
+          />
+          <div className="flex-1 min-w-[150px] space-y-2">
+            <label className="block text-[12px] font-semibold uppercase tracking-wider text-black/45" htmlFor={`zoom-cat-${row.key}`}>
+              Zoom
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id={`zoom-cat-${row.key}`}
+                type="range"
+                min={ZOOM_MIN}
+                max={ZOOM_MAX}
+                step={0.05}
+                value={frame.zoom}
+                disabled={!shown}
+                onChange={(e) => onFraming({ ...frame, zoom: Number(e.target.value) })}
+                className="flex-1 accent-black disabled:opacity-40"
+                aria-label={`Zoom for ${row.label}`}
+              />
+              <span className="text-[12px] text-black/55 tabular-nums w-[38px] text-right">
+                {Math.round(frame.zoom * 100)}%
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onFraming(BANNER_POSITION)}
+              disabled={
+                !shown ||
+                (frame.x === BANNER_POSITION.x && frame.y === BANNER_POSITION.y && frame.zoom === BANNER_POSITION.zoom)
+              }
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
+            >
+              Centre it
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2 shrink-0">
         <input
           ref={fileRef}
@@ -174,6 +228,9 @@ export default function CategoryImagesPanel({ notify = () => {}, revision = 0 })
         image: String(c.image || ''),
         // Whether the category's own photograph is the one the site shows.
         is_active: c.image_active !== false,
+        // Which part of its photograph the site keeps — one framing per
+        // photograph, keyed by its address.
+        framing: c.image_framing || {},
         // The picture the site shows when the owner has chosen none — the very
         // same rule the storefront uses.
         defaultImage: categoryImage(c, products) || '',
@@ -197,7 +254,12 @@ export default function CategoryImagesPanel({ notify = () => {}, revision = 0 })
   useEffect(() => { load() }, [load, revision])
 
   const setImage = (key, image) =>
-    setRows((list) => list.map((r) => (r.key === key ? { ...r, image } : r)))
+    setRows((list) => list.map((r) => (r.key === key ? { ...r, image, framing: {} } : r)))
+
+  // A new photograph starts centred: its framing entry belongs to the old
+  // address, which no longer exists.
+  const setFraming = (key, next) =>
+    setRows((list) => list.map((r) => (r.key === key ? { ...r, framing: next } : r)))
 
   // Switching a photograph off keeps the photograph and the category: the site
   // simply shows its default picture until it is switched back on.
@@ -228,6 +290,7 @@ export default function CategoryImagesPanel({ notify = () => {}, revision = 0 })
     // right here and never reach the database.
     if (!before) return Boolean(r.image)
     return r.image !== (before.image || '') || (r.is_active !== false) !== (before.is_active !== false)
+      || !framingEqual(before.framing || {}, r.framing || {})
   })
   const dirtyKeys = useMemo(
     () => new Set(changedRows().map((r) => r.key)),
@@ -240,7 +303,7 @@ export default function CategoryImagesPanel({ notify = () => {}, revision = 0 })
     setSaving(true)
     try {
       for (const row of changed) {
-        await saveCategoryImage(row.key, row.image, row.is_active !== false)
+        await saveCategoryImage(row.key, row.image, row.is_active !== false, row.framing)
       }
       // The storefront reads the categories from the database, so a reload
       // here puts the new photos in front of the very next visitor.
@@ -317,10 +380,12 @@ export default function CategoryImagesPanel({ notify = () => {}, revision = 0 })
                 busy={saving}
                 uploading={uploading === row.key}
                 saved={!dirtyKeys.has(row.key)}
+                framing={row.framing}
                 onUpload={(f) => upload(row, f)}
                 onPick={(url) => url && setImage(row.key, url)}
                 onClear={() => setImage(row.key, '')}
                 onToggle={() => setActive(row.key, row.is_active === false)}
+                onFraming={(next) => setFraming(row.key, next)}
               />
             ))}
           </ul>
