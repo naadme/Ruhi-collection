@@ -13,6 +13,7 @@ export const REVIEW_LIMITS = {
   MAX_BODY: 2000,
   MIN_NAME: 2,
   MAX_NAME: 60,
+  MAX_TITLE: 120,
 }
 
 export const REVIEW_STATUSES = ['pending', 'approved', 'rejected']
@@ -28,11 +29,15 @@ export function reviewProblem(draft = {}) {
   const rating = Number(draft.rating)
   const body = String(draft.body ?? '').replace(/\r\n/g, '\n').trim()
   const name = String(draft.name ?? '').trim()
+  const title = String(draft.title ?? '').trim()
 
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) return 'Choose a star rating first.'
   if (!name) return 'Tell us the name you would like shown with your review.'
   if (name.length < REVIEW_LIMITS.MIN_NAME || name.length > REVIEW_LIMITS.MAX_NAME) {
     return `The name must be between ${REVIEW_LIMITS.MIN_NAME} and ${REVIEW_LIMITS.MAX_NAME} characters.`
+  }
+  if (title && title.length > REVIEW_LIMITS.MAX_TITLE) {
+    return `The title can be up to ${REVIEW_LIMITS.MAX_TITLE} characters.`
   }
   if (!body) return 'Write a few words about the piece.'
   if (body.length < REVIEW_LIMITS.MIN_BODY) {
@@ -50,6 +55,7 @@ export function normalizeReview(draft = {}) {
   return {
     rating: Number(draft.rating) || 0,
     name: String(draft.name ?? '').trim(),
+    title: String(draft.title ?? '').trim(),
     body: String(draft.body ?? '').replace(/\r\n/g, '\n').trim(),
     orderItemId: draft.orderItemId ?? '',
   }

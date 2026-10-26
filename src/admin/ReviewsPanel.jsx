@@ -19,8 +19,8 @@
 // admins cannot approve over each other without seeing it.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Ban, Check, EyeOff, Loader2, RefreshCw, Search, Star } from 'lucide-react'
-import { fetchAllReviews, setReviewStatus } from '../lib/reviewStore'
+import { AlertTriangle, Ban, Check, Edit2 as Edit, Loader2, RefreshCw, Search, Star, Trash2, X } from 'lucide-react'
+import { fetchAllReviews, deleteReview, setReviewStatus, updateReview } from '../lib/reviewStore'
 import { homepageReviews, isSiteReview } from '../lib/siteReviews'
 import { MODERATION_FILTERS, moderationCopy, starLabel } from '../lib/reviews'
 import { formatShopDate } from '../lib/shopTime'
@@ -78,11 +78,122 @@ function Actions({ review, busy, onDecide }) {
   )
 }
 
+/** Correct a review's headline, rating, name and body. Its state (pending,
+ *  approved, rejected) is untouched — editing never publishes a review. */
+function EditForm({ review, onSave, onCancel, busy }) {
+  const [draft, setDraft] = useState({
+    title: review.title ?? '',
+    rating: Number(review.rating || 0),
+    name: review.customer_name,
+    body: review.body,
+  })
+
+  const save = async (e) => {
+    e.preventDefault()
+    const rating = Number(draft.rating)
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) return
+    if (!draft.name) return
+    if (!draft.body || draft.body.length < 10) return
+    try {
+      await onSave(review, {
+        title: draft.title || null,
+        rating,
+        customer_name: draft.name,
+        body: draft.body,
+      })
+      onCancel()
+    } catch {
+      // updateReview reports the error through the panel's error banner.
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="mt-3 space-y-3">
+      <div>
+        <span className="block text-[12px] font-semibold text-black/60 mb-1">Review title (optional)</span>
+        <input
+          value={draft.title}
+          onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+          disabled={busy}
+          placeholder="e.g. Loved the fit"
+          className="w-full border border-black/30 rounded-lg px-3 h-[38px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 disabled:bg-neutral-100"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-[12px] font-semibold text-black/60 shrink-0">Your rating</span>
+        <div className="flex items-center gap-1" role="radiogroup" aria-label="Rating">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={draft.rating === n}
+              aria-label={`${n} star${n > 1 ? 's' : ''}`}
+              disabled={busy}
+              onClick={() => setDraft((d) => ({ ...d, rating: n }))}
+              className="p-1 rounded transition disabled:opacity-50"
+            >
+              <Star
+                size={20}
+                strokeWidth={1.5}
+                className={n <= draft.rating ? 'text-amber-500' : 'text-black/25'}
+                fill={n <= draft.rating ? '#f59e0b' : 'none'}
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="block">
+        <span className="block text-[12px] font-semibold text-black/60 mb-1">Name to show</span>
+        <input
+          value={draft.name}
+          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+          disabled={busy}
+          placeholder="e.g. Priya S."
+          className="w-full border border-black/30 rounded-lg px-3 h-[38px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 disabled:bg-neutral-100"
+        />
+      </label>
+      <label className="block">
+        <span className="block text-[12px] font-semibold text-black/60 mb-1">Review</span>
+        <textarea
+          value={draft.body}
+          onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
+          disabled={busy}
+          rows={3}
+          className="w-full border border-black/30 rounded-lg px-3 py-2 text-[14px] leading-relaxed bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 disabled:bg-neutral-100"
+        />
+      </label>
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={busy} className="inline-flex items-center gap-1 h-[34px] px-3 rounded-lg border border-black/40 text-[13px] font-semibold hover:bg-black hover:text-white transition disabled:opacity-60">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
+        </button>
+        <button type="button" onClick={onCancel} className="inline-flex items-center gap-1 h-[34px] px-3 rounded-lg border border-black/30 text-[13px] font-semibold hover:bg-black hover:text-white transition disabled:opacity-60">
+          <X size={14} /> Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function Save() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <polyline points="17 21 17 13 7 13 7 21" />
+      <polyline points="7 3 7 8 15 8" />
+    </svg>
+  )
+}
+
 export default function ReviewsPanel({ notify, products = [] }) {
   const [state, setState] = useState({ loading: true, reviews: [], error: '' })
   const [status, setStatus] = useState('all')
   const [query, setQuery] = useState('')
   const [busyId, setBusyId] = useState('')
+  // Which review is being edited (its draft lives in `edits`), and which is
+  // awaiting a permanent-delete confirmation.
+  const [editingId, setEditingId] = useState('')
+  const [deletingId, setDeletingId] = useState('')
 
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: '' }))
@@ -152,6 +263,45 @@ export default function ReviewsPanel({ notify, products = [] }) {
       notify?.('success', `“${review.customer_name}”'s review is now ${word}.`)
     } catch (e) {
       notify?.('error', e?.message || 'That change could not be saved.')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  const saveEdit = async (review, changes) => {
+    setBusyId(review.id)
+    try {
+      const saved = await updateReview(review, changes)
+      setState((s) => ({
+        ...s,
+        reviews: s.reviews.map((r) => (r.id === review.id ? { ...r, ...saved } : r)),
+      }))
+      setEditingId('')
+      notify?.('success', 'Review updated.')
+    } catch (e) {
+      notify?.('error', e?.message || 'The change could not be saved.')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  const cancelEdit = () => setEditingId('')
+
+  const requestDelete = (review) => setDeletingId(review.id)
+  const cancelDelete = () => setDeletingId('')
+
+  const doDelete = async (review) => {
+    setBusyId(review.id)
+    setDeletingId('')
+    try {
+      await deleteReview(review)
+      setState((s) => ({
+        ...s,
+        reviews: s.reviews.filter((r) => r.id !== review.id),
+      }))
+      notify?.('success', 'Review deleted.')
+    } catch (e) {
+      notify?.('error', e?.message || 'The review could not be deleted.')
     } finally {
       setBusyId('')
     }
@@ -306,11 +456,63 @@ export default function ReviewsPanel({ notify, products = [] }) {
                     </p>
                   ) : (
                     <>
-                      <Actions review={r} busy={busyId === r.id} onDecide={decide} />
-                      {busyId === r.id && (
-                        <span className="text-[12px] text-black/45 inline-flex items-center gap-1">
-                          <Loader2 size={12} className="animate-spin" /> Saving…
-                        </span>
+                      {editingId === r.id ? (
+                        <EditForm
+                          review={r}
+                          busy={busyId === r.id}
+                          onSave={saveEdit}
+                          onCancel={cancelEdit}
+                        />
+                      ) : (
+                        <>
+                          <Actions review={r} busy={busyId === r.id} onDecide={decide} />
+                          <button
+                            type="button"
+                            onClick={() => setEditingId(r.id)}
+                            disabled={busyId === r.id || deletingId === r.id}
+                            className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-black/45 hover:text-black transition disabled:opacity-60"
+                          >
+                            <Edit size={14} /> Edit
+                          </button>
+                          {deletingId === r.id ? (
+                            <div className="mt-2 border border-red-200 bg-red-50 rounded-xl p-3">
+                              <p className="text-[13px] text-red-800">
+                                Permanently delete this review by “{r.customer_name}”? This cannot be undone.
+                              </p>
+                              <div className="mt-2 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => doDelete(r)}
+                                  disabled={busyId === r.id}
+                                  className="inline-flex items-center gap-1 h-[32px] px-3 rounded-lg border border-red-400 text-[12px] font-semibold text-red-800 hover:bg-red-100 transition disabled:opacity-60"
+                                >
+                                  <Trash2 size={13} /> Delete permanently
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelDelete}
+                                  className="inline-flex items-center gap-1 h-[32px] px-3 rounded-lg border border-black/30 text-[12px] font-semibold text-black/60 hover:bg-black hover:text-white transition"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => requestDelete(r)}
+                              disabled={busyId === r.id || editingId === r.id}
+                              className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-60"
+                            >
+                              <Trash2 size={14} /> Delete
+                            </button>
+                          )}
+                          {busyId === r.id && (
+                            <span className="text-[12px] text-black/45 inline-flex items-center gap-1">
+                              <Loader2 size={12} className="animate-spin" /> Saving…
+                            </span>
+                          )}
+                        </>
                       )}
                     </>
                   )}

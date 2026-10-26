@@ -72,6 +72,30 @@ test('the limits are CHECK constraints, not advice', () => {
   assert.match(SQL, /constraint product_reviews_name_length check \(char_length\(btrim\(customer_name\)\) >= 2/)
 })
 
+const TITLE_SQL = read('supabase/migrations/20261026120000_review_title_and_delete.sql')
+
+test('the title column is added to the review table', () => {
+  assert.match(TITLE_SQL, /add column if not exists title text/, 'the column exists')
+  assert.match(TITLE_SQL, /constraint product_reviews_title_length[\s\S]{0,60}char_length\(btrim\(title\)\) <= 120\)/,
+    'and the headline has a ceiling')
+})
+
+test('submit_review() accepts and stores an optional headline', () => {
+  assert.match(TITLE_SQL, /p_title\s+text/, 'the headline is a parameter')
+  assert.match(TITLE_SQL, /v_title\s+text := btrim\(coalesce\(p_title, ''\)\)/, 'and is trimmed')
+  assert.match(TITLE_SQL, /customer_name, title\)/, 'the insert stores the headline')
+  assert.match(TITLE_SQL, /v_title\)/, 'the headline travels with the row')
+})
+
+test('a review may be permanently deleted, but only by an admin', () => {
+  assert.match(TITLE_SQL, /grant\s+delete on table public\.product_reviews to authenticated/)
+  assert.match(TITLE_SQL, /create policy "admins remove reviews"[\s\S]{0,160}for delete[\s\S]{0,120}using \(public\.is_admin\(\)\)/,
+    'deletion is gated on is_admin()')
+  assert.match(TITLE_SQL, /with check \(public\.is_admin\(\)\)/,
+    'and the same gate applies to the new row')
+  assert.match(TITLE_SQL, /char_length\(v_title\) > 120/, 'an over-long headline is refused')
+})
+
 test('nobody inserts a review from a browser', () => {
   // The single most important assertion in this file: RLS is on, the grants
   // give no INSERT to either API role, and there is no `for insert` policy
@@ -135,18 +159,23 @@ test('the form refuses exactly what the database would', () => {
     new RegExp(String(REVIEW_LIMITS.MIN_BODY)))
   assert.match(reviewProblem({ ...good, body: 'x'.repeat(REVIEW_LIMITS.MAX_BODY + 1) }),
     new RegExp(String(REVIEW_LIMITS.MAX_BODY)))
+  assert.match(reviewProblem({ ...good, title: 'x'.repeat(REVIEW_LIMITS.MAX_TITLE + 1) }),
+    new RegExp(String(REVIEW_LIMITS.MAX_TITLE)))
+  assert.equal(reviewProblem({ ...good, title: 'A perfectly fine headline' }), '')
   // The very limits the CHECK constraints carry are the limits quoted here.
   assert.equal(REVIEW_LIMITS.MIN_BODY, 10)
   assert.equal(REVIEW_LIMITS.MAX_BODY, 2000)
   assert.equal(REVIEW_LIMITS.MIN_NAME, 2)
   assert.equal(REVIEW_LIMITS.MAX_NAME, 60)
+  assert.equal(REVIEW_LIMITS.MAX_TITLE, 120)
 })
 
 test('a draft is tidied but its words are never cut', () => {
   const body = '  First line.\n\nSecond paragraph,  \nover two lines.  '
-  const clean = normalizeReview({ rating: '4', name: '  Priya S.  ', body })
+  const clean = normalizeReview({ rating: '4', name: '  Priya S.  ', title: '  Loved it  ', body })
   assert.equal(clean.rating, 4, 'the rating arrives as a number')
   assert.equal(clean.name, 'Priya S.', 'the name is trimmed')
+  assert.equal(clean.title, 'Loved it', 'the optional headline is trimmed')
   assert.equal(clean.body, 'First line.\n\nSecond paragraph,  \nover two lines.',
     'only the stray ends go — her line breaks and her spacing inside stay')
 })
@@ -234,7 +263,9 @@ test('only an owner may reach the moderation panel, and it offers the three deci
   assert.match(panel, /'approved'[\s\S]{0,80}'rejected'/, 'approve and reject')
   assert.match(panel, /'pending'\}\) \{$|Back to queue[\s\S]{0,120}'pending'/, 'and take a published one back down')
   assert.match(panel, /setReviewStatus\(review, next\)/, 'every decision is written, not held in the browser')
-  assert.ok(!/\.delete\(/.test(panel), 'a rejected review is kept, never deleted')
+  assert.match(panel, /deleteReview\(review\)/, 'a review may be permanently deleted')
+  assert.match(panel, /[Dd]elete permanently/, 'and only after a confirmation')
+  assert.match(panel, /Homepage testimonial — always on the site/, 'but never a homepage testimonial')
 })
 
 test('a customer can see her own reviews, wherever they stand', () => {

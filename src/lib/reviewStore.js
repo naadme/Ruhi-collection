@@ -76,14 +76,44 @@ export async function submitReview(draft) {
     throw new Error('Choose which of your orders you are reviewing.')
   }
 
+  // `submit_review()` decides the product, the account and the purchase — the
+  // browser only sends the opinion. The optional headline travels with it.
   const { data, error } = await supabase.rpc('submit_review', {
     p_order_item_id: clean.orderItemId,
     p_rating: clean.rating,
     p_body: clean.body,
     p_name: clean.name,
+    p_title: clean.title || null,
   })
   if (error) throw new Error(readableSubmitError(error))
   return data
+}
+
+/** Correct a published or pending review: headline, rating, name and body.
+ *  Only an admin may reach this row (the table's update policy), and the
+ *  review stays in whatever state it was in — editing does not publish it.
+ */
+export async function updateReview(review, changes) {
+  if (!review?.id) throw new Error('That review has gone missing — reload and try again.')
+  const { data, error } = await supabase
+    .from('product_reviews')
+    .update(changes)
+    .eq('id', review.id)
+    .select('id, title, rating, body, customer_name, status')
+    .single()
+  if (error) throw new Error(error.message || 'The change could not be saved.')
+  return data
+}
+
+/** Permanently delete a review. Admin only — the RLS policy refuses anyone
+ *  else, and the panel never offers it for the site's own testimonials. */
+export async function deleteReview(review) {
+  if (!review?.id) throw new Error('That review has gone missing — reload and try again.')
+  const { error } = await supabase
+    .from('product_reviews')
+    .delete()
+    .eq('id', review.id)
+  if (error) throw new Error(error.message || 'The review could not be deleted.')
 }
 
 /** The database's own complaint, turned into the sentence the form shows. */

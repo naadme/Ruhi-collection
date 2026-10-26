@@ -17,7 +17,7 @@
 // reviewing something it did not sell.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, Loader2, Star } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, Loader2, Plus, Star } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { formatShopDate } from '../lib/shopTime'
 import {
@@ -64,10 +64,11 @@ export default function ReviewsSection({ product, reviews = [] }) {
 
   const [items, setItems] = useState([])
   const [itemsLoaded, setItemsLoaded] = useState(false)
-  const [draft, setDraft] = useState({ orderItemId: '', rating: 0, name: '', body: '' })
+  const [draft, setDraft] = useState({ orderItemId: '', rating: 0, title: '', name: '', body: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
+  const [writing, setWriting] = useState(false)
   const formRef = useRef(null)
 
   const loadItems = useCallback(async () => {
@@ -107,11 +108,12 @@ export default function ReviewsSection({ product, reviews = [] }) {
     try {
       await submitReview(draft)
       setSent(true)
+      setWriting(false)
       // The purchase has been used, so it must vanish from the list: another
       // review of the same parcel is impossible anyway, and the form says so
       // instead of letting her try and be refused.
       setItems((rows) => rows.filter((r) => r.order_item_id !== draft.orderItemId))
-      setDraft({ orderItemId: '', rating: 0, name: draft.name, body: '' })
+      setDraft({ orderItemId: '', rating: 0, title: '', name: draft.name, body: '' })
     } catch (err) {
       setError(err?.message || 'Your review could not be sent. Please try again.')
       if (/already reviewed/i.test(String(err?.message || ''))) loadItems()
@@ -203,91 +205,126 @@ export default function ReviewsSection({ product, reviews = [] }) {
       )}
 
       {/* The write box is offered only where there is a purchase to write
-          about, and never to someone who has already reviewed it. */}
-      {canWrite && (
-        <div ref={formRef} className="mt-8 bg-neutral-50 border border-black/10 rounded-xl p-5">
+          about, and never to someone who has already reviewed it. A clearly
+          labelled button opens it, so a shopper who is not ready to write is
+          not faced with an empty form. */}
+      {canWrite && !writing && !sent ? (
+        <button
+          type="button"
+          onClick={() => setWriting(true)}
+          className="mt-8 inline-flex items-center gap-2 border border-black/40 px-5 h-[46px] rounded-lg text-[15px] font-semibold hover:bg-black hover:text-white transition"
+        >
+          <Plus size={16} /> Write a Review
+        </button>
+      ) : null}
+
+      {writing && !sent && (
+        <div ref={formRef} className="mt-6 bg-neutral-50 border border-black/10 rounded-xl p-5">
+          <button
+            type="button"
+            onClick={() => setWriting(false)}
+            className="mb-3 inline-flex items-center gap-1 text-[12px] font-semibold text-black/45 hover:text-black transition"
+          >
+            <ArrowLeft size={14} /> Back
+          </button>
           <h3 className="text-[16px] font-bold">Write a review</h3>
 
-          {sent ? (
-            <p className="mt-3 text-[15px] text-black/70 flex items-start gap-2">
-              <Check size={18} className="text-green-700 mt-[2px] shrink-0" />
-              <span>
-                Thank you — your review is with the shop. It will appear on this page as soon as it
-                has been approved, and you will find it under your account until then.
+          <form className="mt-4 space-y-4" onSubmit={send} noValidate>
+            <label className="block">
+              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">
+                Which of your orders is this about?
               </span>
-            </p>
-          ) : (
-            <form className="mt-4 space-y-4" onSubmit={send} noValidate>
-              <label className="block">
-                <span className="block text-[13px] font-semibold text-black/60 mb-1.5">
-                  Which of your orders is this about?
-                </span>
-                <select
-                  value={draft.orderItemId}
-                  onChange={(e) => setDraft((d) => ({ ...d, orderItemId: e.target.value }))}
-                  disabled={busy}
-                  className="w-full max-w-[440px] border border-black/30 rounded-lg px-3 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 disabled:bg-neutral-100"
-                >
-                  {items.map((it) => (
-                    <option key={it.order_item_id} value={it.order_item_id}>
-                      {it.title}{it.size ? ` · Size ${it.size}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <select
+                value={draft.orderItemId}
+                onChange={(e) => setDraft((d) => ({ ...d, orderItemId: e.target.value }))}
+                disabled={busy}
+                className="w-full max-w-[440px] border border-black/30 rounded-lg px-3 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 disabled:bg-neutral-100"
+              >
+                {items.map((it) => (
+                  <option key={it.order_item_id} value={it.order_item_id}>
+                    {it.title}{it.size ? ` · Size ${it.size}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-              <div>
-                <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Your rating</span>
-                <StarPicker value={draft.rating} busy={busy} onChange={(n) => setDraft((d) => ({ ...d, rating: n }))} />
-              </div>
+            <div>
+              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Your rating</span>
+              <StarPicker value={draft.rating} busy={busy} onChange={(n) => setDraft((d) => ({ ...d, rating: n }))} />
+            </div>
 
-              <label className="block max-w-[440px]">
-                <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Name to show</span>
-                <input
-                  type="text"
-                  value={draft.name}
-                  maxLength={REVIEW_LIMITS.MAX_NAME}
-                  onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                  disabled={busy}
-                  placeholder="e.g. Priya S."
-                  className="w-full border border-black/30 rounded-lg px-4 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 disabled:bg-neutral-100"
-                />
-              </label>
+            <label className="block max-w-[440px]">
+              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Review title (optional)</span>
+              <input
+                type="text"
+                value={draft.title}
+                maxLength={REVIEW_LIMITS.MAX_TITLE}
+                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                disabled={busy}
+                placeholder="e.g. Loved the fit"
+                className="w-full border border-black/30 rounded-lg px-4 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 disabled:bg-neutral-100"
+              />
+              <span className="block text-[12px] text-black/45 mt-1">
+                A short headline to show above your review.
+              </span>
+            </label>
 
-              <label className="block">
-                <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Your review</span>
-                <textarea
-                  value={draft.body}
-                  rows={4}
-                  maxLength={REVIEW_LIMITS.MAX_BODY}
-                  onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
-                  disabled={busy}
-                  placeholder="How does it fit, how does it wear, how did it wash?"
-                  className="w-full border border-black/30 rounded-lg px-4 py-3 text-[15px] leading-relaxed bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 resize-y disabled:bg-neutral-100"
-                />
-                <span className="block text-[12px] text-black/45 mt-1">
-                  {draft.body.length} / {REVIEW_LIMITS.MAX_BODY} — plain text, and your own line
-                  breaks are kept.
-                </span>
-              </label>
+            <label className="block max-w-[440px]">
+              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Name to show</span>
+              <input
+                type="text"
+                value={draft.name}
+                maxLength={REVIEW_LIMITS.MAX_NAME}
+                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                disabled={busy}
+                placeholder="e.g. Priya S."
+                className="w-full border border-black/30 rounded-lg px-4 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 disabled:bg-neutral-100"
+              />
+            </label>
 
-              {error && (
-                <p className="text-[14px] text-red-700 flex items-start gap-1.5" role="alert">
-                  <AlertTriangle size={16} className="mt-[2px] shrink-0" />
-                  <span>{error}</span>
-                </p>
-              )}
+            <label className="block">
+              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Your review</span>
+              <textarea
+                value={draft.body}
+                rows={4}
+                maxLength={REVIEW_LIMITS.MAX_BODY}
+                onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
+                disabled={busy}
+                placeholder="How does it fit, how does it wear, how did it wash?"
+                className="w-full border border-black/30 rounded-lg px-4 py-3 text-[15px] leading-relaxed bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 resize-y disabled:bg-neutral-100"
+              />
+              <span className="block text-[12px] text-black/45 mt-1">
+                {draft.body.length} / {REVIEW_LIMITS.MAX_BODY} — plain text, and your own line
+                breaks are kept.
+              </span>
+            </label>
 
-              <button type="submit" disabled={busy || Boolean(problem)} className="btn inline-flex items-center gap-2 disabled:opacity-50">
-                {busy && <Loader2 size={16} className="animate-spin" />}
-                {busy ? 'Sending…' : 'Send my review'}
-              </button>
-              <p className="text-[12px] text-black/45">
-                Your review is read by the shop before it appears on this page.
+            {error && (
+              <p className="text-[14px] text-red-700 flex items-start gap-1.5" role="alert">
+                <AlertTriangle size={16} className="mt-[2px] shrink-0" />
+                <span>{error}</span>
               </p>
-            </form>
-          )}
+            )}
+
+            <button type="submit" disabled={busy || Boolean(problem)} className="btn inline-flex items-center gap-2 disabled:opacity-50">
+              {busy && <Loader2 size={16} className="animate-spin" />}
+              {busy ? 'Sending…' : 'Send my review'}
+            </button>
+            <p className="text-[12px] text-black/45">
+              Your review is read by the shop before it appears on this page.
+            </p>
+          </form>
         </div>
+      )}
+
+      {sent && (
+        <p className="mt-8 text-[15px] text-black/70 flex items-start gap-2">
+          <Check size={18} className="text-green-700 mt-[2px] shrink-0" />
+          <span>
+            Thank you — your review is with the shop. It will appear on this page as soon as it
+            has been approved, and you will find it under your account until then.
+          </span>
+        </p>
       )}
     </section>
   )
