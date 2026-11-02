@@ -7,11 +7,23 @@
 //
 // The write goes through the service role — the same privilege no browser
 // holds, enforced in the database by `orders_protect_payment_fields`.
+//
+// It also records how the shopper paid (`payment_type`, asked of Razorpay),
+// and the database decides `new_customer` as the order turns paid; both go
+// back to the browser for the purchase event (tracking brief, Section 3). An
+// admin's test order (`is_test`) is checked with the test keys it was paid
+// with.
 
 import { serve } from '../_shared/deno.ts'
 import { MissingConfigError } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
-import { getRazorpayOrder, toPaise, verifyPaymentSignature } from '../_shared/razorpay.ts'
+import {
+  getRazorpayOrder,
+  modeOf,
+  paymentMethodOf,
+  toPaise,
+  verifyPaymentSignature,
+} from '../_shared/razorpay.ts'
 import { sendOrderConfirmation } from '../_shared/confirmation.ts'
 import { sendOwnerNotification } from '../_shared/ownerNotification.ts'
 import { syncSheetQuietly } from '../_shared/sheetSyncTrigger.ts'
@@ -54,17 +66,21 @@ export async function handle(req: Request): Promise<Response> {
     const trustedOrderId = asString(order.razorpay_order_id)
     if (!trustedOrderId || trustedOrderId !== claimedOrderId) return fail(400, MISMATCH)
 
+    // A test order was paid with the test keys, so it is proven with them.
+    const mode = modeOf(order)
+
     const signatureOk = await verifyPaymentSignature({
       orderId: trustedOrderId,
       paymentId,
       signature,
+      mode,
     })
     if (!signatureOk) return fail(400, BAD_SIGNATURE)
 
     // Belt and braces: the gateway must have processed exactly our amount.
     let gatewayOrder
     try {
-      gatewayOrder = await getRazorpayOrder(trustedOrderId)
+      gatewayOrder = await getRazorpayOrder(trustedOrderId, mode)
     } catch {
       return fail(502, GATEWAY_UNREACHABLE)
     }
@@ -72,20 +88,30 @@ export async function handle(req: Request): Promise<Response> {
       return fail(400, MISMATCH)
     }
 
+    // UPI, card, netbanking … is chosen inside Razorpay's window, so only
+    // Razorpay can say. Empty when it cannot be asked right now.
+    const paymentType = await paymentMethodOf(paymentId, trustedOrderId, mode)
+
     let settled = order
     if (order.payment_status !== 'paid') {
-      const res = await serviceFetch(
+      const paidAt = new Date().toISOString()
+      const markPaid = (extra: Json) => serviceFetch(
         `/rest/v1/orders?id=eq.${encodeURIComponent(asString(order.id))}&payment_status=neq.paid`,
         {
           method: 'PATCH',
           headers: { Prefer: 'return=representation' },
           body: JSON.stringify({
             payment_status: 'paid',
-            paid_at: new Date().toISOString(),
+            paid_at: paidAt,
             razorpay_payment_id: paymentId,
+            ...extra,
           }),
         },
       )
+      let res = await markPaid(paymentType ? { payment_type: paymentType } : {})
+      // A database without the tracking columns refuses the whole write; the
+      // payment itself must still be recorded.
+      if (!res.ok && paymentType) res = await markPaid({})
       if (!res.ok) return fail(500, NOT_RECORDED)
       const rows = (await res.json().catch(() => [])) as Json[]
       // Empty means a concurrent callback (or the webhook) won the race and
@@ -93,6 +119,25 @@ export async function handle(req: Request): Promise<Response> {
       settled = Array.isArray(rows) && rows.length > 0
         ? rows[0]
         : (await fetchOrderByColumn('reference', reference)) ?? order
+    }
+
+    // Already paid without a method on file (the webhook got there first):
+    // fill it in. Best effort — the payment itself is settled either way.
+    if (paymentType && !asString(settled.payment_type)) {
+      try {
+        const res = await serviceFetch(
+          `/rest/v1/orders?id=eq.${encodeURIComponent(asString(settled.id))}&payment_type=is.null`,
+          {
+            method: 'PATCH',
+            headers: { Prefer: 'return=representation' },
+            body: JSON.stringify({ payment_type: paymentType }),
+          },
+        )
+        const rows = res.ok ? ((await res.json().catch(() => [])) as Json[]) : []
+        if (Array.isArray(rows) && rows.length > 0) settled = { ...settled, ...rows[0] }
+      } catch (error) {
+        console.warn('[verify-razorpay-payment] payment type not saved:', String(error))
+      }
     }
 
     // The payment is on file. Telling the customer and telling the owner are

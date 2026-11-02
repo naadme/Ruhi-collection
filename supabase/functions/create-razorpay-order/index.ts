@@ -8,18 +8,27 @@
 // from `public.products` and computes shipping with the same rule the storefront
 // displays, and the value this function sends to Razorpay is derived from that
 // result — nothing else.
+//
+// Two things ride along for the tracking brief:
+//   * `attribution` — the shopper's latest ad visit (UTM tags, click IDs,
+//     landing page), saved on the order before the payment window opens
+//     (Section 4, step 4). Saving it never stands between a shopper and paying.
+//   * `test: true` — an admin's test order (rule 10): paid with Razorpay's test
+//     keys, so no money moves, and marked `is_test` so reports can leave it out.
 
 import { serve } from '../_shared/deno.ts'
 import { MissingConfigError } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
+import { attributionColumns } from '../_shared/attribution.mjs'
 import {
   createRazorpayOrder,
   credentials,
   getRazorpayOrder,
   RazorpayApiError,
   toPaise,
+  type RazorpayMode,
 } from '../_shared/razorpay.ts'
-import { rpcCreateOrder, serviceFetch } from '../_shared/supabase.ts'
+import { callerIsAdmin, rpcCreateOrder, serviceFetch } from '../_shared/supabase.ts'
 
 // Shown when the shopper can't actually pay online: the Key ID / Key Secret
 // Edge Function secrets are missing, or Razorpay rejected them with a 401.
@@ -33,6 +42,10 @@ const GENERIC =
   'We could not start your payment. You have not been charged — please try again.'
 const TOO_SMALL =
   'Online payment starts at ₹1. Please contact us to place this order.'
+const TEST_ADMINS_ONLY =
+  'Test orders can only be placed by the shop’s admins. Sign in with an admin account, or turn test mode off.'
+const TEST_NOT_CONFIGURED =
+  'Test payments are not set up yet: the Razorpay test keys are missing from Supabase. Nothing has been charged.'
 
 // Razorpay refuses any order below 100 paise (₹1) with a 400 of its own;
 // refusing it here keeps that gateway error out of the shopper's view.
@@ -83,10 +96,13 @@ async function resolveRazorpayOrder(
   email: string,
   amountPaise: number,
   existingId: string,
+  mode: RazorpayMode,
 ): Promise<string> {
+  // A gateway order made in the other mode belongs to the other set of keys:
+  // asking for it fails, and a fresh one is minted in this mode.
   if (existingId) {
     try {
-      const existing = await getRazorpayOrder(existingId)
+      const existing = await getRazorpayOrder(existingId, mode)
       if (existing.currency === 'INR' && existing.amount === amountPaise) return existing.id
     } catch {
       /* fall through and mint a fresh one */
@@ -98,7 +114,7 @@ async function resolveRazorpayOrder(
     currency: 'INR',
     receipt: reference,
     notes: { reference, email },
-  })
+  }, mode)
 
   const res = await serviceFetch(
     `/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}&payment_status=neq.paid`,
@@ -116,6 +132,28 @@ async function resolveRazorpayOrder(
   return created.id
 }
 
+/**
+ * Save the ad visit and the order's mode on the order. Returns whether the
+ * write landed; a paid order is never touched.
+ */
+async function recordOrderContext(orderId: string, values: Json): Promise<boolean> {
+  try {
+    const res = await serviceFetch(
+      `/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}&payment_status=neq.paid`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify(values),
+      },
+    )
+    if (!res.ok) console.warn('[create-razorpay-order] order context not saved:', res.status)
+    return res.ok
+  } catch (error) {
+    console.warn('[create-razorpay-order] order context not saved:', String(error))
+    return false
+  }
+}
+
 export async function handle(req: Request): Promise<Response> {
   const early = preflight(req) ?? (req.method === 'POST' ? null : fail(405, 'Method not allowed.'))
   if (early) return early
@@ -127,11 +165,25 @@ export async function handle(req: Request): Promise<Response> {
       return fail(400, 'Your cart is empty. Add a product before checking out.')
     }
 
+    // A test order is an admin's alone, and checked here rather than trusted:
+    // anyone else asking for one is refused, never quietly charged for real.
+    const authorization = req.headers.get('authorization')
+    const mode: RazorpayMode = body.test === true ? 'test' : 'live'
+    if (mode === 'test' && !(await callerIsAdmin(authorization))) {
+      return fail(403, TEST_ADMINS_ONLY)
+    }
+
     // Fail before anything is written: an unconfigured store must not leave a
     // half-made order behind for the shopper to trip over later.
-    const { keyId } = credentials()
+    let keyId: string
+    try {
+      keyId = credentials(mode).keyId
+    } catch (error) {
+      if (mode === 'test' && error instanceof MissingConfigError) return fail(503, TEST_NOT_CONFIGURED)
+      throw error
+    }
 
-    const created = await rpcCreateOrder(buildPayload(body, items), req.headers.get('authorization'))
+    const created = await rpcCreateOrder(buildPayload(body, items), authorization)
     if (!created.ok || !created.data) {
       return fail(400, created.message ?? GENERIC)
     }
@@ -149,12 +201,22 @@ export async function handle(req: Request): Promise<Response> {
       return fail(400, TOO_SMALL)
     }
 
+    // The mode is written every time, so a checkout reused after test mode
+    // was switched off is a real order again. A test order that cannot be
+    // marked must not be paid: verification would use the wrong keys.
+    const recorded = await recordOrderContext(orderId, {
+      ...attributionColumns(body.attribution),
+      is_test: mode === 'test',
+    })
+    if (!recorded && mode === 'test') return fail(500, GENERIC)
+
     const razorpayOrderId = await resolveRazorpayOrder(
       orderId,
       reference,
       email,
       amountPaise,
       asString(order.razorpay_order_id),
+      mode,
     )
 
     return json(200, {
@@ -176,6 +238,7 @@ export async function handle(req: Request): Promise<Response> {
       payment_status: order.payment_status,
       created_at: order.created_at,
       items: order.items,
+      is_test: mode === 'test',
     })
   } catch (error) {
     if (error instanceof MissingConfigError) return fail(503, NOT_CONFIGURED)

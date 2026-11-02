@@ -8,7 +8,12 @@ import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
 import { WishlistProvider } from './context/WishlistContext'
 import ErrorBoundary from './components/ErrorBoundary'
+import PageTracker from './components/PageTracker'
+import { captureLanding } from './lib/adClicks'
 import './index.css'
+// Read the ad click IDs and campaign tags off the address the visitor landed
+// on, before the router can redirect it away (tracking brief, Section 4).
+captureLanding()
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
@@ -19,7 +24,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <AuthProvider>
             <CartProvider>
               <WishlistProvider>
-                <ErrorBoundary><App /></ErrorBoundary>
+                {/* The GTM page entry for every route, admin included. Kept
+                    outside App's Suspense so a lazily loaded page never
+                    holds it back. */}
+                <ErrorBoundary><PageTracker /><App /></ErrorBoundary>
               </WishlistProvider>
             </CartProvider>
           </AuthProvider>

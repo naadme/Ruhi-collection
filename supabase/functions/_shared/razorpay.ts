@@ -2,8 +2,13 @@
 //
 // Only the public Key ID is ever handed back to the browser; `RAZORPAY_KEY_SECRET`
 // is read here and used in-process for Basic auth and HMAC signing.
+//
+// Every call runs in one of two modes. `live` uses the shop's own keys. `test`
+// uses `RAZORPAY_TEST_KEY_ID` / `RAZORPAY_TEST_KEY_SECRET`, for the test orders
+// an admin places to check the site end to end without moving money (tracking
+// brief, rule 10). An order remembers its mode in `orders.is_test`.
 
-import { env, requireEnv } from './env.ts'
+import { env, MissingConfigError, requireEnv } from './env.ts'
 import { hmacSha256Hex, safeEqualHex } from './crypto.ts'
 
 const API = 'https://api.razorpay.com/v1'
@@ -30,7 +35,31 @@ export class RazorpayApiError extends Error {
   }
 }
 
-export function credentials(): { keyId: string; keySecret: string } {
+export interface RazorpayPayment {
+  id: string
+  entity: string
+  amount: number
+  currency: string
+  status?: string
+  order_id?: string
+  method?: string
+}
+
+export type RazorpayMode = 'live' | 'test'
+
+/** The mode an order was created in: test only when the order says so. */
+export function modeOf(order: { is_test?: unknown } | null | undefined): RazorpayMode {
+  return order?.is_test === true ? 'test' : 'live'
+}
+
+export function credentials(mode: RazorpayMode = 'live'): { keyId: string; keySecret: string } {
+  if (mode === 'test') {
+    const keyId = requireEnv('RAZORPAY_TEST_KEY_ID')
+    // A live key filed under the test name would take real money for an
+    // order marked as a test, so anything but a test key is refused.
+    if (!keyId.startsWith('rzp_test_')) throw new MissingConfigError(['RAZORPAY_TEST_KEY_ID'])
+    return { keyId, keySecret: requireEnv('RAZORPAY_TEST_KEY_SECRET') }
+  }
   return {
     keyId: requireEnv('RAZORPAY_KEY_ID'),
     keySecret: requireEnv('RAZORPAY_KEY_SECRET'),
@@ -50,8 +79,8 @@ export function toPaise(rupees: number): number {
   return Math.round(Number(rupees) * 100)
 }
 
-async function call(path: string, init: RequestInit = {}): Promise<Response> {
-  const { keyId, keySecret } = credentials()
+async function call(path: string, init: RequestInit = {}, mode: RazorpayMode = 'live'): Promise<Response> {
+  const { keyId, keySecret } = credentials(mode)
   return fetch(`${API}${path}`, {
     ...init,
     headers: {
@@ -68,7 +97,7 @@ export async function createRazorpayOrder(input: {
   currency: string
   receipt: string
   notes: Record<string, string>
-}): Promise<RazorpayOrder> {
+}, mode: RazorpayMode = 'live'): Promise<RazorpayOrder> {
   const res = await call('/orders', {
     method: 'POST',
     body: JSON.stringify({
@@ -77,15 +106,41 @@ export async function createRazorpayOrder(input: {
       receipt: input.receipt,
       notes: input.notes,
     }),
-  })
+  }, mode)
   if (!res.ok) throw new RazorpayApiError(res.status)
   return (await res.json()) as RazorpayOrder
 }
 
-export async function getRazorpayOrder(orderId: string): Promise<RazorpayOrder> {
-  const res = await call(`/orders/${encodeURIComponent(orderId)}`)
+export async function getRazorpayOrder(orderId: string, mode: RazorpayMode = 'live'): Promise<RazorpayOrder> {
+  const res = await call(`/orders/${encodeURIComponent(orderId)}`, {}, mode)
   if (!res.ok) throw new RazorpayApiError(res.status)
   return (await res.json()) as RazorpayOrder
+}
+
+export async function getRazorpayPayment(paymentId: string, mode: RazorpayMode = 'live'): Promise<RazorpayPayment> {
+  const res = await call(`/payments/${encodeURIComponent(paymentId)}`, {}, mode)
+  if (!res.ok) throw new RazorpayApiError(res.status)
+  return (await res.json()) as RazorpayPayment
+}
+
+/**
+ * How a verified payment was made, in Razorpay's own words — `upi`, `card`,
+ * `netbanking`, `wallet`, `emi`, `paylater` … — or `''` when Razorpay cannot be
+ * asked right now or the payment belongs to another order. Knowing the method
+ * is never a reason to fail a payment that is already proven.
+ */
+export async function paymentMethodOf(
+  paymentId: string,
+  orderId: string,
+  mode: RazorpayMode = 'live',
+): Promise<string> {
+  try {
+    const payment = await getRazorpayPayment(paymentId, mode)
+    if (payment.order_id !== orderId) return ''
+    return typeof payment.method === 'string' ? payment.method.trim().toLowerCase() : ''
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -96,8 +151,9 @@ export async function verifyPaymentSignature(input: {
   orderId: string
   paymentId: string
   signature: string
+  mode?: RazorpayMode
 }): Promise<boolean> {
-  const { keySecret } = credentials()
+  const { keySecret } = credentials(input.mode ?? 'live')
   const expected = await hmacSha256Hex(keySecret, `${input.orderId}|${input.paymentId}`)
   return safeEqualHex(expected, input.signature)
 }

@@ -1,6 +1,6 @@
 import usePageTitle from '../hooks/usePageTitle'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ChevronLeft, Heart, Truck } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
@@ -16,6 +16,13 @@ import { MAX_QTY } from '../lib/checkout'
 import { shownDescription, variantFor } from '../lib/productGrouping'
 import { fetchPublishedReviews } from '../lib/reviewStore'
 import { reviewSummary, starLabel } from '../lib/reviews'
+import { newEventId, trackEcommerce } from '../lib/tracking'
+import { cartEvent, viewedItem } from '../lib/trackingItems'
+
+// How long a colour and size must stay on screen before view_item goes out.
+// Opening another colour briefly renders it with the previous colour's size
+// before that choice resets; the wait keeps the in-between state out of GTM.
+const VIEW_SETTLE_MS = 300
 
 function Gallery({ product }) {
   const shots = [...new Set(
@@ -75,6 +82,18 @@ export default function Product() {
     setSize(null); setQty(1); setProblem('')
   }, [id])
 
+  // A link that names a size — every link in the product feed does, one per
+  // size (tracking brief, Section 5) — opens with that size chosen, as long
+  // as this colour stocks it.
+  const [params] = useSearchParams()
+  const linkedSize = params.get('size') || ''
+  const linkedVariant = p ? variantFor(p.colors?.length > 1 ? p.colors : [], id) || p : null
+  const stocked = linkedVariant ? (linkedVariant.sizes?.length ? linkedVariant.sizes : p.sizes || []) : []
+  const linkedOk = Boolean(linkedSize) && stocked.includes(linkedSize)
+  useEffect(() => {
+    if (linkedOk) setSize(linkedSize)
+  }, [id, linkedSize, linkedOk])
+
   // The published reviews of this design — every colour row it has — read once
   // and used twice: in the headline rating above the price, and in the list
   // below the description. Only `status = 'approved'` ever comes back, because
@@ -97,6 +116,23 @@ export default function Product() {
   // Real reviews win over the numbers typed into the product editor: when
   // customers have spoken, their average is the honest one to show.
   const summary = useMemo(() => reviewSummary(reviews), [reviews])
+
+  // GTM's view_item (tracking brief, Annexure A3): the colour and size on
+  // screen — the first size until the shopper picks one — and again each time
+  // either changes. Nothing goes out until the real catalogue has given the
+  // product its Product ID.
+  const viewed = viewedItem(p, id, size, { category: p ? typeLabel(p.type) : '' })
+  const viewedId = viewed?.item_id || ''
+  useEffect(() => {
+    if (!viewedId) return undefined
+    const timer = setTimeout(() => {
+      const message = cartEvent('view_item', [viewed], { eventId: newEventId() })
+      if (message) trackEcommerce(message)
+    }, VIEW_SETTLE_MS)
+    return () => clearTimeout(timer)
+    // Keyed on the variant: a price edited in the dashboard while the page is
+    // open is the same product view.
+  }, [viewedId])
 
   if (!p && loading) {
     return (

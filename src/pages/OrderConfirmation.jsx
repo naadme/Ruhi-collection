@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { AlertTriangle, Check, Mail, PackageCheck, PhoneCall, ShieldCheck, Truck } from 'lucide-react'
 import usePageTitle from '../hooks/usePageTitle'
@@ -8,6 +9,10 @@ import { formatShopDateTime } from '../lib/shopTime'
 import { orderLineDetail, orderLineName } from '../lib/orderLine'
 import { site } from '../data/site'
 import { useAuth } from '../context/AuthContext'
+import { useProducts } from '../context/ProductsContext'
+import { useCategories } from '../context/CategoriesContext'
+import { claimPurchase, isPurchase, trackEcommerce } from '../lib/tracking'
+import { orderLineItem, purchaseEvent } from '../lib/trackingItems'
 import ReviewForm from '../components/ReviewForm'
 
 const PACKING = [PackageCheck, 'We start packing', 'Your order is checked and packed at our studio.']
@@ -39,6 +44,28 @@ export default function OrderConfirmation() {
   // their account page, where it lives permanently in the database.
   const order = location.state?.order || loadOrder(reference)
   usePageTitle(order ? `Order ${order.reference}` : 'Order')
+
+  // GTM's purchase (tracking brief, Annexure A10 and Section 7): once per
+  // order, and only for an order that is a purchase — paid online (this page
+  // is only reached after the server verified the payment), or an offline
+  // order that was placed. claimPurchase is what stops a refresh, a revisit or
+  // a bookmark from sending it again. The category of each line is read from
+  // the catalogue, so this waits for it.
+  const { getRow, loading } = useProducts()
+  const { typeLabel } = useCategories()
+  const placed = order && isPurchase(order) ? order.reference : ''
+  useEffect(() => {
+    if (!placed || loading) return undefined
+    const timer = setTimeout(() => {
+      const items = (order.items || []).map((it) => {
+        const row = getRow(it.product_id)
+        return orderLineItem(it, { category: row ? typeLabel(row.type) : '', compare: row?.compare, row })
+      })
+      const message = purchaseEvent(order, items)
+      if (message && claimPurchase(placed)) trackEcommerce(message)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [placed, loading])
 
   const subject = encodeURIComponent(`Order ${reference} — Ruhi Womens Clothing`)
   const body = encodeURIComponent(

@@ -15,6 +15,7 @@ const STATUSES = [
   ['confirmed', 'Confirmed'],
   ['shipped', 'Shipped'],
   ['delivered', 'Delivered'],
+  ['returned', 'Returned'],
   ['cancelled', 'Cancelled'],
 ]
 
@@ -25,6 +26,7 @@ const TONE = {
   confirmed: 'bg-blue-50 border-blue-200 text-blue-800',
   shipped: 'bg-indigo-50 border-indigo-200 text-indigo-800',
   delivered: 'bg-green-50 border-green-200 text-green-800',
+  returned: 'bg-stone-100 border-stone-300 text-stone-700',
   cancelled: 'bg-red-50 border-red-200 text-red-700',
 }
 
@@ -98,6 +100,13 @@ function Row({ order, open, onToggle, onStatus, busy }) {
               {formatShopDateTime(order.created_at)}
             </span>
             <span className="ml-2 align-middle inline-block">{paymentChip(order)}</span>
+            {/* Placed in Razorpay's test mode (tracking brief, rule 10): no
+                money moved, and reports can leave it out. */}
+            {order.is_test && (
+              <span className="ml-2 align-middle inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 border-amber-200 text-amber-800">
+                Test
+              </span>
+            )}
           </p>
           <p className="text-[14px] text-black/60 truncate">
             {order.full_name} · {order.city}, {order.state} {order.pincode}
@@ -237,6 +246,9 @@ export default function OrdersPanel({ notify }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [sort, setSort] = useState('newest')
+  // Test orders (Razorpay test mode, rule 10) are listed until the owner
+  // leaves them out; the counts, the list and the download follow the switch.
+  const [hideTests, setHideTests] = useState(false)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [openId, setOpenId] = useState('')
@@ -265,17 +277,19 @@ export default function OrdersPanel({ notify }) {
   }, [load])
 
   const counts = useMemo(() => {
-    const c = { all: state.orders.length }
-    for (const [k] of STATUSES) c[k] = state.orders.filter((o) => o.status === k).length
+    const counted = hideTests ? state.orders.filter((o) => o.is_test !== true) : state.orders
+    const c = { all: counted.length }
+    for (const [k] of STATUSES) c[k] = counted.filter((o) => o.status === k).length
     return c
-  }, [state.orders])
+  }, [state.orders, hideTests])
+  const testCount = useMemo(() => state.orders.filter((o) => o.is_test === true).length, [state.orders])
 
   // One pass over EVERY order the admin can see — status, search, date range
   // and date sort together — so the list, the header count and the Excel
   // download all describe exactly the same set.
   const rows = useMemo(
-    () => filterAndSortOrders(state.orders, { status: filter, query, sort, from, to }),
-    [state.orders, query, filter, sort, from, to],
+    () => filterAndSortOrders(state.orders, { status: filter, query, sort, from, to, hideTests }),
+    [state.orders, query, filter, sort, from, to, hideTests],
   )
 
   const rangeActive = Boolean(from || to)
@@ -408,6 +422,14 @@ export default function OrdersPanel({ notify }) {
           <ArrowUpDown size={15} className="text-black/55" />
           {sort === 'newest' ? 'Newest first' : 'Oldest first'}
         </button>
+
+        {testCount > 0 && (
+          <label className="inline-flex items-center gap-2 h-10 px-3 rounded-lg border border-black/20 bg-white text-[14px] font-medium cursor-pointer">
+            <input type="checkbox" checked={hideTests} onChange={(e) => setHideTests(e.target.checked)} />
+            Hide test orders
+            <span className="text-[12px] text-black/40">{testCount}</span>
+          </label>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 text-[14px] text-black/55">

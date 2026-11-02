@@ -1,9 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import ProductGrid, { ResetLink } from '../components/ProductGrid'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { searchResultProducts } from '../lib/productSearch'
+import { newEventId, trackEvent } from '../lib/tracking'
+import { searchEvent } from '../lib/trackingItems'
 import usePageTitle from '../hooks/usePageTitle'
 
 const Sel = ({ label, value, onChange, opts }) => (
@@ -42,6 +44,18 @@ export default function Shop() {
   // category filter is therefore not applied while searching, and the Type
   // box says so by showing "All".
   const searching = q.trim().length > 0
+
+  // GTM's search (tracking brief, Annexure A13) as the results page loads, and
+  // again for each new term. Sorting the results is not a new search.
+  const term = q.trim()
+  useEffect(() => {
+    if (!term) return undefined
+    const timer = setTimeout(() => {
+      const message = searchEvent(term, { eventId: newEventId() })
+      if (message) trackEvent(message)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [term])
 
   // Picking a category while a search is running means "browse this
   // category", so the search is dropped rather than silently ignored.

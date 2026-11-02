@@ -82,11 +82,21 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
   switch (eventType) {
     case 'order.paid':
     case 'payment.captured': {
-      await patchOrder(orderId, 'payment_status=neq.paid', {
+      const paid = {
         payment_status: 'paid',
         paid_at: new Date().toISOString(),
         ...(paymentId ? { razorpay_payment_id: paymentId } : {}),
-      })
+      }
+      // How the shopper paid, for the purchase event (tracking brief,
+      // Section 3). A database without that column refuses the whole write,
+      // so the payment is then recorded without it.
+      const method = asString(payment?.method).trim().toLowerCase()
+      try {
+        await patchOrder(orderId, 'payment_status=neq.paid', method ? { ...paid, payment_type: method } : paid)
+      } catch (error) {
+        if (!method) throw error
+        await patchOrder(orderId, 'payment_status=neq.paid', paid)
+      }
       // Tell the customer and the owner, but never at the cost of the
       // acknowledgement: a non-2xx answer here makes Razorpay redeliver this
       // event, and a mail hiccup must not turn into a redelivery storm. The

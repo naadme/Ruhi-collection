@@ -12,6 +12,9 @@ import { discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons
 import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, validateAddress } from '../lib/checkout'
 import { onlinePaymentReady, openRazorpay } from '../lib/razorpay'
 import { createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
+import { newEventId, trackEcommerce } from '../lib/tracking'
+import { cartEvent, paymentEvent, sameStep, shippingEvent } from '../lib/trackingItems'
+import { attributionForOrder } from '../lib/adClicks'
 
 const Section = ({ n, title, children }) => (
   <section className="border-t border-black/10 pt-7 mt-7 first:border-0 first:pt-0 first:mt-0">
@@ -176,9 +179,9 @@ function Summary({
 
 export default function Checkout() {
   usePageTitle('Checkout')
-  const { lines, subtotal, prune, clear } = useCart()
-  const { reload } = useProducts()
-  const { user } = useAuth()
+  const { lines, trackedItems, subtotal, prune, clear } = useCart()
+  const { reload, loading } = useProducts()
+  const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
 
   const [f, setF] = useState(EMPTY_ADDRESS)
@@ -186,6 +189,10 @@ export default function Checkout() {
   const [failure, setFailure] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [pay, setPay] = useState('razorpay')
+  // An admin's test order (tracking brief, rule 10): paid in Razorpay's test
+  // mode, so no money moves. The server checks the admin itself.
+  const [testOrder, setTestOrder] = useState(false)
+  const placingTest = isAdmin && testOrder
   // The applied coupon, exactly as the DATABASE validated it (see
   // src/lib/coupons.js): { valid, code, kind, value, discount, message }.
   const [coupon, setCoupon] = useState(null)
@@ -193,12 +200,37 @@ export default function Checkout() {
   const [couponBusy, setCouponBusy] = useState(false)
   const [couponNote, setCouponNote] = useState(null)
   const prefilled = useRef(false)
+  // The last address step and payment step sent to GTM on this visit, so a
+  // retry with nothing changed is not counted twice.
+  const sentShipping = useRef(null)
+  const sentPayment = useRef(null)
 
   // Price against the live catalogue — never against a stale cache — before
   // any money changes hands.
   useEffect(() => { reload() }, [reload])
   // Products the owner hid or deleted cannot be ordered.
   useEffect(() => { prune() }, [prune])
+
+  // GTM's begin_checkout (tracking brief, Annexure A7): once per visit to this
+  // page, with everything in the basket, once the real catalogue has priced
+  // it. No coupon can be applied yet when the page opens.
+  const checkoutReady = !loading && trackedItems.length > 0
+  useEffect(() => {
+    if (!checkoutReady) return undefined
+    const timer = setTimeout(() => {
+      const message = cartEvent('begin_checkout', trackedItems, { eventId: newEventId() })
+      if (message) trackEcommerce(message)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [checkoutReady])
+
+  // add_shipping_info and add_payment_info (A8, A9) for one checkout step, or
+  // nothing when the same step was already sent with the same contents.
+  const sendStep = (sent, message) => {
+    if (!message || sameStep(sent.current, message)) return
+    sent.current = message
+    trackEcommerce(message)
+  }
 
   useEffect(() => {
     if (prefilled.current || !user?.email) return
@@ -268,7 +300,10 @@ export default function Checkout() {
   // — opening Checkout, then having the signature verified — is what turns it
   // into a paid order. The cart is only cleared once verification succeeds.
   const payOnline = async (customer, items, couponCode) => {
-    const started = await createRazorpayOrder(customer, items, couponCode)
+    // The ad click IDs and campaign tags travel with the order as it is
+    // created, before the shopper leaves for the payment window (tracking
+    // brief, Section 4, step 4).
+    const started = await createRazorpayOrder(customer, items, couponCode, attributionForOrder(), { test: placingTest })
     if (!started?.razorpay_order_id || !started?.key_id) {
       throw new Error('We could not start your payment. You have not been charged — please try again.')
     }
@@ -305,6 +340,17 @@ export default function Checkout() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
+
+    // The shopper is on their way to pay: add_payment_info (A9), with the
+    // products' total after the coupon. The method itself (UPI, card, …) is
+    // picked inside Razorpay's window, out of this page's sight, so
+    // payment_type is left out rather than guessed.
+    sendStep(sentPayment, paymentEvent({
+      items: trackedItems,
+      value: Math.max(0, subtotal - (coupon ? discountFor(coupon, subtotal) : 0)),
+      coupon: coupon?.code,
+      eventId: newEventId(),
+    }))
 
     let response
     try {
@@ -374,6 +420,23 @@ export default function Checkout() {
       note: f.note.trim(),
     }
     const items = lines.map((l) => ({ product_id: l.id, size: l.size, qty: l.qty }))
+
+    // The address step is complete: add_shipping_info (A8). For a guest this
+    // is the first time GTM learns who is buying.
+    sendStep(sentShipping, shippingEvent({
+      items: trackedItems,
+      customer: {
+        email: customer.email,
+        fullName: customer.full_name,
+        phone: customer.phone,
+        city: customer.city,
+        state: customer.state,
+        pincode: customer.pincode,
+      },
+      value: Math.max(0, subtotal - (coupon ? discountFor(coupon, subtotal) : 0)),
+      coupon: coupon?.code,
+      eventId: newEventId(),
+    }))
 
     setSubmitting(true)
     try {
@@ -502,6 +565,14 @@ export default function Checkout() {
                 ? 'Card and bank details are handled entirely by Razorpay — this site never sees or stores them.'
                 : 'Online payment (UPI, cards, net banking) is not connected yet — we will switch it on as soon as the gateway is live.'}
             </p>
+            {isAdmin && onlinePaymentReady && (
+              <label className="mt-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[14px] text-amber-900 cursor-pointer">
+                <input type="checkbox" className="mt-[3px]" checked={testOrder} onChange={(e) => setTestOrder(e.target.checked)} />
+                <span>
+                  <span className="font-semibold">Test order (admins only).</span> Paid in Razorpay's test mode, so no money moves, and marked as a test in the admin.
+                </span>
+              </label>
+            )}
           </Section>
 
           <button
@@ -510,7 +581,7 @@ export default function Checkout() {
             className="mt-8 w-full h-[56px] rounded-lg bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
           >
             {submitting && <Loader2 size={18} className="animate-spin" />}
-            {submitting ? 'Opening secure payment…' : `Pay now · ${inr(totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0))}`}
+            {submitting ? 'Opening secure payment…' : `${placingTest ? 'Place test order' : 'Pay now'} · ${inr(totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0))}`}
           </button>
           <p className="text-[13px] text-black/50 mt-3 text-center">
             By placing this order you agree to our <Link to="/policies/terms-of-service" className="underline underline-offset-2">terms</Link> and <Link to="/policies/refund-policy" className="underline underline-offset-2">refund policy</Link>.

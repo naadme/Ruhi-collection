@@ -41,12 +41,17 @@ async function invoke(name, body, fallback) {
 
 /** Create the application order and its matching Razorpay order. The coupon
  *  code, if any, is only a REQUEST: the server re-validates it and prices the
- *  order itself. */
-export function createRazorpayOrder(customer, items, couponCode) {
+ *  order itself. `attribution` is where the shopper came from (ad click IDs
+ *  and campaign tags, src/lib/adClicks.js), for the order record to keep.
+ *  `test` asks for an admin's test order, paid in Razorpay's test mode — also
+ *  only a request, refused by the server for anyone who is not an admin. */
+export function createRazorpayOrder(customer, items, couponCode, attribution, { test = false } = {}) {
   return invoke('create-razorpay-order', {
     ...customer,
     items,
     ...(couponCode ? { coupon_code: couponCode } : {}),
+    ...(attribution && Object.keys(attribution).length ? { attribution } : {}),
+    ...(test ? { test: true } : {}),
   }, CREATE_FALLBACK)
 }
 

@@ -1,16 +1,29 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import useOverlay from '../hooks/useOverlay'
 import { inr, totalFor } from '../lib/pricing'
+import { newEventId, trackEcommerce } from '../lib/tracking'
+import { cartEvent } from '../lib/trackingItems'
 import Img from './Img'
 import QtyControl from './QtyControl'
 export default function CartDrawer() {
-  const { open, setOpen, lines, subtotal, setQty, remove } = useCart()
+  const { open, setOpen, lines, trackedItems, subtotal, setQty, remove } = useCart()
   const panel = useRef(null)
   const close = useCallback(() => setOpen(false), [setOpen])
   useOverlay(open, close, panel)
+  // GTM's view_cart (tracking brief, Annexure A6) each time the drawer opens
+  // on a basket that has something in it — including right after an add.
+  const showing = open && trackedItems.length > 0
+  useEffect(() => {
+    if (!showing) return undefined
+    const timer = setTimeout(() => {
+      const message = cartEvent('view_cart', trackedItems, { eventId: newEventId() })
+      if (message) trackEcommerce(message)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [showing])
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 bg-black/50" onClick={close}>

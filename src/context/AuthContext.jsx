@@ -1,5 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { authEvent, newEventId, returningSignIn, trackAuth } from '../lib/tracking'
+
+// Sign-ins already sent to GTM from a provider return, so a refresh of the
+// page that received it cannot send the same one again.
+const RETURNS_SENT = 'ruhi:auth-returns-sent'
+
+/**
+ * GTM's login or sign_up for someone who just came back signed in from Google
+ * or from an email link (tracking brief, Annexure A11 and A12). Each sign-in
+ * goes out once.
+ */
+function trackReturn(user) {
+  if (!user?.id) return
+  const { method, isNew, key } = returningSignIn(user)
+  try {
+    const sent = JSON.parse(sessionStorage.getItem(RETURNS_SENT) || '[]')
+    if (Array.isArray(sent) && sent.includes(key)) return
+    sessionStorage.setItem(RETURNS_SENT, JSON.stringify([...(Array.isArray(sent) ? sent : []), key].slice(-10)))
+  } catch { /* no storage: send it, once for this page */ }
+  trackAuth(authEvent(isNew ? 'sign_up' : 'login', { method, user, eventId: newEventId() }))
+}
 
 const Ctx = createContext(null)
 export const useAuth = () => useContext(Ctx)
@@ -40,6 +61,9 @@ export function readOAuthCallback() {
     errorCode: undouble(grab('error_code')),
     errorDescription: undouble(grab('error_description')),
     code: grab('code'),
+    // Whether the implicit flow handed back a session. Only the fact is kept,
+    // never the token.
+    tokens: Boolean(grab('access_token')),
   }
 }
 
@@ -218,12 +242,21 @@ export function AuthProvider({ children }) {
       return
     }
 
-    if (!cb.code) return
+    if (!cb.code) {
+      // The implicit flow: `_initialize()` has already turned the tokens in
+      // the address into the session — only GTM still has to hear of it.
+      if (cb.tokens) {
+        supabase.auth.getSession()
+          .then(({ data }) => trackReturn(data?.session?.user))
+          .catch(() => { /* no session, nothing to report */ })
+      }
+      return
+    }
 
     let alive = true
     supabase.auth.getSession()
       .then(({ data }) => {
-        if (data?.session) return undefined
+        if (data?.session) return { data }
         return supabase.auth.exchangeCodeForSession(cb.code)
       })
       .then((result) => {
@@ -231,7 +264,11 @@ export function AuthProvider({ children }) {
         // shopper would otherwise be left staring at a page that silently did
         // nothing, so the reason is put in front of them.
         const failure = result?.error
-        if (!alive || !failure) return
+        if (!failure) {
+          trackReturn(result?.data?.session?.user || result?.data?.user)
+          return
+        }
+        if (!alive) return
         setOauthError(friendlyAuthError(failure))
       })
       .catch((e) => {
@@ -247,6 +284,10 @@ export function AuthProvider({ children }) {
       const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
       if (error) return { error: friendlyAuthError(error) }
       setSession(data.session); setUser(data.session?.user ?? null)
+      // GTM's login (tracking brief, Annexure A12), only once it succeeded.
+      if (data.session?.user) {
+        trackAuth(authEvent('login', { method: 'email', user: data.session.user, eventId: newEventId() }))
+      }
       return { ok: true }
     } catch (e) {
       return { error: friendlyAuthError(e) }
@@ -264,6 +305,11 @@ export function AuthProvider({ children }) {
       // already registered but unconfirmed — surface that instead of a fake success.
       if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
         return { error: 'An account already exists for this email. Try signing in instead.' }
+      }
+      // GTM's sign_up (tracking brief, Annexure A11): the account exists now,
+      // whether or not its confirmation link has been clicked yet.
+      if (data.user) {
+        trackAuth(authEvent('sign_up', { method: 'email', user: data.user, loggedIn: Boolean(data.session), eventId: newEventId() }))
       }
       if (!data.session) return { ok: true, needsConfirmation: true }
       setSession(data.session); setUser(data.session?.user ?? null)

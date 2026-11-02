@@ -1,4 +1,5 @@
 import usePageTitle from '../hooks/usePageTitle'
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Lock } from 'lucide-react'
 import { useCart } from '../context/CartContext'
@@ -6,12 +7,27 @@ import { useProducts } from '../context/ProductsContext'
 import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
 import { inr, shippingFor, totalFor } from '../lib/pricing'
+import { newEventId, trackEcommerce } from '../lib/tracking'
+import { cartEvent } from '../lib/trackingItems'
 
 export default function Cart() {
   usePageTitle('Cart')
-  const { lines, unavailable, prune, subtotal, setQty, remove, setOpen, clear } = useCart()
+  const { lines, trackedItems, unavailable, prune, subtotal, setQty, remove, setOpen, empty } = useCart()
   const { loading } = useProducts()
   const shipping = shippingFor()
+
+  // GTM's view_cart (tracking brief, Annexure A6): once per visit to this
+  // page, with everything in the basket, as soon as the real catalogue has
+  // priced it.
+  const viewable = !loading && trackedItems.length > 0
+  useEffect(() => {
+    if (!viewable) return undefined
+    const timer = setTimeout(() => {
+      const message = cartEvent('view_cart', trackedItems, { eventId: newEventId() })
+      if (message) trackEcommerce(message)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [viewable])
 
   // A basket whose lines all fail to resolve is NOT an empty basket. Falling
   // through to the empty state below hid this warning — and the Remove button
@@ -109,7 +125,7 @@ export default function Cart() {
           <p className="text-[13px] text-black/50 mt-3 flex items-center justify-center gap-1.5">
             <Lock size={13} /> Secure checkout
           </p>
-          <button onClick={clear} className="w-full mt-3 text-[14px] text-black/50 hover:text-black underline underline-offset-2">Empty the cart</button>
+          <button onClick={empty} className="w-full mt-3 text-[14px] text-black/50 hover:text-black underline underline-offset-2">Empty the cart</button>
         </aside>
       </div>
     </section>

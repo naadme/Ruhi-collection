@@ -158,3 +158,12 @@ test('empty and malformed input never throw', () => {
   assert.deepEqual(filterAndSortOrders([null, undefined]), []);
   assert.deepEqual(ids(filterAndSortOrders(ORDERS, null)), ['d', 'c', 'b', 'a'], 'a null opts object is just the default');
 });
+
+// ---- test orders (tracking brief, rule 10) --------------------------------
+
+test('test orders are listed until the owner hides them, then left out of everything', () => {
+  const withTest = [...ORDERS, order('t', localISO(2026, 6, 21, 10), { status: 'pending', is_test: true })];
+  assert.deepEqual(ids(filterAndSortOrders(withTest)), ['t', 'd', 'c', 'b', 'a']);
+  assert.deepEqual(ids(filterAndSortOrders(withTest, { hideTests: true })), ['d', 'c', 'b', 'a']);
+  assert.deepEqual(ids(filterAndSortOrders(withTest, { hideTests: true, status: 'pending' })), ['c', 'b']);
+});

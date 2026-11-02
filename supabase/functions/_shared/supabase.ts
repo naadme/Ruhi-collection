@@ -81,6 +81,24 @@ export async function rpcCreateOrder(
   return { ok: true, data: body as Json }
 }
 
+/**
+ * Whether the caller is one of the shop's admins — `public.is_admin()`, asked
+ * as the caller, so a guest or a customer is simply `false`.
+ */
+export async function callerIsAdmin(authorization?: string | null): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl()}/rest/v1/rpc/is_admin`, {
+      method: 'POST',
+      headers: callerHeaders(authorization),
+      body: '{}',
+    })
+    if (!res.ok) return false
+    return (await res.json().catch(() => false)) === true
+  } catch {
+    return false
+  }
+}
+
 /** SELECT the columns verification and the webhook need, by primary key. */
 export async function fetchOrder(id: string): Promise<Json | null> {
   const path = (select: string) =>
@@ -113,8 +131,16 @@ export async function fetchOrderByColumn(
   // from here, so they are asked for first — and, exactly as `fetchOrder()`
   // above does, dropped again if the migration adding them has not run yet.
   // Without that fallback, a not-yet-migrated database would make this call
-  // fail outright and take payment verification down with it.
-  let res = await serviceFetch(path(`${common}discount,coupon_code,total,created_at`))
+  // fail outright and take payment verification down with it. The tracking
+  // columns (20261102120000_order_tracking_fields.sql) fall back the same way:
+  // `is_test` picks the Razorpay keys, and `payment_type` and `new_customer`
+  // go to the purchase event.
+  let res = await serviceFetch(
+    path(`${common}discount,coupon_code,total,created_at,is_test,payment_type,new_customer`),
+  )
+  if (!res.ok) {
+    res = await serviceFetch(path(`${common}discount,coupon_code,total,created_at`))
+  }
   if (!res.ok) {
     res = await serviceFetch(path(`${common}total,created_at`))
   }

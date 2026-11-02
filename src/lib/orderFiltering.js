@@ -51,12 +51,14 @@ export function orderSearchText(order) {
  * @param {string} opts.sort       'newest' | 'oldest'
  * @param {string} opts.from       inclusive start date, yyyy-mm-dd
  * @param {string} opts.to         inclusive end date,   yyyy-mm-dd
+ * @param {boolean} opts.hideTests leave out test orders (`is_test`, placed in
+ *                                 Razorpay's test mode — tracking brief, rule 10)
  * @param {(v:unknown)=>string} opts.searchText  injectable for tests
  * @returns {Array} filtered, newest-first or oldest-first
  */
 export function filterAndSortOrders(orders, opts = {}, searchText = orderSearchText) {
   const {
-    status = 'all', query = '', sort = 'newest', from = '', to = '',
+    status = 'all', query = '', sort = 'newest', from = '', to = '', hideTests = false,
   } = opts || {}
 
   const needle = String(query || '').trim().toLowerCase()
@@ -67,6 +69,7 @@ export function filterAndSortOrders(orders, opts = {}, searchText = orderSearchT
 
   const filtered = (Array.isArray(orders) ? orders : []).filter((o) => {
     if (!o) return false
+    if (hideTests && o.is_test === true) return false
     if (status !== 'all' && o.status !== status) return false
 
     if (start !== null || endOfDay !== null) {
