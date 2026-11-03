@@ -6,6 +6,14 @@ import { inr } from '../lib/pricing'
 import { productHref } from '../lib/productLinks'
 import { useWishlist } from '../context/WishlistContext'
 import { imageFramingStyle } from '../lib/imageFraming'
+// The second photo that fades in on hover is for a mouse only. On a touch
+// screen (every phone, including Instagram's and Facebook's in-app browsers)
+// iOS treats the first tap on a link whose hover reveals new content as the
+// hover — the photo swaps and the page does not open until a second tap. So a
+// touch screen gets one photo and no swap: one tap opens the product, and the
+// second photo is never downloaded.
+const canHover = typeof window !== 'undefined' &&
+  Boolean(window.matchMedia?.('(hover: hover) and (pointer: fine)').matches)
 // Grids rebuild their `items` array on every render, so without this each card
 // would re-render whenever any sibling's parent re-rendered. Wishlist changes
 // still reach every card — a context update is never blocked by memo().
@@ -27,11 +35,12 @@ function ProductCard({ product: p }) {
   // it must never fall back to the shop listing, which is what made a card
   // open the category page instead of its product.
   const href = productHref(p)
+  const swap = canHover && Boolean(p.hover) && p.hover !== p.image
   const card = (
     <>
       <div className="relative aspect-[3/4] overflow-hidden bg-neutral-100">
-        <Img src={p.image} style={imageFramingStyle(p.image_framing, p.image)} alt={p.title} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500 group-hover:opacity-0" />
-        <Img src={p.hover} style={imageFramingStyle(p.image_framing, p.hover)} alt="" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+        <Img src={p.image} style={imageFramingStyle(p.image_framing, p.image)} alt={p.title} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className={`absolute inset-0 w-full h-full object-cover${swap ? ' transition-opacity duration-500 group-hover:opacity-0' : ''}`} />
+        {swap && <Img src={p.hover} style={imageFramingStyle(p.image_framing, p.hover)} alt="" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />}
         {p.badge && <span className="absolute top-2 left-1 bg-brand-badge text-white text-[10px] font-bold px-1.5 py-[3px] rounded-sm font-ui">{p.badge}</span>}
         {rated && <span className="absolute bottom-2 left-2 bg-white/90 rounded-md px-2 py-0.5 text-[11px] flex items-center gap-1 font-ui"><Star size={11} fill="#C08576" stroke="#C08576" />{rating.toFixed(1)} ({p.reviews})</span>}
       </div>
