@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2, Lock, ShieldCheck, AlertTriangle, Tag, X } from 'lucide-react'
 import usePageTitle from '../hooks/usePageTitle'
@@ -11,7 +11,8 @@ import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/
 import { discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
 import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, validateAddress } from '../lib/checkout'
 import { onlinePaymentReady, openRazorpay } from '../lib/razorpay'
-import { createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
+import { checkPendingPayment, createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
+import { clearPendingPayment, loadPendingPayment, savePendingPayment } from '../lib/pendingPayment'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent, paymentEvent, sameStep, shippingEvent } from '../lib/trackingItems'
 import { attributionForOrder } from '../lib/adClicks'
@@ -188,6 +189,13 @@ export default function Checkout() {
   const [errors, setErrors] = useState({})
   const [failure, setFailure] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // A payment started on an earlier load of this page whose outcome never
+  // reached it: { reference, state: 'checking' | 'processing' | 'error', message }.
+  const [recovery, setRecovery] = useState(null)
+  // True while Razorpay's window is open on THIS load — its own callback will
+  // report the outcome, so the recovery check stays out of the way.
+  const paying = useRef(false)
+  const recovering = useRef(false)
   const [pay, setPay] = useState('razorpay')
   // An admin's test order (tracking brief, rule 10): paid in Razorpay's test
   // mode, so no money moves. The server checks the admin itself.
@@ -237,6 +245,119 @@ export default function Checkout() {
     prefilled.current = true
     setF((v) => ({ ...v, email: v.email || user.email }))
   }, [user])
+
+  // The outcome of a payment never reached this page: it was reloaded while
+  // Razorpay's window was open (typically an Instagram or Facebook in-app
+  // browser coming back from a UPI app), or the window was closed while a
+  // payment may still be completing (src/lib/pendingPayment.js). The server
+  // asks Razorpay whether the order was paid — on arrival, whenever the
+  // shopper returns to this tab, on "Check again", and on a schedule while
+  // Razorpay is still waiting: every 5 s for two minutes, then every 20 s up
+  // to the UPI time limit (about 10 minutes).
+  const pollTimer = useRef(null)
+  const pollSince = useRef(0)
+  // Shown when the check finds nothing was paid, after the window was closed.
+  const unpaidNote = useRef('')
+  const stopPolling = () => {
+    clearTimeout(pollTimer.current)
+    pollTimer.current = null
+  }
+
+  const mounted = useRef(true)
+  // Bumped each time a payment starts. The Razorpay order is reused across
+  // attempts, so the saved ids alone cannot tell an answer about an earlier
+  // attempt from one about the current one.
+  const attempt = useRef(0)
+  // A check asked for while another is in flight runs once that one is done,
+  // so the call after a closed window is never silently dropped.
+  const recheck = useRef(false)
+
+  const recoverPayment = useCallback(async ({ scheduled = false } = {}) => {
+    if (!mounted.current || paying.current) return
+    if (recovering.current) { recheck.current = true; return }
+    stopPolling()
+    if (!scheduled) pollSince.current = Date.now()
+    const pending = loadPendingPayment()
+    if (!pending) { setRecovery(null); return }
+    recovering.current = true
+    const askedFor = attempt.current
+    setRecovery((prev) => (prev?.reference === pending.reference && prev.state === 'processing'
+      ? prev
+      : { reference: pending.reference, state: 'checking' }))
+    // An answer only counts for the payment it was asked about: by the time
+    // it arrives the page may be gone, or a new payment may have started.
+    const current = () => {
+      const now = loadPendingPayment()
+      return mounted.current && !paying.current && attempt.current === askedFor &&
+        now?.reference === pending.reference && now?.razorpay_order_id === pending.razorpay_order_id
+    }
+    const showUnpaidNote = () => {
+      if (!unpaidNote.current) return
+      setFailure(unpaidNote.current)
+      unpaidNote.current = ''
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    try {
+      const res = await checkPendingPayment(pending)
+      if (!current()) return
+      if (res?.status === 'paid' && res.order?.reference) {
+        clearPendingPayment()
+        unpaidNote.current = ''
+        const order = { ...res.order, customer: pending.customer || {} }
+        saveOrder(order)
+        clear()
+        navigate(`/order/${order.reference}`, { replace: true, state: { order } })
+        return
+      }
+      if (res?.status === 'processing') {
+        const waited = Date.now() - pollSince.current
+        if (waited < 15 * 60 * 1000) {
+          setRecovery({ reference: pending.reference, state: 'processing' })
+          pollTimer.current = setTimeout(() => recoverPayment({ scheduled: true }), waited < 2 * 60 * 1000 ? 5000 : 20000)
+        } else {
+          setRecovery({ reference: pending.reference, state: 'stalled' })
+        }
+        return
+      }
+      // Nothing was paid: the shopper simply pays again from this page.
+      clearPendingPayment()
+      setRecovery(null)
+      showUnpaidNote()
+    } catch (err) {
+      if (!current()) return
+      if (err?.retryable) {
+        setRecovery({ reference: pending.reference, state: 'error', message: err?.message })
+      } else {
+        // The server has decided and asking again will not change it: drop
+        // the saved payment rather than keep Pay locked on it.
+        clearPendingPayment()
+        setRecovery(null)
+        if (unpaidNote.current) showUnpaidNote()
+        else if (err?.message) setFailure(err.message)
+      }
+    } finally {
+      recovering.current = false
+      if (recheck.current && mounted.current) {
+        recheck.current = false
+        recoverPayment()
+      }
+    }
+  }, [clear, navigate])
+
+  useEffect(() => {
+    mounted.current = true
+    recoverPayment()
+    const onReturn = () => { if (document.visibilityState === 'visible') recoverPayment() }
+    document.addEventListener('visibilitychange', onReturn)
+    return () => {
+      mounted.current = false
+      document.removeEventListener('visibilitychange', onReturn)
+      stopPolling()
+    }
+  }, [recoverPayment])
+
+  // While a payment may still be going through, a second one is not offered.
+  const awaitingPayment = ['checking', 'processing', 'error'].includes(recovery?.state)
 
   const on = (k) => (e) => {
     const { value } = e.target
@@ -352,6 +473,27 @@ export default function Checkout() {
       eventId: newEventId(),
     }))
 
+    // Written down before the window opens, so a reload while it is open can
+    // still find out whether the shopper paid.
+    attempt.current += 1
+    unpaidNote.current = ''
+    savePendingPayment({
+      reference: started.reference,
+      razorpay_order_id: started.razorpay_order_id,
+      customer,
+    })
+    setRecovery(null)
+    stopPolling()
+    paying.current = true
+    try {
+      await settlePayment(started, customer)
+    } finally {
+      paying.current = false
+    }
+  }
+
+  // Razorpay's window, then the server's verification of what it reports.
+  const settlePayment = async (started, customer) => {
     let response
     try {
       response = await openRazorpay({
@@ -368,24 +510,43 @@ export default function Checkout() {
         notes: { reference: started.reference },
       })
     } catch (error) {
-      // Closed, declined or offline: nothing was charged, the cart stays put,
-      // and the next attempt reuses the same order instead of making another.
-      setFailure(error?.message || 'You closed the payment window. Nothing has been charged — you can try again whenever you are ready.')
+      // Closed, declined or offline. Usually nothing was charged — but a UPI
+      // payment approved in the shopper's app can still land after the window
+      // closes, so Razorpay is asked before the page says so. If nothing was
+      // paid the cart stays put, and the next attempt reuses the same order.
+      unpaidNote.current = error?.message || 'You closed the payment window. Nothing has been charged — you can try again whenever you are ready.'
+      paying.current = false
+      await recoverPayment()
+      return
+    }
+
+    let verified
+    try {
+      verified = await verifyRazorpayPayment({
+        reference: started.reference,
+        razorpay_order_id: response.razorpay_order_id || started.razorpay_order_id,
+        razorpay_payment_id: response.razorpay_payment_id,
+        razorpay_signature: response.razorpay_signature,
+      })
+    } catch (error) {
+      // The shopper has paid: keep the saved payment, so "Check again" (and
+      // the next visit to this page) can settle it from Razorpay's side.
+      setRecovery({ reference: started.reference, state: 'error', message: error?.message })
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
-    const verified = await verifyRazorpayPayment({
-      reference: started.reference,
-      razorpay_order_id: response.razorpay_order_id || started.razorpay_order_id,
-      razorpay_payment_id: response.razorpay_payment_id,
-      razorpay_signature: response.razorpay_signature,
-    })
-
     if (!verified?.order?.reference) {
-      throw new Error("We received your payment but could not confirm it yet. Please don't pay again — contact us quoting your order reference.")
+      setRecovery({
+        reference: started.reference,
+        state: 'error',
+        message: "We received your payment but could not confirm it yet. Please don't pay again.",
+      })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
     }
 
+    clearPendingPayment()
     const order = { ...verified.order, customer }
     saveOrder(order)
     clear()
@@ -394,6 +555,7 @@ export default function Checkout() {
 
   const submit = async (e) => {
     e.preventDefault()
+    if (awaitingPayment) return
     setFailure('')
     const found = validateAddress(f)
     setErrors(found)
@@ -460,7 +622,7 @@ export default function Checkout() {
     }
   }
 
-  if (!lines.length && !submitting) {
+  if (!lines.length && !submitting && !recovery) {
     return (
       <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
         <h1 className="text-[38px]">Your cart is empty</h1>
@@ -479,6 +641,33 @@ export default function Checkout() {
       <p className="text-black/60 mt-2 flex items-center gap-2 text-[15px]">
         <Lock size={15} /> Your details are sent securely and never shared.
       </p>
+
+      {recovery && (
+        <div role="status" className="mt-6 flex items-start gap-3 border border-black/15 bg-white rounded-xl px-4 py-3.5 text-[15px]">
+          {recovery.state === 'error' || recovery.state === 'stalled'
+            ? <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            : <Loader2 size={18} className="shrink-0 mt-0.5 animate-spin" />}
+          <div className="flex-1">
+            <p>
+              {recovery.state === 'checking' && <>Checking your payment for order <b>{recovery.reference}</b>…</>}
+              {recovery.state === 'processing' && (
+                <>Razorpay is still confirming your payment for order <b>{recovery.reference}</b>. If you approved it in your UPI app, please don't pay again — this page keeps checking. If you didn't finish paying, the request expires within about 10 minutes and you can pay again then.</>
+              )}
+              {recovery.state === 'stalled' && (
+                <>We haven't heard back from Razorpay about order <b>{recovery.reference}</b>. If you approved the payment, please don't pay again — tap Check again or contact us. If you didn't finish paying, you can pay again below.</>
+              )}
+              {recovery.state === 'error' && (
+                <>{recovery.message || "We couldn't check your payment just now. Please don't pay again."} Your order reference is <b>{recovery.reference}</b>.</>
+              )}
+            </p>
+            {recovery.state !== 'checking' && (
+              <button type="button" onClick={() => recoverPayment()} className="mt-2 font-semibold underline underline-offset-2">
+                Check again
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {failure && (
         <div role="alert" className="mt-6 flex items-start gap-3 border border-red-200 bg-red-50 text-red-800 rounded-xl px-4 py-3.5 text-[15px]">
@@ -577,7 +766,7 @@ export default function Checkout() {
 
           <button
             type="submit"
-            disabled={submitting || !lines.length || !onlinePaymentReady}
+            disabled={submitting || awaitingPayment || !lines.length || !onlinePaymentReady}
             className="mt-8 w-full h-[56px] rounded-lg bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
           >
             {submitting && <Loader2 size={18} className="animate-spin" />}

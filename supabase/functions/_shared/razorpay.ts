@@ -43,6 +43,9 @@ export interface RazorpayPayment {
   status?: string
   order_id?: string
   method?: string
+  refund_status?: string | null
+  /** Unix seconds. */
+  created_at?: number
 }
 
 export type RazorpayMode = 'live' | 'test'
@@ -121,6 +124,14 @@ export async function getRazorpayPayment(paymentId: string, mode: RazorpayMode =
   const res = await call(`/payments/${encodeURIComponent(paymentId)}`, {}, mode)
   if (!res.ok) throw new RazorpayApiError(res.status)
   return (await res.json()) as RazorpayPayment
+}
+
+/** Every payment attempt Razorpay holds against one of its orders. */
+export async function getRazorpayOrderPayments(orderId: string, mode: RazorpayMode = 'live'): Promise<RazorpayPayment[]> {
+  const res = await call(`/orders/${encodeURIComponent(orderId)}/payments`, {}, mode)
+  if (!res.ok) throw new RazorpayApiError(res.status)
+  const body = (await res.json()) as { items?: RazorpayPayment[] }
+  return Array.isArray(body?.items) ? body.items : []
 }
 
 /**

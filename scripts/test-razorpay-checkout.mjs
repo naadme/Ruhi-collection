@@ -70,6 +70,9 @@ const state = {
   firstOrder: true,
   payment: { status: 200, method: 'upi', orderId: '' },
   gateway: new Map(),
+  // The attempts Razorpay holds against an order (`/orders/:id/payments`).
+  orderPayments: [],
+  orderPaymentsStatus: 200,
 }
 
 function jsonRes(status, body) {
@@ -96,7 +99,14 @@ globalThis.fetch = async (input, init = {}) => {
       state.gateway.set(id, { amount: sent.amount, currency: sent.currency, mode })
       return jsonRes(200, { id, entity: 'order', amount: sent.amount, amount_paid: 0, currency: sent.currency })
     }
-    let m = path.match(/^\/orders\/([^/?]+)$/)
+    let m = path.match(/^\/orders\/([^/?]+)\/payments$/)
+    if (method === 'GET' && m) {
+      const known = state.gateway.get(decodeURIComponent(m[1]))
+      if (!known || known.mode !== mode) return jsonRes(404, { error: 'not found' })
+      if (state.orderPaymentsStatus !== 200) return jsonRes(state.orderPaymentsStatus, { error: 'unavailable' })
+      return jsonRes(200, { entity: 'collection', count: state.orderPayments.length, items: state.orderPayments })
+    }
+    m = path.match(/^\/orders\/([^/?]+)$/)
     if (method === 'GET' && m) {
       const id = decodeURIComponent(m[1])
       const known = state.gateway.get(id)
@@ -138,7 +148,11 @@ globalThis.fetch = async (input, init = {}) => {
         const values = JSON.parse(body)
         if (Object.keys(values).some((c) => state.missing.has(c))) return jsonRes(400, { message: 'column does not exist' })
         if (state.patchStatus !== 200) return jsonRes(state.patchStatus, { message: 'simulated failure' })
-        const settled = query.get('payment_status') === 'neq.paid' && state.order.payment_status === 'paid'
+        const statusFilter = query.get('payment_status')
+        const orderFilter = query.get('razorpay_order_id')
+        const settled = (statusFilter === 'neq.paid' && state.order.payment_status === 'paid') ||
+          (statusFilter === 'in.(pending,failed)' && !['pending', 'failed'].includes(state.order.payment_status)) ||
+          (orderFilter !== null && orderFilter !== `eq.${state.order.razorpay_order_id}`)
         const typed = query.get('payment_type') === 'is.null' && state.order.payment_type
         if (settled || typed) return jsonRes(200, [])
         Object.assign(state.order, values)
@@ -190,6 +204,8 @@ function reset(order = {}) {
   state.firstOrder = true
   state.payment = { status: 200, method: 'upi', orderId: '' }
   state.gateway.clear()
+  state.orderPayments = []
+  state.orderPaymentsStatus = 200
   process.env.RAZORPAY_TEST_KEY_ID = TEST.id
 }
 
@@ -420,6 +436,187 @@ const verifyBody = (orderId, signature) => ({
   check('already paid → only payment_type filled in, where empty',
     fill.length === 1 && fill[0].url.includes('payment_type=is.null') && same(JSON.parse(fill[0].body), { payment_type: 'upi' }))
   check('already paid → the browser still learns both', data.order?.payment_type === 'upi' && data.order?.new_customer === false)
+}
+
+// ---------------------------------------------------------------------------
+// verify-razorpay-payment, `recover: true` — the page was reloaded while
+// Razorpay's window was open, so there is no signature; Razorpay is asked.
+// ---------------------------------------------------------------------------
+const recoverBody = (orderId) => ({ reference: '02112601', razorpay_order_id: orderId, recover: true })
+const nowSeconds = () => Math.floor(Date.now() / 1000)
+const attempt = (orderId, status, extra = {}) => ({
+  id: `pay_${status}`, entity: 'payment', amount: 84900, currency: 'INR', status, order_id: orderId, method: 'upi',
+  created_at: nowSeconds(), ...extra,
+})
+
+// 15. Paid in Razorpay, never verified by the page: settled from Razorpay's own record.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'failed'), attempt(id, 'captured')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  const [paid] = orderPatches()
+  check('recover, captured → 200 paid', res.status === 200 && data.status === 'paid', JSON.stringify(data))
+  check('recover, captured → the captured payment is recorded',
+    paid?.payment_status === 'paid' && paid?.razorpay_payment_id === 'pay_captured' && paid?.payment_type === 'upi', JSON.stringify(paid))
+  check('recover, captured → the browser gets the order for the purchase event',
+    data.order?.reference === '02112601' && data.order?.new_customer === true)
+  check('recover, captured → Razorpay asked with the live keys',
+    callsTo('api.razorpay.com').every((c) => c.headers.authorization === basic(LIVE)))
+}
+
+// 16. An admin's test order is checked with the test keys.
+{
+  const id = placed('test')
+  state.orderPayments = [attempt(id, 'captured', { method: 'card' })]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, test order → paid', res.status === 200 && data.status === 'paid' && state.order.payment_status === 'paid')
+  check('recover, test order → Razorpay asked with the test keys',
+    callsTo('api.razorpay.com').length > 0 && callsTo('api.razorpay.com').every((c) => c.headers.authorization === basic(TEST)))
+}
+
+// 17. A UPI request still waiting for approval: processing, nothing written.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'created')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, still pending → processing', res.status === 200 && data.status === 'processing', JSON.stringify(data))
+  check('recover, still pending → nothing written', orderPatches().length === 0)
+}
+
+// 18. Only failed attempts, or none: unpaid, nothing written.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'failed')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, only failures → unpaid', res.status === 200 && data.status === 'unpaid' && orderPatches().length === 0)
+}
+
+// 19. A captured payment for the wrong amount does not count.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'captured', { amount: 100 })]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, wrong amount → not paid', data.status !== 'paid' && orderPatches().length === 0, JSON.stringify(data))
+}
+
+// 20. A Razorpay order id that is not the one on file (the checkout was
+// restarted with another cart, or a guess) is out of date: Razorpay is never
+// asked, nothing is written and nothing about the order is returned.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'captured')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody('order_guessed'))
+  const data = await res.json()
+  check('recover, out-of-date Razorpay order id → unpaid, Razorpay never asked, no order data',
+    res.status === 200 && data.status === 'unpaid' && !data.order &&
+    callsTo('api.razorpay.com').length === 0 && orderPatches().length === 0, JSON.stringify(data))
+}
+
+// 21. Already paid (the webhook got there first): answered from the database.
+{
+  const id = placed('live', { payment_status: 'paid', paid_at: '2026-11-02T10:01:00.000Z', razorpay_payment_id: 'pay_1' })
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, already paid → paid, Razorpay not asked',
+    res.status === 200 && data.status === 'paid' && data.order?.reference === '02112601' && callsTo('api.razorpay.com').length === 0)
+}
+
+// 22. Razorpay cannot be reached: a retryable error, nothing written.
+{
+  const id = placed('live')
+  state.orderPaymentsStatus = 503
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  check('recover, Razorpay unreachable → 502, nothing written', res.status === 502 && orderPatches().length === 0)
+}
+
+// 23. A refunded order is never turned back into a paid one.
+{
+  const id = placed('live', { payment_status: 'refunded', razorpay_payment_id: 'pay_captured' })
+  state.orderPayments = [attempt(id, 'captured')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, refunded order → not paid, nothing written',
+    data.status === 'unpaid' && orderPatches().length === 0 && state.order.payment_status === 'refunded', JSON.stringify(data))
+}
+
+// 24. A partly refunded payment (still `captured`, with a refund_status) does not count.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'captured', { refund_status: 'partial', amount_refunded: 20000 })]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, partly refunded payment → not paid', data.status !== 'paid' && orderPatches().length === 0)
+}
+
+// 25. Recovery only settles a pending or failed order.
+{
+  const id = placed('live', { payment_status: 'failed' })
+  state.orderPayments = [attempt(id, 'failed'), attempt(id, 'captured')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  const patch = callsTo('/rest/v1/orders?', 'PATCH')[0]
+  check('recover, order marked failed by the webhook → paid, guarded by status',
+    data.status === 'paid' && patch?.url.includes('payment_status=in.(pending,failed)'), patch?.url)
+}
+
+// 26. An authorized payment is about to be captured: processing.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'authorized')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, authorized → processing', data.status === 'processing' && orderPatches().length === 0)
+}
+
+// 27. An old abandoned attempt on the reused Razorpay order is not "in flight".
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'created', { created_at: nowSeconds() - 60 * 60 })]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, hour-old created attempt → unpaid', data.status === 'unpaid', JSON.stringify(data))
+}
+
+// 28. The gateway order itself must be for the order's total.
+{
+  const id = placed('live')
+  state.gateway.set(id, { amount: 100, currency: 'INR', mode: 'live' })
+  state.orderPayments = [attempt(id, 'captured', { amount: 100 })]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  check('recover, gateway order for another amount → refused', res.status === 400 && orderPatches().length === 0)
+}
+
+// 29. A test order with the test keys missing: retryable, nothing written.
+{
+  const id = placed('test')
+  state.orderPayments = [attempt(id, 'captured')]
+  delete process.env.RAZORPAY_TEST_KEY_ID
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  process.env.RAZORPAY_TEST_KEY_ID = TEST.id
+  check('recover, test keys missing → 502, nothing written', res.status === 502 && orderPatches().length === 0)
+}
+
+// 30. A valid signature cannot turn a refunded order back into a paid one.
+{
+  const id = placed('live', { payment_status: 'refunded', razorpay_payment_id: 'pay_1' })
+  const res = await post(verifyPayment, 'verify-razorpay-payment', verifyBody(id, sign(LIVE, id, 'pay_1')))
+  const data = await res.json()
+  check('signature on a refunded order → stays refunded, no order returned',
+    state.order.payment_status === 'refunded' && data.status === 'unpaid' && !data.order, JSON.stringify(data))
+}
+
+// 31. Every settle is pinned to the Razorpay order that was paid.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'captured')]
+  await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const patch = callsTo('/rest/v1/orders?', 'PATCH')[0]
+  check('settle PATCH pinned to the paid Razorpay order', patch?.url.includes(`razorpay_order_id=eq.${id}`), patch?.url)
 }
 
 check('no unexpected stubbed calls in any case', state.unknown.length === 0, state.unknown.join(', '))

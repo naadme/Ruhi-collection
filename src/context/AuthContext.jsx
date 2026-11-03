@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { clearPendingPayment } from '../lib/pendingPayment'
 import { authEvent, newEventId, returningSignIn, trackAuth } from '../lib/tracking'
 
 // Sign-ins already sent to GTM from a provider return, so a refresh of the
@@ -348,6 +349,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   const signOut = useCallback(async () => {
+    // A payment this browser was waiting on carries the shopper's checkout
+    // details; they leave with the shopper.
+    clearPendingPayment()
     setBusy(true)
     try { await supabase.auth.signOut() } finally { setBusy(false) }
   }, [])
