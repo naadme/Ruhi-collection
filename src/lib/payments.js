@@ -55,6 +55,30 @@ export function createRazorpayOrder(customer, items, couponCode, attribution, { 
   }, CREATE_FALLBACK)
 }
 
+const RECOVER_TIMEOUT_MS = 20000
+const RECOVER_FALLBACK =
+  "We couldn't check your payment just now. Please don't pay again — try again in a moment."
+
+/**
+ * Ask whether a payment whose window this page lost track of went through
+ * (src/lib/pendingPayment.js). The server asks Razorpay; the answer is
+ * `{ status: 'paid', order }`, `{ status: 'processing' }` or
+ * `{ status: 'unpaid' }`.
+ */
+export function checkPendingPayment({ reference, razorpay_order_id }) {
+  // A check that never answers must not leave the page waiting on it: after
+  // RECOVER_TIMEOUT_MS it counts as a retryable failure ("Check again").
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(Object.assign(new Error(RECOVER_FALLBACK), { retryable: true, status: 0 })),
+      RECOVER_TIMEOUT_MS,
+    )
+  })
+  const check = invoke('verify-razorpay-payment', { reference, razorpay_order_id, recover: true }, RECOVER_FALLBACK)
+  return Promise.race([check, timeout]).finally(() => clearTimeout(timer))
+}
+
 const VERIFY_ATTEMPTS = 3
 const VERIFY_DELAYS = [600, 1500]
 

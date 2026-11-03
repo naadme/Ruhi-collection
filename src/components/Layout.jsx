@@ -4,6 +4,7 @@ import AnnouncementBar from './AnnouncementBar'
 import Header from './Header'
 import Footer from './Footer'
 import CartDrawer from './CartDrawer'
+import PaymentRecovery from './PaymentRecovery'
 export default function Layout() {
   const { pathname } = useLocation()
   // Block body: an effect must return undefined or a cleanup *function*.
@@ -23,6 +24,7 @@ export default function Layout() {
       <main id="main-content"><Outlet /></main>
       <Footer />
       <CartDrawer />
+      <PaymentRecovery />
     </>
   )
 }
