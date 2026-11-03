@@ -39,8 +39,8 @@ export default function Footer() {
                   flex row squeezes the SVG to nothing when the e-mail address
                   is wider than the column. */}
               <ul className="mt-6 space-y-4 text-[17px]">
-                <li className="flex gap-3 items-center min-w-0"><Phone size={20} className="shrink-0" />{site.phone}</li>
-                <li className="flex gap-3 items-center min-w-0"><Mail size={20} className="shrink-0" /><span className="min-w-0 break-all">{site.email}</span></li></ul>
+                <li><a href={site.phoneHref} className="flex gap-3 items-center min-w-0 underline-offset-4 hover:underline"><Phone size={20} className="shrink-0" />{site.phone}</a></li>
+                <li><a href={`mailto:${site.email}`} className="flex gap-3 items-center min-w-0 underline-offset-4 hover:underline"><Mail size={20} className="shrink-0" /><span className="min-w-0 break-all">{site.email}</span></a></li></ul>
             </div>
             <div className="mt-10"><h3 className="text-[22px] font-medium">Stay updated</h3><p className="mt-6 text-[17px] leading-7 max-w-[300px]">Subscribe to get updates on new arrivals and offers.</p><Newsletter /></div>
           </div>

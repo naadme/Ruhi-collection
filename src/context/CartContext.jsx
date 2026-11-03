@@ -51,7 +51,7 @@ const resolveLine = (i, getProduct, getRow) => {
 }
 
 export function CartProvider({ children }) {
-  const { getProduct, getRow, loading } = useProducts()
+  const { getProduct, getRow, loading, answered, source } = useProducts()
   const { typeLabel } = useCategories()
   const [items, setItems] = useState(() => readStoredArray('cart', true))
   const [open, setOpen] = useState(false)
@@ -86,7 +86,9 @@ export function CartProvider({ children }) {
   // `color` is the colour chosen on the product page. Lines stay keyed by
   // id + size: a grouped design's colour rows keep their own ids, so two
   // colours are already two distinct lines.
-  const add = useCallback((id, qty = 1, size = 'M', color) => {
+  // `openDrawer: false` is for "Buy it now", which goes straight to checkout:
+  // the drawer would only cover the page it is heading to.
+  const add = useCallback((id, qty = 1, size = 'M', color, { openDrawer = true } = {}) => {
     const wanted = Math.min(MAX_QTY, Math.max(1, qty))
     const c = latest.current
     const k = c.find((i) => i.id === id && i.size === size)
@@ -96,7 +98,7 @@ export function CartProvider({ children }) {
       ? { ...k, qty: Math.min(MAX_QTY, k.qty + wanted) }
       : { id, qty: wanted, size, ...(color ? { color } : {}) }
     commit(k ? c.map((i) => (i === k ? line : i)) : [...c, line])
-    setOpen(true)
+    if (openDrawer) setOpen(true)
     const units = line.qty - (k ? k.qty : 0)
     if (units > 0) track('add_to_cart', [{ line, units }])
   }, [commit, track])
@@ -132,14 +134,14 @@ export function CartProvider({ children }) {
   // /checkout the first commit still holds `seed`, so every line the seed does
   // not contain — i.e. any product created in the dashboard after launch —
   // would be filtered out and immediately written back to localStorage, emptying
-  // a full basket at the moment of purchase intent, silently. `loading` only
-  // clears once the real catalogue (or a confirmed-empty one) has landed, so
-  // waiting for it is exactly right.
+  // a full basket at the moment of purchase intent, silently. `loading` alone is
+  // not enough — the 8 s watchdog clears it while the seed is still showing —
+  // so this waits for the database itself to have answered.
   const prune = useCallback(() => {
-    if (loading) return
+    if (loading || !answered || source !== 'database') return
     const kept = latest.current.filter((i) => !!getProduct(i.id))
     if (kept.length !== latest.current.length) commit(kept)
-  }, [getProduct, loading, commit])
+  }, [getProduct, loading, answered, source, commit])
   // Derived in one pass and memoised: the basket view, the header badge and the
   // checkout summary all read these, and they must not be rebuilt on renders
   // that only touch `open`.

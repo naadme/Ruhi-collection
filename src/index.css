@@ -26,3 +26,6 @@ button, select, [role="button"]{border-radius:.5rem}
    button would snap to 2px while focused) and the ring follows them. */
 :where(a,button,input,select,textarea,summary,[tabindex]):focus-visible{@apply outline-none ring-2 ring-black/60 ring-offset-2 ring-offset-white}
 @media (prefers-reduced-motion: reduce){.marquee{animation:none}}
+/* Room at the very end of the page for the product page's phone buy bar, so
+   the footer's last links are never hidden under it (StickyBuyBar.jsx). */
+@media (max-width: 767px){body.has-buy-bar{padding-bottom:calc(4.5rem + env(safe-area-inset-bottom))}}

@@ -16,6 +16,10 @@ export const site = {
   // publishes contact channels (phone, email, socials) and never a street
   // address.
   phone: '9046651272',
+  // The same number for tapping: `tel:` needs the country code to dial
+  // correctly from anywhere, and wa.me wants it without the '+'.
+  phoneHref: 'tel:+919046651272',
+  whatsappNumber: '919046651272',
   email: 'ruhicollections2026@gmail.com',
   hours: 'Mon – Sat, 10:00 – 19:00 IST',
   // The single source for every WhatsApp link on the site: the footer, the

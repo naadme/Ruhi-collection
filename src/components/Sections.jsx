@@ -405,7 +405,7 @@ export const ContactStrip = () => {
     instagram && { label: 'Instagram', href: instagram.href, Icon: Instagram, iconOnly: true },
     whatsapp && { label: 'WhatsApp', href: whatsapp.href, Icon: MessageCircle, iconOnly: true },
     { label: site.email, href: `mailto:${site.email}`, Icon: Mail },
-    { label: site.phone, href: `tel:${site.phone}`, Icon: Phone },
+    { label: site.phone, href: site.phoneHref, Icon: Phone },
   ].filter(Boolean)
   return (
     <section className="max-w-page mx-auto px-4 md:px-7 pb-20">

@@ -1,5 +1,5 @@
 import usePageTitle from '../hooks/usePageTitle'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ChevronLeft, Heart, Truck } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
@@ -18,6 +18,10 @@ import { fetchPublishedReviews } from '../lib/reviewStore'
 import { reviewSummary, starLabel } from '../lib/reviews'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent, viewedItem } from '../lib/trackingItems'
+import { site } from '../data/site'
+import { cleanProductUrl, productWhatsAppLink } from '../lib/whatsapp'
+import WhatsAppButton from '../components/WhatsAppButton'
+import StickyBuyBar from '../components/StickyBuyBar'
 
 // How long a colour and size must stay on screen before view_item goes out.
 // Opening another colour briefly renders it with the previous colour's size
@@ -62,7 +66,7 @@ function Gallery({ product }) {
 
 export default function Product() {
   const { id } = useParams()
-  const { getProduct, products, loading } = useProducts()
+  const { getProduct, products, loading, answered, error, source, reload } = useProducts()
   // The category name on the breadcrumb, the product page and the back link is
   // the client's own label — renamed in the dashboard whenever they like.
   const { typeLabel } = useCategories()
@@ -75,7 +79,36 @@ export default function Product() {
   const [qty, setQty] = useState(1)
   const [problem, setProblem] = useState('')
 
-  usePageTitle(p ? p.title : loading ? 'Product' : 'Product not found')
+  // The phone buy bar stands in for the page's own buttons while they are off
+  // screen, and steps aside when they are in view so the two never show at once.
+  // A callback ref, so the observer follows the buttons whenever they are
+  // actually rendered — including after a "Try again" brings the page back.
+  const [ctaEl, setCtaEl] = useState(null)
+  const [ctaInView, setCtaInView] = useState(false)
+  useEffect(() => {
+    if (!ctaEl || typeof IntersectionObserver === 'undefined') return undefined
+    const watch = new IntersectionObserver(([entry]) => setCtaInView(entry.isIntersecting))
+    watch.observe(ctaEl)
+    return () => watch.disconnect()
+  }, [ctaEl])
+
+  // On a phone the colours are one swipeable row: bring the chosen colour into
+  // it (a link can open on the twelfth colour), without moving the page.
+  const colourRow = useRef(null)
+  useEffect(() => {
+    const row = colourRow.current
+    const pill = row?.querySelector('[aria-current="true"]')
+    if (!row || !pill || row.scrollWidth <= row.clientWidth) return
+    row.scrollLeft = pill.offsetLeft - (row.clientWidth - pill.offsetWidth) / 2
+  }, [id, answered])
+
+  // The page waits for the real catalogue: the bundled seed would show a
+  // placeholder price (₹900) to a shopper arriving from an ad, then change it.
+  // If the database could not be read at all, the seed is not shown either.
+  const unreadable = answered && Boolean(error) && source === 'seed'
+  // The name is safe to show while waiting (analytics reads the title on
+  // arrival); only the seed's price is not.
+  usePageTitle(unreadable ? 'Product' : p ? p.title : answered ? 'Product not found' : 'Product')
 
   // Reset the selections whenever the shopper opens a different product.
   useEffect(() => {
@@ -134,10 +167,23 @@ export default function Product() {
     // open is the same product view.
   }, [viewedId])
 
-  if (!p && loading) {
+  if (unreadable) {
     return (
-      <section className="max-w-[1300px] mx-auto px-4 md:px-7 py-12 animate-pulse" aria-busy="true" aria-label="Loading product">
-        <div className="grid md:grid-cols-2 gap-10 lg:gap-16">
+      <section className="text-center py-32 px-4">
+        <h1 className="text-[34px] md:text-[42px]">We couldn't load this product</h1>
+        <p className="text-black/60 mt-3 text-[17px]">Please check your connection and try again.</p>
+        <button type="button" onClick={() => reload()} className="btn-outline mt-8">Try again</button>
+      </section>
+    )
+  }
+
+  if (!answered) {
+    return (
+      <section className="max-w-[1300px] mx-auto px-4 md:px-7 py-12" aria-busy="true" aria-label="Loading product">
+        {/* The watchdog has given up waiting but the request is still going:
+            say so, rather than leave a silent skeleton on a slow connection. */}
+        {!loading && <p className="text-center text-black/60 text-[15px] mb-6">Still loading — your connection seems slow.</p>}
+        <div className="grid md:grid-cols-2 gap-10 lg:gap-16 animate-pulse">
           <div className="w-full aspect-[3/4] bg-neutral-200 rounded" />
           <div className="space-y-4 pt-4">
             <div className="h-4 bg-neutral-200 rounded w-1/3" />
@@ -198,6 +244,13 @@ export default function Product() {
   const needsSize = shown.sizes.length > 1 && !size
 
   const choose = (s) => { setSize(s); setProblem('') }
+  // The bar's "Choose size": bring the sizes into view and say why.
+  const chooseSizeFromBar = () => {
+    const el = document.getElementById('size-options')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el?.focus({ preventScroll: true })
+    setProblem('Choose a size before adding this item.')
+  }
 
   const place = (goToCheckout) => {
     if (needsSize) {
@@ -209,7 +262,7 @@ export default function Product() {
       setProblem(`Quantity must be between 1 and ${MAX_QTY}.`)
       return
     }
-    add(shown.id, qty, size || shown.sizes[0], chosen && chosen.color)
+    add(shown.id, qty, size || shown.sizes[0], chosen && chosen.color, { openDrawer: !goToCheckout })
     if (goToCheckout) navigate('/checkout')
   }
 
@@ -230,7 +283,9 @@ export default function Product() {
       <div className="grid md:grid-cols-2 gap-10 lg:gap-16">
         <Gallery key={shown.id} product={shown} />
 
-        <div>
+        {/* `min-w-0`: a grid item is never narrower than its content by
+            default, and the colour row is wider than a phone on purpose. */}
+        <div className="min-w-0">
           <p className="text-sm text-black/60 uppercase tracking-widest">{typeLabel(p.type)}</p>
           <div className="flex items-start justify-between gap-4 mt-2">
             <h1 className="text-[32px] md:text-[42px] leading-tight">{p.title}</h1>
@@ -298,9 +353,14 @@ export default function Product() {
               backwards through every colour the shopper tried rather than
               returning to the page they came from. */}
           {colors.length > 1 && (
-            <fieldset className="mt-7">
+            // `min-w-0`: a fieldset is never narrower than its content by
+            // default, so the one-row colour list would widen the whole page.
+            <fieldset className="mt-7 min-w-0">
               <legend className="text-sm mb-2">Colour <span className="text-black/55">— {chosen.color}</span></legend>
-              <div className="flex flex-wrap gap-3">
+              {/* One swipeable row on a phone: a design with a dozen colours
+                  would otherwise push the size and the buttons down by several
+                  rows. They wrap as before on larger screens. */}
+              <div ref={colourRow} className="relative flex gap-3 overflow-x-auto -mx-4 px-4 py-1 -my-1 md:m-0 md:p-0 md:flex-wrap md:overflow-visible">
                 {colors.map((c) => (
                   <button
                     key={c.id}
@@ -308,7 +368,7 @@ export default function Product() {
                     onClick={() => navigate(`/product/${c.id}`, { replace: true })}
                     aria-label={`View ${p.title} in ${c.color}`}
                     aria-current={c.id === shown.id}
-                    className={`h-11 min-w-[52px] px-4 rounded-full font-ui transition ${c.id === shown.id ? 'bg-black text-white border-black' : 'border border-black/40 hover:border-black'}`}
+                    className={`shrink-0 whitespace-nowrap h-11 min-w-[52px] px-4 rounded-full font-ui transition ${c.id === shown.id ? 'bg-black text-white border-black' : 'border border-black/40 hover:border-black'}`}
                   >
                     {c.color}
                   </button>
@@ -343,15 +403,17 @@ export default function Product() {
             </p>
           )}
 
-          <button
-            onClick={() => place(false)}
-            className="block w-full mt-7 h-14 border-2 border-black text-lg rounded-lg hover:bg-black hover:text-white transition"
-          >
-            Add to cart
-          </button>
-          <button onClick={() => place(true)} className="block w-full mt-3 h-14 bg-brand-green text-white text-lg rounded-lg hover:bg-[#A86B5C] transition">
-            Buy it now
-          </button>
+          <div ref={setCtaEl}>
+            <button
+              onClick={() => place(false)}
+              className="block w-full mt-7 h-14 border-2 border-black text-lg rounded-lg hover:bg-black hover:text-white transition"
+            >
+              Add to cart
+            </button>
+            <button onClick={() => place(true)} className="block w-full mt-3 h-14 bg-brand-cta text-white text-lg font-medium rounded-lg hover:bg-brand-cta-hover transition">
+              Buy it now
+            </button>
+          </div>
 
           <p className="mt-6 flex items-start gap-2 text-[14px] text-black/60">
             <Truck size={16} className="mt-[1px] shrink-0 text-brand-green" />
@@ -396,6 +458,28 @@ export default function Product() {
       <Link to={`/shop?type=${p.type}`} className="inline-flex items-center gap-1.5 mt-12 text-[15px] text-black/60 hover:text-black">
         <ChevronLeft size={16} /> Back to {typeLabel(p.type)}
       </Link>
+
+      <StickyBuyBar
+        enabled={shown.price > 0}
+        visible={!ctaInView}
+        price={shown.price}
+        compare={shown.compare}
+        needsSize={needsSize}
+        onChooseSize={chooseSizeFromBar}
+        onAdd={() => place(false)}
+      />
+
+      <WhatsAppButton
+        lifted={shown.price > 0 && !ctaInView}
+        href={productWhatsAppLink({
+          number: site.whatsappNumber,
+          title: p.title,
+          color: chosen && chosen.color,
+          size,
+          price: shown.price > 0 ? inr(shown.price) : '',
+          url: cleanProductUrl(window.location.origin, shown.id),
+        })}
+      />
     </section>
   )
 }

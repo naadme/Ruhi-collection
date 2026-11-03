@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import useOverlay from '../hooks/useOverlay'
@@ -13,6 +13,9 @@ export default function CartDrawer() {
   const panel = useRef(null)
   const close = useCallback(() => setOpen(false), [setOpen])
   useOverlay(open, close, panel)
+  // A new page closes the drawer: it belongs to the page it was opened on.
+  const { pathname } = useLocation()
+  useEffect(() => { setOpen(false) }, [pathname, setOpen])
   // GTM's view_cart (tracking brief, Annexure A6) each time the drawer opens
   // on a basket that has something in it — including right after an add.
   const showing = open && trackedItems.length > 0
@@ -41,7 +44,7 @@ export default function CartDrawer() {
           <div className="p-6 border-t">
             <div className="flex justify-between text-xl mb-4"><span>Total</span><span className="font-ui font-semibold">{inr(totalFor(subtotal))}</span></div>
             <Link to="/cart" onClick={close} className="block text-center border border-black/60 py-3.5 rounded-lg hover:bg-black hover:text-white transition">View cart</Link>
-            <Link to="/checkout" onClick={close} className="block text-center bg-brand-green text-white py-4 rounded-lg mt-3">Check out</Link>
+            <Link to="/checkout" onClick={close} className="block text-center bg-brand-cta text-white font-medium py-4 rounded-lg mt-3 hover:bg-brand-cta-hover transition">Check out</Link>
           </div>
         </>)}
       </aside>
