@@ -1,0 +1,124 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const SRC = fs.readFileSync(path.join(process.cwd(), 'src/lib/razorpay.js'), 'utf8');
+
+// Like razorpayScript.test.js, the module cannot be imported (it reads
+// `import.meta.env`), so the real `openRazorpay` is taken from the source and
+// run against a stand-in for Razorpay's Checkout. The loader is stubbed: these
+// tests are about what happens once the window is open.
+const START = 'export async function openRazorpay(';
+const start = SRC.indexOf(START);
+assert.ok(start !== -1, 'razorpay.js must define openRazorpay');
+const openSource = SRC.slice(start).replace(/\bexport /g, '');
+assert.ok(!openSource.includes('import.meta'), 'no Vite-only syntax reached openRazorpay');
+
+/** A fake `window.Razorpay` that lets a test play the shopper. */
+function makeWindow() {
+  const world = {};
+  world.Razorpay = function Razorpay(options) {
+    const listeners = {};
+    world.checkout = {
+      options,
+      opened: false,
+      // What Razorpay itself does, in the order it does it.
+      fail(reason = '') { (listeners['payment.failed'] || []).forEach((fn) => fn({ error: { reason } })); },
+      pay(response) { options.handler(response); },
+      close() { options.modal.ondismiss(); },
+    };
+    this.on = (event, fn) => { (listeners[event] = listeners[event] || []).push(fn); };
+    this.open = () => { world.checkout.opened = true; };
+  };
+  return world;
+}
+
+function load(window) {
+  return new Function(
+    'window',
+    `class PaymentCancelled extends Error {}
+     class PaymentFailed extends Error {}
+     class CheckoutUnavailable extends Error {}
+     const loadRazorpay = () => Promise.resolve()
+     ${openSource}
+     return { openRazorpay, PaymentCancelled, PaymentFailed }`,
+  )(window);
+}
+
+const ARGS = { key: 'rzp_test_x', amount: 84900, currency: 'INR', orderId: 'order_1', description: 'Order 1' };
+const PAID = { razorpay_payment_id: 'pay_1', razorpay_order_id: 'order_1', razorpay_signature: 'sig' };
+const tick = () => new Promise((r) => setImmediate(r));
+
+test('a payment that succeeds on retry after a failed attempt is reported as paid', async () => {
+  const w = makeWindow();
+  const { openRazorpay } = load(w);
+  const result = openRazorpay(ARGS);
+  await tick();
+  assert.ok(w.checkout.opened);
+
+  w.checkout.fail('payment_failed'); // first UPI attempt fails, window stays open
+  w.checkout.pay(PAID); // the retry in the same window goes through
+
+  assert.deepEqual(await result, PAID);
+});
+
+test('several failed attempts and then a payment are still reported as paid', async () => {
+  const w = makeWindow();
+  const { openRazorpay } = load(w);
+  const result = openRazorpay(ARGS);
+  await tick();
+
+  w.checkout.fail('instrument_declined');
+  w.checkout.fail('payment_failed');
+  w.checkout.pay(PAID);
+
+  assert.deepEqual(await result, PAID);
+});
+
+test('events after a payment cannot turn it into a failure', async () => {
+  const w = makeWindow();
+  const { openRazorpay } = load(w);
+  const result = openRazorpay(ARGS);
+  await tick();
+
+  w.checkout.pay(PAID);
+  w.checkout.fail('payment_failed');
+  w.checkout.close();
+
+  assert.deepEqual(await result, PAID);
+});
+
+test('closing the window after a failed attempt reports the failure, not a cancel', async () => {
+  const w = makeWindow();
+  const { openRazorpay, PaymentFailed } = load(w);
+  const result = openRazorpay(ARGS);
+  await tick();
+
+  w.checkout.fail('instrument_declined');
+  w.checkout.close();
+
+  await assert.rejects(result, (err) => err instanceof PaymentFailed && /bank declined/i.test(err.message));
+});
+
+test('closing the window without any attempt is a cancel', async () => {
+  const w = makeWindow();
+  const { openRazorpay, PaymentCancelled } = load(w);
+  const result = openRazorpay(ARGS);
+  await tick();
+
+  w.checkout.close();
+
+  await assert.rejects(result, (err) => err instanceof PaymentCancelled);
+});
+
+test('a straightforward payment resolves with Razorpay\'s response', async () => {
+  const w = makeWindow();
+  const { openRazorpay } = load(w);
+  const result = openRazorpay(ARGS);
+  await tick();
+
+  w.checkout.pay(PAID);
+
+  assert.deepEqual(await result, PAID);
+});

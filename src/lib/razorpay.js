@@ -128,6 +128,11 @@ export async function openRazorpay({
       settled = true
       fn(value)
     }
+    // A failed attempt does not end the payment: Razorpay keeps its window
+    // open and offers a retry, and a retry that succeeds still calls
+    // `handler`. So a failure is only remembered here, and reported if the
+    // shopper then closes the window without paying.
+    let lastFailure = null
 
     const checkout = new window.Razorpay({
       key,
@@ -143,19 +148,20 @@ export async function openRazorpay({
       handler: (response) => settle(resolve, response),
       modal: {
         ondismiss: () =>
-          settle(reject, new PaymentCancelled('You closed the payment window. Nothing has been charged — you can try again whenever you are ready.')),
+          settle(
+            reject,
+            lastFailure ||
+              new PaymentCancelled('You closed the payment window. Nothing has been charged — you can try again whenever you are ready.'),
+          ),
       },
     })
 
     checkout.on('payment.failed', (response) => {
       const reason = response?.error?.reason || ''
-      settle(
-        reject,
-        new PaymentFailed(
-          reason === 'instrument_declined'
-            ? 'Your bank declined this payment. Nothing has been charged — please try another method.'
-            : 'Payment could not be completed. Your order has not been charged. Please try again.',
-        ),
+      lastFailure = new PaymentFailed(
+        reason === 'instrument_declined'
+          ? 'Your bank declined this payment. Nothing has been charged — please try another method.'
+          : 'Payment could not be completed. Your order has not been charged. Please try again.',
       )
     })
 
