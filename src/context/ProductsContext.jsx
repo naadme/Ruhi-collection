@@ -70,6 +70,11 @@ const seed = seedProducts.map((p) => ({ ...p, is_active: true }))
 export function ProductsProvider({ children }) {
   const [all, setAll] = useState(seed)
   const [loading, setLoading] = useState(true)
+  // True once the first read of the catalogue has finished — answered or
+  // failed — and never because the watchdog gave up waiting. Until then the
+  // bundled seed's prices (₹900 placeholders, older galleries) are not the
+  // shop's, so a page that shows a price waits for this instead of `loading`.
+  const [answered, setAnswered] = useState(false)
   const [error, setError] = useState(null)
   const [source, setSource] = useState('seed')
 
@@ -138,7 +143,10 @@ export function ProductsProvider({ children }) {
       if (mine === seq.current) setError(e?.message || 'Unavailable')
     } finally {
       clearTimeout(watchdog)
-      if (mine === seq.current) setLoading(false)
+      if (mine === seq.current) {
+        setLoading(false)
+        setAnswered(true)
+      }
     }
     return true
   }, [])
@@ -148,9 +156,14 @@ export function ProductsProvider({ children }) {
   // never a locally built value — is how the dashboard updates itself.
   const applyRow = useCallback((row) => {
     if (!row?.id) return
+    // Before the first full read has landed, one row cannot stand in for the
+    // catalogue (the rest would still be the seed's placeholder prices), and
+    // bumping `seq` here would discard that read: read the whole table again.
+    if (!fromDb.current) { reload(); return }
     // Anything still in flight predates this row and must not overwrite it.
     seq.current += 1
     setLoading(false)
+    setAnswered(true)
     const keep = isClientProduct(row) ? toProduct(row) : null
     setAll((prev) => {
       const at = prev.findIndex((p) => p.id === row.id)
@@ -163,14 +176,15 @@ export function ProductsProvider({ children }) {
     fromDb.current = true
     setSource('database')
     setError(null)
-  }, [])
+  }, [reload])
 
   const removeRow = useCallback((id) => {
     if (!id) return
+    if (!fromDb.current) { reload(); return }
     seq.current += 1
     setLoading(false)
     setAll((prev) => (prev.some((p) => p.id === id) ? prev.filter((p) => p.id !== id) : prev))
-  }, [])
+  }, [reload])
 
   // First fetch must happen *after* the Supabase session is restored — otherwise
   // an admin loading /admin straight would receive the anonymous, hidden-filtered
@@ -260,8 +274,8 @@ export function ProductsProvider({ children }) {
 
   // Memoised so a consumer only re-renders when one of these actually changes.
   const value = useMemo(
-    () => ({ products, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, error, source }),
-    [products, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, error, source],
+    () => ({ products, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, answered, error, source }),
+    [products, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, answered, error, source],
   )
 
   return (

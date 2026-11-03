@@ -181,7 +181,7 @@ function Summary({
 export default function Checkout() {
   usePageTitle('Checkout')
   const { lines, trackedItems, subtotal, prune, clear } = useCart()
-  const { reload, loading } = useProducts()
+  const { reload, loading, answered, error: catalogueError, source } = useProducts()
   const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
 
@@ -622,6 +622,30 @@ export default function Checkout() {
     }
   }
 
+  // Until the real catalogue answers, the basket can only be priced from the
+  // bundled seed — wrong prices, or "empty" for products it does not know.
+  // A shopper whose page reloaded mid-payment lands exactly here.
+  // The database could not be read at all: the seed's prices are not the
+  // shop's, so nothing is priced from them.
+  if (answered && catalogueError && source === 'seed' && !submitting) {
+    return (
+      <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
+        <h1 className="text-[34px]">We couldn't load your checkout</h1>
+        <p className="text-black/60 mt-3 text-[17px]">Please check your connection and try again. Nothing has been charged.</p>
+        <button type="button" onClick={() => reload()} className="btn-outline mt-8">Try again</button>
+      </section>
+    )
+  }
+
+  if (!answered && !submitting) {
+    return (
+      <section className="max-w-[720px] mx-auto px-4 py-24 text-center" aria-busy="true">
+        <Loader2 size={28} className="animate-spin mx-auto text-black/50" />
+        <p className="text-black/60 mt-4 text-[17px]">Loading your checkout…</p>
+      </section>
+    )
+  }
+
   if (!lines.length && !submitting && !recovery) {
     return (
       <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
@@ -767,7 +791,7 @@ export default function Checkout() {
           <button
             type="submit"
             disabled={submitting || awaitingPayment || !lines.length || !onlinePaymentReady}
-            className="mt-8 w-full h-[56px] rounded-lg bg-brand-green text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-[#A86B5C] transition disabled:opacity-60"
+            className="mt-8 w-full h-[56px] rounded-lg bg-brand-cta text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-brand-cta-hover transition disabled:opacity-60"
           >
             {submitting && <Loader2 size={18} className="animate-spin" />}
             {submitting ? 'Opening secure payment…' : `${placingTest ? 'Place test order' : 'Pay now'} · ${inr(totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0))}`}

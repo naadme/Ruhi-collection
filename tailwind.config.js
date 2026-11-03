@@ -5,7 +5,11 @@ export default {
     // Colour only — values remapped to the brand-guideline palette.
     // Token/class names are unchanged so every existing utility keeps working.
     colors: {
-      brand: { green: '#C08576', soft: '#A86B5C', yellow: '#C08576', gold: '#B7917F', red: '#A86B5C', badge: '#C08576', ink: '#4A2C23' },
+      brand: { green: '#C08576', soft: '#A86B5C', yellow: '#C08576', gold: '#B7917F', red: '#A86B5C', badge: '#C08576', ink: '#4A2C23',
+        // The buy buttons (Buy it now, the phone buy bar, Check out, Pay now):
+        // the brand rose, deepened until cream text on it reads clearly
+        // (4.8:1) — the lighter rose looked greyed out as a button.
+        cta: '#9A5E4F', 'cta-hover': '#8E5546' },
       black: '#4A2C23',   // Cocoa — primary text, icons, dark surfaces
       white: '#FDF7F3',   // warm surface — cards, sheets, text on dark
       red:    { 50: '#FDF7F3', 100: '#EFDCD2', 200: '#D9BFB3', 300: '#C08576', 400: '#C08576', 500: '#C08576', 600: '#A86B5C', 700: '#6E4A3E', 800: '#6E4A3E', 900: '#4A2C23', 950: '#4A2C23' },

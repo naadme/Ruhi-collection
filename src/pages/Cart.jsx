@@ -13,7 +13,10 @@ import { cartEvent } from '../lib/trackingItems'
 export default function Cart() {
   usePageTitle('Cart')
   const { lines, trackedItems, unavailable, prune, subtotal, setQty, remove, setOpen, empty } = useCart()
-  const { loading } = useProducts()
+  const { answered, source } = useProducts()
+  // Until the database has answered, the basket can only be priced from the
+  // bundled seed (placeholder prices, and "unavailable" for anything newer).
+  const loading = !answered || source !== 'database'
   const shipping = shippingFor()
 
   // GTM's view_cart (tracking brief, Annexure A6): once per visit to this
@@ -39,6 +42,12 @@ export default function Cart() {
   // bundled seed, which knows nothing about products added after launch — so
   // the warning (and the Remove button, which `prune` refuses to act on during
   // load) is withheld until there is a real catalogue to judge against.
+  if (!answered) return (
+    <section className="max-w-[1100px] mx-auto px-4 py-24 text-center" aria-busy="true">
+      <p className="text-black/60 text-[17px]">Loading your cart…</p>
+    </section>
+  )
+
   if (!lines.length && unavailable > 0) return (
     <section className="max-w-[1100px] mx-auto px-4 py-14">
       <h1 className="text-[40px] mb-8">Your cart</h1>
@@ -118,7 +127,7 @@ export default function Cart() {
 
           <Link
             to="/checkout"
-            className="mt-5 w-full h-[54px] rounded-lg bg-brand-green text-white text-[17px] font-semibold grid place-items-center hover:bg-[#A86B5C] transition"
+            className="mt-5 w-full h-[54px] rounded-lg bg-brand-cta text-white text-[17px] font-semibold grid place-items-center hover:bg-brand-cta-hover transition"
           >
             Proceed to checkout
           </Link>
