@@ -39,31 +39,46 @@ const POLICIES = {
     ],
   },
   'refund-policy': {
-    title: 'Refund policy',
-    intro: 'Returns, exchanges and how money comes back to you.',
+    title: 'Return & refund policy',
+    intro: 'Received something damaged, faulty or not what you ordered? Tell us within 5 days of delivery and we will put it right.',
+    // The owner's rules (5 Nov 2026): returns within 5 days of delivery, for a
+    // damaged or wrong item only, with an unboxing video. "Not as shown" is
+    // included because India's Consumer Protection (E-Commerce) Rules 2020 do
+    // not let a seller refuse goods that are not as advertised.
+    updated: '5 November 2026',
     sections: [
-      ['Returns', [
-        'Items must be in their original condition with tags attached and no signs of washing, wear, stains or perfume.'],
+      ['When you can return an item', [
+        'You can ask for a return within 5 days of delivery if the item:',
+        '• arrived damaged or faulty — for example torn, stained, or with broken stitching or a broken zip;',
+        '• is not what you ordered — a different product, colour or size; or',
+        '• is clearly different from how it is shown and described on our website.'],
       ],
-      ['How to start a return', [
-        `Email ${site.email} with your order reference, the item you want to return and the reason.`,
-        'We will reply with the return address and, where available, a pickup slot for your PIN code.',
-        'Please do not send anything back before we confirm — parcels sent to the wrong address can get lost.'],
+      ['Unboxing video — required', [
+        'To accept a return we need a video of you opening the parcel. Please record one for every order: it only takes a minute.',
+        'The video should show the sealed parcel with its shipping label, the parcel being opened in one continuous recording without cuts, and the item and the problem clearly.',
+        'Return requests without an unboxing video cannot be accepted.'],
       ],
-      ['Exchanges', [
-        'If you would rather swap for a different size or colour, tell us in the same email and we will reserve the replacement for you, subject to stock.'],
+      ['How to ask for a return', [
+        `Within 5 days of delivery, WhatsApp us on +91 ${site.phone} or email ${site.email} with your order ID (for example 01102601), a short note on what is wrong, photos of the item and your unboxing video.`,
+        'We reply within one working day.',
+        'Please do not send anything back before we confirm — we will arrange a pickup where our courier serves your PIN code, or share the return address with you.'],
+      ],
+      ['Replacement or refund', [
+        'Once your return is approved, you choose: a replacement of the same item (if it is in stock), or a full refund.',
+        'The item should come back unused and unwashed, with its tags and original packaging.'],
       ],
       ['How refunds are paid', [
-        'Once we receive and inspect the returned item, we refund the item price to the original payment method.',
-        'Shipping charges are refunded only when the whole order is returned or when we sent the wrong item.'],
+        'Refunds go back to the original payment method — the same UPI app, card, bank account or wallet you paid with — once the returned item reaches us and is checked.',
+        'Banks and UPI apps usually take 5–7 working days to show the refund in your account.'],
       ],
-      ['Items we cannot take back', [
-        'For hygiene reasons, innerwear and anything worn against the skin cannot be returned once the tag is removed.',
-        'Items that are damaged after delivery, or returned without their tags, cannot be refunded.'],
+      ['What we cannot take back', [
+        'Returns for a change of mind, or because the size or fit is not right — please check the Size chart on each product page before ordering.',
+        'Items that have been worn, washed or altered, or returned without their tags.',
+        'Requests made more than 5 days after delivery, or without an unboxing video.'],
       ],
       ['Cancellations', [
-        'You can cancel an order before it is dispatched by contacting us with your order reference.',
-        'Once an order has shipped, it needs to go through the normal return process.'],
+        'You can cancel an order before it is dispatched by contacting us with your order ID, and you get a full refund.',
+        'Once an order has shipped, it can only be returned under this policy.'],
       ],
     ],
   },
@@ -120,7 +135,7 @@ const POLICIES = {
         'Delivery estimates are guides, not guarantees. Public holidays, weather and courier disruptions can extend them.'],
       ],
       ['Returns', [
-        'Our returns and refunds are handled under the refund policy, which forms part of these terms.'],
+        'Our returns and refunds are handled under the return & refund policy, which forms part of these terms.'],
       ],
       ['Content and images', [
         'The photographs, text and branding on this site belong to Ruhi Womens Clothing or its licensors and may not be reproduced without permission.'],
@@ -161,7 +176,7 @@ export default function Policy() {
       <p className="text-[14px] text-black/50 uppercase tracking-[.18em] font-ui">Legal</p>
       <h1 className="text-[40px] mt-3">{policy.title}</h1>
       <p className="text-[19px] text-black/70 mt-3">{policy.intro}</p>
-      <p className="text-[14px] text-black/45 mt-2">Last updated {LAST_UPDATED}</p>
+      <p className="text-[14px] text-black/45 mt-2">Last updated {policy.updated || LAST_UPDATED}</p>
 
       <div className="mt-10 space-y-9">
         {policy.sections.map(([heading, paragraphs]) => (
