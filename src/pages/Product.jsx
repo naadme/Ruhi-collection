@@ -1,7 +1,7 @@
 import usePageTitle from '../hooks/usePageTitle'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, ChevronLeft, Heart, Truck } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, Heart, RotateCcw, Truck } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { useCart } from '../context/CartContext'
@@ -424,6 +424,13 @@ export default function Product() {
           <p className="mt-6 flex items-start gap-2 text-[14px] text-black/60">
             <Truck size={16} className="mt-[1px] shrink-0 text-brand-green" />
             Free shipping for all products · Delivery in 7-10 working days
+          </p>
+          <p className="mt-2 flex items-start gap-2 text-[14px] text-black/60">
+            <RotateCcw size={16} className="mt-[1px] shrink-0 text-brand-green" />
+            <span>
+              5-day returns if your item arrives damaged or wrong (unboxing video required).{' '}
+              <Link to="/policies/refund-policy" className="underline underline-offset-2 hover:text-black">Details</Link>
+            </span>
           </p>
 
           {/* The block itself is unconditional: the heading always marks where

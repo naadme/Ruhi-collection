@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { AlertTriangle, Check, Mail, PackageCheck, PhoneCall, ShieldCheck, Truck } from 'lucide-react'
+import { AlertTriangle, Check, Mail, PackageCheck, PhoneCall, ShieldCheck, Truck, Video } from 'lucide-react'
 import usePageTitle from '../hooks/usePageTitle'
 import Img from '../components/Img'
 import { loadOrder } from '../lib/orderStore'
@@ -17,6 +17,9 @@ import ReviewForm from '../components/ReviewForm'
 
 const PACKING = [PackageCheck, 'We start packing', 'Your order is checked and packed at our studio.']
 const SHIPPING = [Truck, 'It ships within 2–3 working days', 'Most orders arrive in 7-10 working days across India.']
+// Said before the parcel is opened, because a return needs the unboxing video
+// (return & refund policy).
+const UNBOXING = [Video, 'Film the unboxing', 'Record a video as you open your parcel. We need it if an item arrives damaged or wrong.']
 
 const PAYMENT_STATES = {
   paid: 'Paid',
@@ -29,11 +32,11 @@ const PAYMENT_STATES = {
 // shows where the money actually stands.
 function stepsFor(order) {
   if (order.payment_method !== 'razorpay') {
-    return [PACKING, SHIPPING, [PhoneCall, 'Delivery partner calls ahead', 'Our delivery partner will call you before arriving.']]
+    return [PACKING, SHIPPING, [PhoneCall, 'Delivery partner calls ahead', 'Our delivery partner will call you before arriving.'], UNBOXING]
   }
   return order.payment_status === 'paid'
-    ? [PACKING, SHIPPING, [ShieldCheck, 'Payment confirmed', 'Paid online — there is nothing to pay when your parcel arrives.']]
-    : [PACKING, SHIPPING, [AlertTriangle, 'Payment pending', 'We are confirming your payment. You will not be asked to pay again.']]
+    ? [PACKING, SHIPPING, [ShieldCheck, 'Payment confirmed', 'Paid online — there is nothing to pay when your parcel arrives.'], UNBOXING]
+    : [PACKING, SHIPPING, [AlertTriangle, 'Payment pending', 'We are confirming your payment. You will not be asked to pay again.'], UNBOXING]
 }
 
 export default function OrderConfirmation() {
@@ -113,7 +116,7 @@ export default function OrderConfirmation() {
         <p className="text-[15px] text-black/55 mt-2">Please keep this reference handy if you get in touch.</p>
       </div>
 
-      <div className="grid sm:grid-cols-3 gap-4 mt-10">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-10">
         {steps.map(([Icon, title, text]) => (
           <div key={title} className="border border-black/10 rounded-xl p-5">
             <Icon size={24} strokeWidth={1.6} className="text-brand-green" />

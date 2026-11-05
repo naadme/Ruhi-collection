@@ -47,7 +47,7 @@ export const site = {
   service: [
     { label: 'Contact us', to: '/contact' },
     { label: 'Shipping policy', to: '/policies/shipping-policy' },
-    { label: 'Refund policy', to: '/policies/refund-policy' },
+    { label: 'Returns & refunds', to: '/policies/refund-policy' },
     { label: 'Size guide', to: '/size-guide' },
     { label: 'Your cart', to: '/cart' },
     { label: 'Wishlist', to: '/wishlist' },
@@ -65,5 +65,6 @@ export const site = {
   faq: [
     ['How long does delivery take?', 'Most orders arrive in 7-10 working days across India.'],
     ['Which payment methods do you accept?', 'Pay securely online at checkout with UPI, cards, net banking or wallets.'],
+    ['Can I return an item?', 'Yes, within 5 days of delivery if it arrives damaged or faulty, is not what you ordered, or is not as shown on our website. An unboxing video is required, so please record one when you open your parcel. See our return & refund policy for details.'],
   ],
 }
