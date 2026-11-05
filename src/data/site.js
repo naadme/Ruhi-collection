@@ -48,6 +48,7 @@ export const site = {
     { label: 'Contact us', to: '/contact' },
     { label: 'Shipping policy', to: '/policies/shipping-policy' },
     { label: 'Refund policy', to: '/policies/refund-policy' },
+    { label: 'Size guide', to: '/size-guide' },
     { label: 'Your cart', to: '/cart' },
     { label: 'Wishlist', to: '/wishlist' },
     { label: 'Your account', to: '/account' },

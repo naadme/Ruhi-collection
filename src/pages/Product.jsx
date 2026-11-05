@@ -22,6 +22,7 @@ import { site } from '../data/site'
 import { cleanProductUrl, productWhatsAppLink } from '../lib/whatsapp'
 import WhatsAppButton from '../components/WhatsAppButton'
 import StickyBuyBar from '../components/StickyBuyBar'
+import { SizeChartLink } from '../components/SizeChart'
 
 // How long a colour and size must stay on screen before view_item goes out.
 // Opening another colour briefly renders it with the previous colour's size
@@ -377,8 +378,13 @@ export default function Product() {
             </fieldset>
           )}
 
-          <fieldset className="mt-7" id="size-options" tabIndex={-1}>
+          <fieldset className="mt-7 relative" id="size-options" tabIndex={-1}>
             <legend className="text-sm mb-2">Size {needsSize && <span className="text-red-600">*</span>}</legend>
+            {/* The chart for this category, opened from a link so the page
+                itself does not grow (src/components/SizeChart.jsx). */}
+            <div className="absolute right-0 top-0 -translate-y-0.5">
+              <SizeChartLink type={p.type} sizes={shown.sizes} selected={size} />
+            </div>
             <div className="flex flex-wrap gap-3">
               {shown.sizes.map((s) => (
                 <button
