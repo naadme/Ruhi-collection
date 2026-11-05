@@ -42,7 +42,8 @@ async function findOrder(event: Json, payment: Json | null): Promise<Json | null
     if (byReference) return byReference
   }
 
-  const paymentId = asString(payment?.payment_id)
+  // A Razorpay payment entity carries its own id as `id` (pay_…).
+  const paymentId = asString(payment?.id)
   if (paymentId) return fetchOrderByColumn('razorpay_payment_id', paymentId)
 
   // `order.paid` nests the payment entity; some events don't, so fall back to
@@ -77,7 +78,7 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
   const orderId = asString(order.id)
   if (!orderId) return
 
-  const paymentId = asString(payment?.payment_id)
+  const paymentId = asString(payment?.id)
 
   switch (eventType) {
     case 'order.paid':

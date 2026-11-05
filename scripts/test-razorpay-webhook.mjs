@@ -140,7 +140,7 @@ const event = (id, eventType, extra = {}) => JSON.stringify({
   payload: {
     payment: {
       entity: {
-        payment_id: 'pay_test_1',
+        id: 'pay_test_1',
         order_id: 'order_rzp_1',
         notes: { reference: 'RCH-TESTTEST' },
         ...extra,
@@ -183,7 +183,7 @@ const event = (id, eventType, extra = {}) => JSON.stringify({
 {
   reset()
   const raw = event('evt_4', 'payment.captured')
-  const tampered = raw.replace('"payment_id":"pay_test_1"', '"payment_id":"pay_evil_9"')
+  const tampered = raw.replace('"id":"pay_test_1"', '"id":"pay_evil_9"')
   const res = await post(tampered, { 'x-razorpay-signature': sig(raw) })
   check('tampered body (sig for other payload) → 401', res.status === 401)
   check('tampered body → zero database operations', dbCalls() === 0, `saw ${dbCalls()}`)
