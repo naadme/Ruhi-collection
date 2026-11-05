@@ -19,6 +19,7 @@ import Account from './pages/Account'
 // the first page load.
 const AdminRoot = lazy(() => import('./admin/AdminRoot'))
 const Policy = lazy(() => import('./pages/Policy'))
+const SizeGuide = lazy(() => import('./pages/SizeGuide'))
 
 const Loading = () => (
   <main className="min-h-[60vh] grid place-items-center text-black/50 font-ui" role="status">
@@ -35,7 +36,7 @@ export default function App() {
         <Route path="/admin" element={<AdminRoot />} />
         <Route element={<Layout />}>
           <Route index element={<Home />} /><Route path="shop" element={<Shop />} /><Route path="catalog" element={<Navigate to="/shop" replace />} /><Route path="collections" element={<Collections />} /><Route path="about" element={<About />} /><Route path="product/:id" element={<Product />} />
-          <Route path="contact" element={<Contact />} /><Route path="cart" element={<Cart />} /><Route path="policies/:slug" element={<Policy />} />
+          <Route path="contact" element={<Contact />} /><Route path="cart" element={<Cart />} /><Route path="policies/:slug" element={<Policy />} /><Route path="size-guide" element={<SizeGuide />} />
           <Route path="checkout" element={<Checkout />} />
           <Route path="order/:reference" element={<OrderConfirmation />} />
           <Route path="wishlist" element={<Wishlist />} />
