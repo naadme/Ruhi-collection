@@ -45,6 +45,11 @@ const state = {
   duplicateEventIds: new Set(),
   patchStatus: 200,
   unknownUrls: [],
+  // The order's payment_status as the database holds it right now.
+  orderStatus: 'pending',
+  // The Razorpay order id the database holds for it (a checkout restarted
+  // with another cart gets a new one).
+  orderRzpId: 'order_rzp_1',
 }
 
 function jsonRes(status, body) {
@@ -81,7 +86,10 @@ globalThis.fetch = async (input, init = {}) => {
       const m = url.match(/([a-z_]+)=eq\.([^&]+)/)
       const col = m ? m[1] : ''
       const val = m ? decodeURIComponent(m[2]) : ''
-      const row = col === 'razorpay_order_id' && val === ORDER.razorpay_order_id ? ORDER : null
+      const current = { ...ORDER, payment_status: state.orderStatus, razorpay_order_id: state.orderRzpId }
+      const row = (col === 'razorpay_order_id' && val === state.orderRzpId) || (col === 'reference' && val === ORDER.reference)
+        ? current
+        : null
       return jsonRes(200, row ? [row] : [])
     }
     if (method === 'PATCH') {
@@ -129,6 +137,8 @@ function reset() {
   state.duplicateEventIds.clear()
   state.patchStatus = 200
   state.unknownUrls.length = 0
+  state.orderStatus = 'pending'
+  state.orderRzpId = 'order_rzp_1'
 }
 
 const callsTo = (fragment) => state.calls.filter((c) => c.url.includes(fragment))
@@ -245,12 +255,100 @@ const event = (id, eventType, extra = {}) => JSON.stringify({
   const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
   const values = patch ? JSON.parse(patch.body) : {}
   check('payment.captured → 200 ok', res.status === 200 && body.ok === true)
-  check('payment.captured → PATCH guarded by payment_status=neq.paid',
-    !!patch && patch.url.includes('payment_status=neq.paid'), patch ? patch.url : 'no patch')
+  check('payment.captured → PATCH guarded by payment_status=in.(pending,failed)',
+    !!patch && patch.url.includes('payment_status=in.(pending,failed)'), patch ? patch.url : 'no patch')
   check('payment.captured → sets paid + paid_at + payment id',
     values.payment_status === 'paid' && typeof values.paid_at === 'string' && values.razorpay_payment_id === 'pay_test_1')
   check('payment.captured → amount/total never written by webhook',
     !('total' in values) && !('subtotal' in values))
+}
+
+// 10b. A capture redelivered after a refund ⇒ acknowledged, nothing changes:
+//      no order write and no mail-related calls.
+{
+  reset()
+  state.orderStatus = 'refunded'
+  const raw = event('evt_capture_after_refund', 'payment.captured')
+  const res = await post(raw, { 'x-razorpay-signature': sig(raw) })
+  const body = await res.json()
+  const orderCalls = callsTo('/rest/v1/orders')
+  check('capture after refund → 200 ok, so Razorpay stops redelivering', res.status === 200 && body.ok === true)
+  check('capture after refund → order not written',
+    orderCalls.filter((c) => c.method === 'PATCH').length === 0)
+  check('capture after refund → only the event ledger and the order lookup are touched',
+    state.calls.every((c) => c.url.includes('razorpay_webhook_events') || (c.url.includes('/rest/v1/orders') && c.method === 'GET')),
+    state.calls.map((c) => `${c.method} ${c.url}`).join(', '))
+}
+
+// 10c. order.paid on an order the webhook marked failed earlier ⇒ still settles.
+{
+  reset()
+  state.orderStatus = 'failed'
+  const raw = event('evt_paid_after_failed', 'payment.captured')
+  await post(raw, { 'x-razorpay-signature': sig(raw) })
+  const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
+  check('capture after an earlier failed attempt → order settles',
+    !!patch && JSON.parse(patch.body).payment_status === 'paid')
+}
+
+// 10d. Razorpay's real payload: no `id` in the body, the event id in the
+//      `x-razorpay-event-id` header. Before this was read, real events were
+//      acknowledged and never applied.
+const realEvent = (eventType, extra = {}) => {
+  const body = JSON.parse(event('unused', eventType, extra))
+  delete body.id
+  return JSON.stringify({ entity: 'event', account_id: 'acc_test', ...body, contains: ['payment'], created_at: 1793900000 })
+}
+{
+  reset()
+  const raw = realEvent('payment.captured')
+  const res = await post(raw, { 'x-razorpay-signature': sig(raw), 'x-razorpay-event-id': 'evt_header_1' })
+  const claim = callsTo('razorpay_webhook_events').find((c) => c.method === 'POST')
+  const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
+  check('real payload (header id) → claimed under the header id',
+    res.status === 200 && !!claim && JSON.parse(claim.body).event_id === 'evt_header_1')
+  check('real payload (header id) → order marked paid',
+    !!patch && JSON.parse(patch.body).payment_status === 'paid')
+}
+{
+  reset()
+  state.duplicateEventIds.add('evt_header_dup')
+  const raw = realEvent('payment.captured')
+  const res = await post(raw, { 'x-razorpay-signature': sig(raw), 'x-razorpay-event-id': 'evt_header_dup' })
+  const body = await res.json()
+  check('real payload redelivered → duplicate, no order write',
+    body.duplicate === true && callsTo('/rest/v1/orders').filter((c) => c.method === 'PATCH').length === 0)
+}
+{
+  reset()
+  const raw = realEvent('payment.captured')
+  const res = await post(raw, { 'x-razorpay-signature': sig(raw) })
+  check('no event id anywhere → acknowledged, nothing written', res.status === 200 && state.calls.length === 0)
+}
+
+// 10e. The refund arrives before the capture (delivery order is not
+//      guaranteed): the order is recorded refunded, and the capture then
+//      leaves it alone (10b).
+{
+  reset()
+  const raw = event('evt_refund_first', 'refund.processed', { captured: true, amount: 90000, amount_refunded: 90000, refund_status: 'full' })
+  await post(raw, { 'x-razorpay-signature': sig(raw) })
+  const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
+  check('refund before capture → a pending order is recorded refunded',
+    !!patch && patch.url.includes('pending') && JSON.parse(patch.body).payment_status === 'refunded')
+}
+
+// 10f. A late payment on a Razorpay order the checkout has since replaced:
+//      the order is found by its reference, but the write is pinned to the
+//      Razorpay order that was paid, so the new, different order is untouched.
+{
+  reset()
+  state.orderRzpId = 'order_rzp_2'
+  const raw = event('evt_superseded', 'payment.captured')
+  await post(raw, { 'x-razorpay-signature': sig(raw) })
+  const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
+  check('payment on a replaced Razorpay order → write pinned to that Razorpay order',
+    !!patch && patch.url.includes('razorpay_order_id=eq.order_rzp_1'), patch ? patch.url : 'no patch')
 }
 
 // 11. payment.failed ⇒ pending → failed only.
@@ -266,15 +364,50 @@ const event = (id, eventType, extra = {}) => JSON.stringify({
   check('payment.failed → sets failed only', values.payment_status === 'failed' && Object.keys(values).length === 1)
 }
 
+// 12a. Refunds that are not this order's full refund change nothing.
+for (const [label, extra] of [
+  ['an automatic refund of an attempt that was never captured', { captured: false, amount: 90000, amount_refunded: 90000, refund_status: 'full' }],
+  ['a partial refund (one item returned)', { captured: true, amount: 90000, amount_refunded: 20000, refund_status: 'partial' }],
+]) {
+  reset()
+  state.orderStatus = 'paid'
+  const raw = event(`evt_refund_${label.length}`, 'refund.processed', extra)
+  const res = await post(raw, { 'x-razorpay-signature': sig(raw) })
+  check(`${label} → acknowledged, order not written`,
+    res.status === 200 && callsTo('/rest/v1/orders').filter((c) => c.method === 'PATCH').length === 0)
+}
+
+// 12b. A full refund only applies to the payment the order holds (or none yet).
+{
+  reset()
+  state.orderStatus = 'paid'
+  const raw = event('evt_refund_pinned', 'refund.processed', { captured: true, amount: 90000, amount_refunded: 90000, refund_status: 'full' })
+  await post(raw, { 'x-razorpay-signature': sig(raw) })
+  const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
+  check('full refund → write limited to this payment and this Razorpay order',
+    !!patch && patch.url.includes('or=(razorpay_payment_id.is.null,razorpay_payment_id.eq.pay_test_1)') &&
+      patch.url.includes('razorpay_order_id=eq.order_rzp_1'), patch ? patch.url : 'no patch')
+}
+
+// 12c. payment.failed is tied to the Razorpay order too.
+{
+  reset()
+  const raw = event('evt_failed_pinned', 'payment.failed')
+  await post(raw, { 'x-razorpay-signature': sig(raw) })
+  const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
+  check('payment.failed → write pinned to its Razorpay order',
+    !!patch && patch.url.includes('razorpay_order_id=eq.order_rzp_1'))
+}
+
 // 12. refund.processed ⇒ paid → refunded only.
 {
   reset()
-  const raw = event('evt_refund', 'refund.processed')
+  const raw = event('evt_refund', 'refund.processed', { captured: true, amount: 90000, amount_refunded: 90000, refund_status: 'full' })
   const res = await post(raw, { 'x-razorpay-signature': sig(raw) })
   const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
   check('refund.processed → 200 ok', res.status === 200)
-  check('refund.processed → guarded by payment_status=eq.paid',
-    !!patch && patch.url.includes('payment_status=eq.paid') && JSON.parse(patch.body).payment_status === 'refunded')
+  check('refund.processed → recorded from any state but refunded',
+    !!patch && patch.url.includes('payment_status=in.(pending,failed,paid)') && JSON.parse(patch.body).payment_status === 'refunded')
 }
 
 // 13. Duplicate delivery (ledger answers 409) ⇒ 200 duplicate ack, no writes,

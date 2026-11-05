@@ -26,6 +26,8 @@ const PAY_NOT_CONFIGURED = 'Webhook is not configured.'
 const PAY_BAD_SIGNATURE = 'Invalid signature.'
 const PAY_NOT_RECORDED = 'Could not record this event.'
 const PAY_FAILED = 'Could not process this event.'
+// The orders a capture may turn paid: never one already paid or refunded.
+const SETTLEABLE = 'payment_status=in.(pending,failed)'
 
 /** Look the order up by whichever Razorpay id the event actually carries. */
 async function findOrder(event: Json, payment: Json | null): Promise<Json | null> {
@@ -79,10 +81,20 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
   if (!orderId) return
 
   const paymentId = asString(payment?.id)
+  // Writes only touch the order while it still belongs to the Razorpay order
+  // this payment was made on — the same rule verify-razorpay-payment uses. A
+  // checkout restarted with a different cart gets a new Razorpay order, and a
+  // late payment or refund on the old one must not settle or refund the new.
+  const rzpOrderId = asString(payment?.order_id)
+  const pinned = rzpOrderId ? `&razorpay_order_id=eq.${encodeURIComponent(rzpOrderId)}` : ''
 
   switch (eventType) {
     case 'order.paid':
     case 'payment.captured': {
+      // A refunded order stays refunded. Razorpay can redeliver an old
+      // capture event after the owner has refunded; it is acknowledged and
+      // changes nothing — no status, and no confirmation mails sent again.
+      if (order.payment_status === 'refunded') return
       const paid = {
         payment_status: 'paid',
         paid_at: new Date().toISOString(),
@@ -92,11 +104,14 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
       // Section 3). A database without that column refuses the whole write,
       // so the payment is then recorded without it.
       const method = asString(payment?.method).trim().toLowerCase()
+      // Only an order still waiting for money turns paid — the same rule
+      // verify-razorpay-payment uses — so a refund landing at the same moment
+      // as a redelivered capture cannot be overwritten.
       try {
-        await patchOrder(orderId, 'payment_status=neq.paid', method ? { ...paid, payment_type: method } : paid)
+        await patchOrder(orderId, SETTLEABLE + pinned, method ? { ...paid, payment_type: method } : paid)
       } catch (error) {
         if (!method) throw error
-        await patchOrder(orderId, 'payment_status=neq.paid', paid)
+        await patchOrder(orderId, SETTLEABLE + pinned, paid)
       }
       // Tell the customer and the owner, but never at the cost of the
       // acknowledgement: a non-2xx answer here makes Razorpay redeliver this
@@ -122,12 +137,32 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
     }
     case 'payment.failed': {
       // Never demote an order that already settled through verification.
-      await patchOrder(orderId, 'payment_status=eq.pending', { payment_status: 'failed' })
+      await patchOrder(orderId, 'payment_status=eq.pending' + pinned, { payment_status: 'failed' })
       return
     }
     case 'refund.processed':
     case 'refund.updated': {
-      await patchOrder(orderId, 'payment_status=eq.paid', { payment_status: 'refunded' })
+      // Razorpay refunds an attempt that was authorised after another attempt
+      // had already paid the order, on its own; that payment was never
+      // captured, never paid for this order, and must not mark it refunded.
+      if (payment?.captured === false) return
+      // Only a full refund makes the order "refunded". After a partial one
+      // (an item returned) the order is still mostly paid, and may still
+      // need shipping; the owner sees the partial refund in Razorpay.
+      const amount = Number(payment?.amount)
+      const refunded = Number(payment?.amount_refunded)
+      const full = payment?.refund_status === 'full' || (amount > 0 && refunded >= amount)
+      if (!full) return
+      // A full refund proves the money was taken and given back, whatever this
+      // database has heard so far: Razorpay does not promise delivery order,
+      // so the refund can arrive before the capture. It is recorded from any
+      // state but `refunded` — a capture arriving later then leaves it alone —
+      // but only for the payment the order holds, or none yet: a refund of a
+      // different attempt on the same Razorpay order is not this order's.
+      const samePayment = paymentId
+        ? `&or=(razorpay_payment_id.is.null,razorpay_payment_id.eq.${encodeURIComponent(paymentId)})`
+        : ''
+      await patchOrder(orderId, 'payment_status=in.(pending,failed,paid)' + pinned + samePayment, { payment_status: 'refunded' })
       return
     }
     default:
@@ -185,7 +220,11 @@ export async function handle(req: Request): Promise<Response> {
     return fail(400, 'Invalid payload.')
   }
 
-  const eventId = asString(event.id)
+  // Razorpay sends each event's unique id in the `x-razorpay-event-id`
+  // header; the body has none. (A body `id` is still accepted for events
+  // posted by hand when testing.) Before this was read, every real event was
+  // acknowledged below and never applied.
+  const eventId = (req.headers.get('x-razorpay-event-id') ?? '').trim() || asString(event.id)
   const eventType = asString(event.event)
   // Without an id there is nothing to deduplicate against; acknowledge it so
   // Razorpay does not retry forever.
