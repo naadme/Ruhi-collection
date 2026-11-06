@@ -1,18 +1,21 @@
 // Reading and writing customer reviews (supabase/migrations/
-// 20261021170000_product_reviews.sql).
+// 20261021170000_product_reviews.sql and 20261106120000_open_reviews.sql).
 //
 // The pure rules live beside this file in `reviews.js`; this module only
 // speaks to the database, and it never carries a permission decision of its
-// own — every check is in the table's policies or in `submit_review()`:
+// own — every check is in the table's policies or in the two functions:
 //
-//   * the storefront may read `status = 'approved'` and nothing else;
+//   * the storefront may read `status = 'approved'` and nothing else, and a
+//     signed-out visitor only the columns the product page shows;
 //   * a customer may read her own review wherever it stands;
-//   * only an admin may move a review between states;
-//   * NOBODY inserts from here — `submit_review()` is the only way a row is
-//     ever born, and it decides which purchase, which product and who.
+//   * only an admin may move a review between states, mark it "Verified
+//     purchase", or read a website reviewer's private email and mobile;
+//   * NOBODY inserts from here — `submit_review()` (a signed-in purchase) and
+//     `submit_public_review()` (the website form) are the only ways a row is
+//     ever born, and both land it as pending and unverified.
 
 import { supabase } from './supabase'
-import { normalizeReview, reviewProblem } from './reviews'
+import { contactProblem, normalizeReview, reviewProblem } from './reviews'
 
 /**
  * The published reviews of a design, newest first.
@@ -30,7 +33,10 @@ export async function fetchPublishedReviews(productIds, { strict = false } = {})
     if (!ids.length) return []
     const { data, error } = await supabase
       .from('product_reviews')
-      .select('id, product_id, rating, body, customer_name, created_at, order_item_id')
+      // Exactly the columns the public may read (20261106120000_open_reviews.sql
+      // grants `anon` these and no others). `verified` is the owner's own
+      // "Verified purchase" decision.
+      .select('id, product_id, rating, body, customer_name, created_at, verified')
       .in('product_id', ids)
       .eq('status', 'approved')
       .order('created_at', { ascending: false })
@@ -89,6 +95,43 @@ export async function submitReview(draft) {
   return data
 }
 
+/**
+ * Send a review from the product page's open form — anyone may, signed in or
+ * not.
+ *
+ * `productId` is the colour row on screen. The email, mobile and order number
+ * go to the shop's private table, never onto the review. `website` is the
+ * hidden field a person never fills in. The local rules are re-stated first so
+ * an incomplete form is refused without a round trip, in the server's words.
+ */
+export async function submitPublicReview(productId, draft) {
+  const clean = normalizeReview(draft)
+  const problem = reviewProblem(clean) || contactProblem(draft)
+  if (problem) throw new Error(problem)
+  if (!productId) throw new Error('This product is not available for reviews.')
+
+  const { data, error } = await supabase.rpc('submit_public_review', {
+    p_product_id: productId,
+    p_rating: clean.rating,
+    p_title: clean.title || null,
+    p_name: clean.name,
+    p_body: clean.body,
+    p_email: String(draft?.email ?? '').trim() || null,
+    p_phone: String(draft?.phone ?? '').trim() || null,
+    p_order_ref: String(draft?.orderRef ?? '').trim() || null,
+    p_website: String(draft?.website ?? ''),
+  })
+  // The function's own refusals (`raise exception`, code P0001) are already
+  // written for the shopper. Anything else is the connection or the session
+  // failing, whose raw text ("TypeError: Load failed") means nothing to her.
+  if (error) {
+    throw new Error(error.code === 'P0001' && error.message
+      ? error.message
+      : 'Your review could not be sent. Please check your connection and try again.')
+  }
+  return data
+}
+
 /** Correct a published or pending review: headline, rating, name and body.
  *  Only an admin may reach this row (the table's update policy), and the
  *  review stays in whatever state it was in — editing does not publish it.
@@ -139,7 +182,7 @@ function readableSubmitError(error) {
 export async function fetchAllReviews() {
   const { data, error } = await supabase
     .from('product_reviews')
-    .select('id, product_id, order_item_id, rating, body, customer_name, status, created_at, decided_at')
+    .select('id, product_id, order_item_id, user_id, source, title, rating, body, customer_name, status, verified, verified_at, created_at, decided_at')
     .order('created_at', { ascending: false })
     .limit(500)
   if (error) throw new Error(error.message || 'The reviews could not be loaded.')
@@ -165,6 +208,61 @@ export async function setReviewStatus(review, status) {
   if (error) throw new Error(error.message || 'The change could not be saved.')
   if (data?.status !== status) {
     throw new Error('The change was not saved — only an admin account can moderate reviews.')
+  }
+  return data
+}
+
+/**
+ * The private email, mobile and order number given with website reviews, by
+ * review id. Admin-only: the table's policy hands anyone else nothing.
+ */
+export async function fetchReviewContacts(reviewIds) {
+  const ids = (Array.isArray(reviewIds) ? reviewIds : []).filter(Boolean)
+  if (!ids.length) return new Map()
+  const { data, error } = await supabase
+    .from('product_review_contacts')
+    .select('review_id, email, phone, order_ref')
+    .in('review_id', ids)
+  if (error) throw new Error(error.message || 'The reviewers\' contact details could not be loaded.')
+  return new Map((data || []).map((c) => [c.review_id, c]))
+}
+
+/**
+ * The shop's orders, with just what is needed to match a reviewer to a
+ * purchase. Read through the orders' own admin policy — nothing new is opened
+ * for this.
+ */
+export async function fetchReviewOrders() {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, reference, previous_reference, user_id, email, phone, status, payment_status, payment_method, is_test, created_at, order_items(id, product_id)')
+    .order('created_at', { ascending: false })
+    .limit(1000)
+  if (error) throw new Error(error.message || 'The orders could not be checked.')
+  return Array.isArray(data) ? data : []
+}
+
+/**
+ * Mark a review "Verified purchase", or take the label off. Separate from
+ * approve/reject: a review can be published without the label, and the label
+ * means nothing until the review is published. Admin-only through the same
+ * update policy, and who did it is recorded beside it.
+ */
+export async function setReviewVerified(review, verified) {
+  if (!review?.id) throw new Error('That review has gone missing — reload and try again.')
+  const { data: session } = await supabase.auth.getSession()
+  const changes = verified
+    ? { verified: true, verified_at: new Date().toISOString(), verified_by: session?.session?.user?.id || null }
+    : { verified: false, verified_at: null, verified_by: null }
+  const { data, error } = await supabase
+    .from('product_reviews')
+    .update(changes)
+    .eq('id', review.id)
+    .select('id, verified, verified_at')
+    .single()
+  if (error) throw new Error(error.message || 'The change could not be saved.')
+  if (Boolean(data?.verified) !== Boolean(verified)) {
+    throw new Error('The change was not saved — only an admin account can verify reviews.')
   }
   return data
 }

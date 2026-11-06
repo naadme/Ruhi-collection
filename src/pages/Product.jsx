@@ -452,9 +452,9 @@ export default function Product() {
             )}
           </div>
 
-          {/* Approved customer reviews, and the write box for a purchase of
-              this design that has not been reviewed yet. Everything about who
-              may write and what gets shown is decided in the database. */}
+          {/* Approved customer reviews, and an open "Write a review" form.
+              What gets published, and which reviews say "Verified purchase",
+              is the owner's decision in the admin panel. */}
           <ReviewsSection product={p} reviews={reviews} />
         </div>
       </div>

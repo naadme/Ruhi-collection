@@ -241,15 +241,19 @@ test('the product page reads only published reviews, once, and shows them', () =
   assert.ok(!/dangerouslySetInnerHTML/.test(page), 'no review is ever markup')
 })
 
-test('the write box is offered only where there is a purchase to write about', () => {
+test('anyone may open the review form on the product page', () => {
+  // Since 20261106120000_open_reviews.sql the product page no longer asks
+  // whose orders are reviewable: the button is there for every visitor, and
+  // the review goes to the shop as pending through submit_public_review().
   const section = read('src/components/ReviewsSection.jsx')
-  assert.match(section, /fetchReviewableItems\(ids\)/, 'the customer’s own unreviewed purchases')
-  assert.match(section, /canWrite = itemsLoaded && items\.length > 0/,
-    'no purchase, no box — for a signed-out visitor or a stranger alike')
+  assert.doesNotMatch(section, /fetchReviewableItems|useAuth/, 'no purchase or sign-in check gates the button')
+  assert.match(section, /!writing && !sent && productId \?/, 'the button needs only a product to review')
+  assert.match(section, /Write a review/)
+  assert.match(section, /submitPublicReview\(productId, draft\)/, 'the open form posts through the public function')
   assert.match(section, /whitespace-pre-line/, 'her paragraphs survive')
   assert.ok(!/dangerouslySetInnerHTML/.test(section), 'and are never interpreted as markup')
-  assert.match(section, /Verified purchase/, 'the badge comes off the server-written order line')
-  assert.match(section, /waiting for approval|has been approved/i, 'she is told where it goes next')
+  assert.match(section, /Verified purchase/, 'the badge still exists')
+  assert.match(section, /Your review will appear once the shop has checked it/, 'she is told where it goes next')
 })
 
 test('only an owner may reach the moderation panel, and it offers the three decisions', () => {
@@ -274,8 +278,8 @@ test('a customer can see her own reviews, wherever they stand', () => {
   assert.match(account, /from\('product_reviews'\)/, 'her account reads the table')
   assert.match(account, /\.order\('created_at', \{ ascending: false \}\)/, 'newest first')
   assert.match(account, /customerStatusCopy\(r\.status\)/, 'in her own words, not the moderator’s')
-  // No filter by user id: the table's policy already hands this query only her
-  // rows, and restating it here would invite a page that quietly shows
-  // somebody else's review if the policy ever moved.
-  assert.ok(!/eq\('user_id'/.test(account), 'the page trusts the policy rather than filtering itself')
+  // Filtered to her own account. The policies are OR'd, and "published
+  // reviews are public" applies to signed-in customers too, so without this
+  // filter every approved review would be listed under "Your reviews".
+  assert.match(account, /\.eq\('user_id', userId\)/, 'only her own rows, not every published review')
 })
