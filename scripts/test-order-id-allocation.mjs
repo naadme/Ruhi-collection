@@ -105,7 +105,7 @@ const clean = async () => {
  *  own: the shop allows one order per email in a short window (a
  *  double-submit guard that has nothing to do with the order ID), so two
  *  test orders may not share one. */
-const payload = (n, payment = 'cod') => ({
+const payload = (n, payment = 'razorpay') => ({
   items: [{ product_id: FIXTURE, size: 'M', qty: 1 }],
   email: mail(n),
   full_name: `Order ID Tester ${n}`,
