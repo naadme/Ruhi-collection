@@ -1,29 +1,28 @@
 // What customers said about this design — the public half of
-// `product_reviews`, plus the write box for a customer who has actually got
-// the piece in her hands.
+// `product_reviews`, plus an open "Write a review" form for anyone.
 //
-// Two rules decide everything it shows:
+// Three rules decide everything it shows:
 //
 //   * only `status = 'approved'` reviews are ever rendered — the database
 //     hands this page nothing else, so an unpublished review cannot leak here
 //     by any route;
-//   * the write box appears only when `reviewable_items()` names a purchase
-//     of THIS design that has not been reviewed yet. A signed-out visitor, a
-//     visitor who has not bought it, and a customer who has already had her
-//     say all see the same thing: the reviews, and no box.
+//   * anyone may write one, signed in or not. It goes to the shop as pending
+//     through `submit_public_review()` and appears only once the owner has
+//     approved it;
+//   * "Verified purchase" is shown only where the owner has marked the review
+//     verified (`verified`), after checking it against her orders. Nothing the
+//     reviewer types can set it.
 //
-// The form never asks which product it is reviewing. The server works that
-// out from the order line it is given, so the page cannot be talked into
-// reviewing something it did not sell.
+// The email, mobile and order number the form asks for go to the shop's
+// private table, never onto the review, and are never shown on the site.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Check, Loader2, Plus, Star } from 'lucide-react'
-import { useAuth } from '../context/AuthContext'
 import { formatShopDate } from '../lib/shopTime'
 import {
-  REVIEW_LIMITS, normalizeReview, reviewProblem, reviewSummary, starLabel,
+  CONTACT_LIMITS, REVIEW_LIMITS, contactProblem, reviewProblem, reviewSummary, starLabel,
 } from '../lib/reviews'
-import { fetchReviewableItems, submitReview } from '../lib/reviewStore'
+import { submitPublicReview } from '../lib/reviewStore'
 
 /** The five stars, as buttons a keyboard and a screen reader both understand. */
 function StarPicker({ value, onChange, busy }) {
@@ -52,53 +51,37 @@ function StarPicker({ value, onChange, busy }) {
   )
 }
 
-export default function ReviewsSection({ product, reviews = [] }) {
-  const { user } = useAuth()
-  const designId = product?.id || ''
-  // Every colour row of the design: reviews belong to the row that was bought,
-  // and a shopper reads them all as this one product.
-  const ids = useMemo(() => {
-    const rows = Array.isArray(product?.colors) && product.colors.length ? product.colors : [product]
-    return [...new Set(rows.map((r) => r?.id).filter(Boolean))]
-  }, [product])
+const EMPTY_DRAFT = { rating: 0, title: '', name: '', body: '', email: '', phone: '', orderRef: '', website: '' }
 
-  const [items, setItems] = useState([])
-  const [itemsLoaded, setItemsLoaded] = useState(false)
-  const [draft, setDraft] = useState({ orderItemId: '', rating: 0, title: '', name: '', body: '' })
+const fieldCls =
+  'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 disabled:bg-neutral-100'
+const labelCls = 'block text-[13px] font-semibold text-black/60 mb-1.5'
+
+export default function ReviewsSection({ product, reviews = [] }) {
+  // The review belongs to the colour row on screen; the list above it reads
+  // every colour of the design.
+  const productId = product?.id || ''
+
+  const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
   const [writing, setWriting] = useState(false)
-  const formRef = useRef(null)
 
-  const loadItems = useCallback(async () => {
-    setItemsLoaded(false)
-    if (!user || !ids.length) {
-      setItems([])
-      setItemsLoaded(true)
-      return
-    }
-    try {
-      const rows = await fetchReviewableItems(ids)
-      setItems(rows)
-      setDraft((d) => ({ ...d, orderItemId: d.orderItemId || rows[0]?.order_item_id || '' }))
-    } catch (e) {
-      // A failure here only withholds the write box; the reviews above are
-      // read separately and must still be shown.
-      setItems([])
-    } finally {
-      setItemsLoaded(true)
-    }
-  }, [user, ids])
-
+  // The product route keeps this section mounted when she opens a related
+  // product or another colour, so the form starts over whenever the product
+  // does: a half-written review must never be sent against the next product,
+  // and a thank-you for the last one must not hide the button on this one.
   useEffect(() => {
     setSent(false)
-    loadItems()
-  }, [loadItems])
+    setWriting(false)
+    setError('')
+    setDraft(EMPTY_DRAFT)
+  }, [productId])
 
   const summary = useMemo(() => reviewSummary(reviews), [reviews])
-  const problem = reviewProblem(draft)
-  const canWrite = itemsLoaded && items.length > 0
+  const problem = reviewProblem(draft) || contactProblem(draft)
+  const set = (key) => (e) => setDraft((d) => ({ ...d, [key]: e.target.value }))
 
   const send = async (e) => {
     e?.preventDefault?.()
@@ -106,17 +89,12 @@ export default function ReviewsSection({ product, reviews = [] }) {
     if (problem) return setError(problem)
     setBusy(true)
     try {
-      await submitReview(draft)
+      await submitPublicReview(productId, draft)
       setSent(true)
       setWriting(false)
-      // The purchase has been used, so it must vanish from the list: another
-      // review of the same parcel is impossible anyway, and the form says so
-      // instead of letting her try and be refused.
-      setItems((rows) => rows.filter((r) => r.order_item_id !== draft.orderItemId))
-      setDraft({ orderItemId: '', rating: 0, title: '', name: draft.name, body: '' })
+      setDraft(EMPTY_DRAFT)
     } catch (err) {
       setError(err?.message || 'Your review could not be sent. Please try again.')
-      if (/already reviewed/i.test(String(err?.message || ''))) loadItems()
     } finally {
       setBusy(false)
     }
@@ -188,9 +166,10 @@ export default function ReviewsSection({ product, reviews = [] }) {
                 {/* The shop's own calendar: the review was written against an
                     order whose date the same clock names. */}
                 <span className="text-[13px] text-black/45">{formatShopDate(r.created_at)}</span>
-                {/* Only true where a purchase really stands behind the words —
-                    the column is written by the server from the order line. */}
-                {r.order_item_id && (
+                {/* Only where the owner has checked the order herself and
+                    marked it so — the column is set from the admin panel and
+                    nowhere else. */}
+                {r.verified === true && (
                   <span className="text-[11px] font-semibold uppercase tracking-wide border border-green-300 bg-green-50 text-green-800 rounded-full px-2 py-[1px]">
                     Verified purchase
                   </span>
@@ -204,22 +183,20 @@ export default function ReviewsSection({ product, reviews = [] }) {
         </ul>
       )}
 
-      {/* The write box is offered only where there is a purchase to write
-          about, and never to someone who has already reviewed it. A clearly
-          labelled button opens it, so a shopper who is not ready to write is
-          not faced with an empty form. */}
-      {canWrite && !writing && !sent ? (
+      {/* Open to everyone. A clearly labelled button opens the form, so a
+          shopper who is not ready to write is not faced with an empty form. */}
+      {!writing && !sent && productId ? (
         <button
           type="button"
-          onClick={() => setWriting(true)}
+          onClick={() => { setError(''); setWriting(true) }}
           className="mt-8 inline-flex items-center gap-2 border border-black/40 px-5 h-[46px] rounded-lg text-[15px] font-semibold hover:bg-black hover:text-white transition"
         >
-          <Plus size={16} /> Write a Review
+          <Plus size={16} /> Write a review
         </button>
       ) : null}
 
       {writing && !sent && (
-        <div ref={formRef} className="mt-6 bg-neutral-50 border border-black/10 rounded-xl p-5">
+        <div className="mt-6 bg-neutral-50 border border-black/10 rounded-xl p-4 sm:p-5">
           <button
             type="button"
             onClick={() => setWriting(false)}
@@ -229,75 +206,107 @@ export default function ReviewsSection({ product, reviews = [] }) {
           </button>
           <h3 className="text-[16px] font-bold">Write a review</h3>
 
-          <form className="mt-4 space-y-4" onSubmit={send} noValidate>
-            <label className="block">
-              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">
-                Which of your orders is this about?
-              </span>
-              <select
-                value={draft.orderItemId}
-                onChange={(e) => setDraft((d) => ({ ...d, orderItemId: e.target.value }))}
-                disabled={busy}
-                className="w-full max-w-[440px] border border-black/30 rounded-lg px-3 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 disabled:bg-neutral-100"
-              >
-                {items.map((it) => (
-                  <option key={it.order_item_id} value={it.order_item_id}>
-                    {it.title}{it.size ? ` · Size ${it.size}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-
+          <form className="mt-4 space-y-4 max-w-[440px]" onSubmit={send} noValidate>
             <div>
-              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Your rating</span>
+              <span className={labelCls}>Your rating</span>
               <StarPicker value={draft.rating} busy={busy} onChange={(n) => setDraft((d) => ({ ...d, rating: n }))} />
             </div>
 
-            <label className="block max-w-[440px]">
-              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Review title (optional)</span>
+            <label className="block">
+              <span className={labelCls}>Review title (optional)</span>
               <input
                 type="text"
                 value={draft.title}
                 maxLength={REVIEW_LIMITS.MAX_TITLE}
-                onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                onChange={set('title')}
                 disabled={busy}
                 placeholder="e.g. Loved the fit"
-                className="w-full border border-black/30 rounded-lg px-4 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 disabled:bg-neutral-100"
-              />
-              <span className="block text-[12px] text-black/45 mt-1">
-                A short headline to show above your review.
-              </span>
-            </label>
-
-            <label className="block max-w-[440px]">
-              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Name to show</span>
-              <input
-                type="text"
-                value={draft.name}
-                maxLength={REVIEW_LIMITS.MAX_NAME}
-                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                disabled={busy}
-                placeholder="e.g. Priya S."
-                className="w-full border border-black/30 rounded-lg px-4 h-[44px] text-[15px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 disabled:bg-neutral-100"
+                className={fieldCls}
               />
             </label>
 
             <label className="block">
-              <span className="block text-[13px] font-semibold text-black/60 mb-1.5">Your review</span>
+              <span className={labelCls}>Your name (shown with your review)</span>
+              <input
+                type="text"
+                value={draft.name}
+                maxLength={REVIEW_LIMITS.MAX_NAME}
+                onChange={set('name')}
+                disabled={busy}
+                autoComplete="name"
+                placeholder="e.g. Priya S."
+                className={fieldCls}
+              />
+            </label>
+
+            <label className="block">
+              <span className={labelCls}>Your review</span>
               <textarea
                 value={draft.body}
                 rows={4}
                 maxLength={REVIEW_LIMITS.MAX_BODY}
-                onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
+                onChange={set('body')}
                 disabled={busy}
                 placeholder="How does it fit, how does it wear, how did it wash?"
                 className="w-full border border-black/30 rounded-lg px-4 py-3 text-[15px] leading-relaxed bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35 resize-y disabled:bg-neutral-100"
               />
               <span className="block text-[12px] text-black/45 mt-1">
-                {draft.body.length} / {REVIEW_LIMITS.MAX_BODY} — plain text, and your own line
-                breaks are kept.
+                {draft.body.length} / {REVIEW_LIMITS.MAX_BODY}
               </span>
             </label>
+
+            {/* The shop checks the order with these. They are kept apart from
+                the review and never appear on the site. */}
+            <fieldset className="space-y-3 border-t border-black/10 pt-4">
+              <legend className="text-[13px] font-semibold text-black/60">Email or mobile number</legend>
+              <p className="text-[12px] text-black/50 -mt-1">
+                Private: only used by the shop to check your order, never shown.
+              </p>
+              <input
+                type="email"
+                value={draft.email}
+                maxLength={CONTACT_LIMITS.MAX_EMAIL}
+                onChange={set('email')}
+                disabled={busy}
+                autoComplete="email"
+                aria-label="Email (private)"
+                placeholder="Email"
+                className={fieldCls}
+              />
+              <input
+                type="tel"
+                inputMode="tel"
+                value={draft.phone}
+                onChange={set('phone')}
+                disabled={busy}
+                autoComplete="tel"
+                aria-label="Mobile number (private)"
+                placeholder="Mobile number"
+                className={fieldCls}
+              />
+              <label className="block">
+                <span className={labelCls}>Order number (optional, private)</span>
+                <input
+                  type="text"
+                  value={draft.orderRef}
+                  maxLength={CONTACT_LIMITS.MAX_ORDER_REF}
+                  onChange={set('orderRef')}
+                  disabled={busy}
+                  placeholder="e.g. 01102601"
+                  className={fieldCls}
+                />
+              </label>
+            </fieldset>
+
+            {/* A field no person sees or reaches with the keyboard. A bot that
+                fills in every box fills this one too, and the server then
+                quietly stores nothing. */}
+            <div aria-hidden="true" className="absolute -left-[10000px] w-px h-px overflow-hidden">
+              <label>
+                Website
+                <input type="text" name="website" tabIndex={-1} autoComplete="off" value={draft.website} onChange={set('website')} />
+              </label>
+            </div>
 
             {error && (
               <p className="text-[14px] text-red-700 flex items-start gap-1.5" role="alert">
@@ -306,7 +315,13 @@ export default function ReviewsSection({ product, reviews = [] }) {
               </p>
             )}
 
-            <button type="submit" disabled={busy || Boolean(problem)} className="btn inline-flex items-center gap-2 disabled:opacity-50">
+            {/* Not greyed out while something is missing: pressing it says
+                what is missing, which a disabled button cannot. */}
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full sm:w-auto h-[48px] px-6 rounded-lg bg-brand-cta text-white text-[15px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-brand-cta-hover transition disabled:opacity-50"
+            >
               {busy && <Loader2 size={16} className="animate-spin" />}
               {busy ? 'Sending…' : 'Send my review'}
             </button>
@@ -318,12 +333,9 @@ export default function ReviewsSection({ product, reviews = [] }) {
       )}
 
       {sent && (
-        <p className="mt-8 text-[15px] text-black/70 flex items-start gap-2">
+        <p className="mt-8 text-[15px] text-black/70 flex items-start gap-2" role="status">
           <Check size={18} className="text-green-700 mt-[2px] shrink-0" />
-          <span>
-            Thank you — your review is with the shop. It will appear on this page as soon as it
-            has been approved, and you will find it under your account until then.
-          </span>
+          <span>Thank you. Your review will appear once the shop has checked it.</span>
         </p>
       )}
     </section>

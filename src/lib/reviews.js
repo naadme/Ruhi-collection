@@ -62,6 +62,104 @@ export function normalizeReview(draft = {}) {
 }
 
 /**
+ * The website form's private details: an email or an Indian mobile number so
+ * the shop can check the order, and an optional order number. The same rules,
+ * in the same words, as `submit_public_review()`
+ * (supabase/migrations/20261106120000_open_reviews.sql).
+ */
+export const CONTACT_LIMITS = {
+  MAX_EMAIL: 200,
+  MAX_ORDER_REF: 40,
+}
+
+/** A mobile number as its 10 digits: +91 98765 43210, 098765 43210 and
+ *  9876543210 are the same number. Anything else is returned as typed digits,
+ *  for `contactProblem()` to refuse. */
+export function mobileDigits(value) {
+  const digits = String(value ?? '').replace(/\D/g, '')
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2)
+  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1)
+  return digits
+}
+
+/** What is wrong with the private details, or '' when they are enough. */
+export function contactProblem(draft = {}) {
+  const email = String(draft.email ?? '').trim().toLowerCase()
+  const phone = mobileDigits(draft.phone)
+  const orderRef = String(draft.orderRef ?? '').trim()
+
+  if (!email && !phone) return 'Give your email or mobile number so the shop can check your order.'
+  if (email && (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > CONTACT_LIMITS.MAX_EMAIL)) {
+    return 'That email address does not look right.'
+  }
+  if (phone && !/^[6-9]\d{9}$/.test(phone)) return 'Enter a 10-digit Indian mobile number.'
+  if (orderRef.length > CONTACT_LIMITS.MAX_ORDER_REF) {
+    return `The order number can be up to ${CONTACT_LIMITS.MAX_ORDER_REF} characters.`
+  }
+  return ''
+}
+
+/** An order number as a customer might type it ("# 0110 2601") reduced to
+ *  the way the shop stores it, so the two can be compared. */
+export const orderRefKey = (value) => String(value ?? '').toUpperCase().replace(/[^A-Z0-9-]/g, '')
+
+/**
+ * The orders that could stand behind a review — the evidence the owner reads
+ * before she marks it "Verified purchase". It decides nothing: the label is
+ * hers to set.
+ *
+ *   * `purchases` — real purchases (`isPaid`) whose email, mobile or account
+ *     is the reviewer's, or that hold the very order line an account review
+ *     was written against. Each says why it matched and whether it contains
+ *     this design (`sameDesign`, any colour).
+ *   * `orderRef` — the order whose number the reviewer typed, paid or not, or
+ *     null when it matches none. `matchedBy` says whether that order's own
+ *     email or mobile is the one the reviewer gave (empty when neither is).
+ *
+ * A typed email, mobile or order number proves nothing on its own: order
+ * numbers follow the date (DDMMYYNN) and are easy to guess, and anyone can
+ * type a customer's email. A match is a reason to check with the customer,
+ * not a confirmation. Test orders are never evidence.
+ */
+export function reviewEvidence(review, contact, orders, { isPaid = () => false, sameDesign = () => false } = {}) {
+  const list = (Array.isArray(orders) ? orders : []).filter((o) => o && !o.is_test)
+  const email = String(contact?.email ?? '').trim().toLowerCase()
+  const phone = mobileDigits(contact?.phone)
+  const ref = orderRefKey(contact?.order_ref)
+
+  // Which of the reviewer's typed details this order's own details repeat.
+  const sameContact = (order) => [
+    ...(email && String(order.email ?? '').trim().toLowerCase() === email ? ['email'] : []),
+    ...(phone && mobileDigits(order.phone) === phone ? ['mobile'] : []),
+  ]
+
+  const purchases = []
+  for (const order of list) {
+    const lines = Array.isArray(order.order_items) ? order.order_items : []
+    const reasons = []
+    if (review?.order_item_id && lines.some((l) => l?.id === review.order_item_id)) reasons.push('the order line it was written for')
+    reasons.push(...sameContact(order))
+    if (review?.user_id && order.user_id === review.user_id) reasons.push('account')
+    if (!reasons.length || !isPaid(order)) continue
+    purchases.push({ order, reasons, hasDesign: lines.some((l) => sameDesign(l?.product_id)) })
+  }
+
+  const refOrder = ref
+    ? list.find((o) => orderRefKey(o.reference) === ref || (o.previous_reference && orderRefKey(o.previous_reference) === ref))
+    : null
+  const orderRef = refOrder
+    ? {
+        order: refOrder,
+        paid: Boolean(isPaid(refOrder)),
+        hasDesign: (refOrder.order_items || []).some((l) => sameDesign(l?.product_id)),
+        matchedBy: sameContact(refOrder),
+      }
+    : null
+
+  return { purchases, orderRef }
+}
+
+/**
  * The headline a page shows above a design's reviews: how many, and what they
  * average out to.
  *
@@ -106,6 +204,9 @@ export const MODERATION_FILTERS = [
   ['approved', 'Published'],
   ['rejected', 'Rejected'],
 ]
+
+/** Where a review was written, in the panel's words. */
+export const sourceCopy = (source) => (source === 'public' ? 'Website form' : 'Customer account')
 
 /** One sentence per state, used as the badge in the moderation list. */
 export const moderationCopy = (status) => ({

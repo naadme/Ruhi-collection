@@ -103,21 +103,31 @@ function OrderHistory() {
 
 /* -------------------------------------------------------------------------
    The customer's own reviews, wherever they stand.
-   The table's policy hands this query only HER rows — no filter is applied
-   here, and none is needed: someone else's review cannot arrive on this page
-   by any route. Nothing is shown at all while there are none, so an account
-   with no reviews looks exactly as it did before the feature existed.
+   Filtered to her account here, on purpose. The table's policies are OR'd:
+   besides "a customer reads her own review", every APPROVED review is public
+   (that is how the product page reads them), and an admin reads all of them.
+   Without this filter every signed-in customer would see everyone's
+   published reviews listed as her own. Nothing is shown at all while there
+   are none, so an account with no reviews looks exactly as it did before the
+   feature existed.
    ---------------------------------------------------------------------- */
 
 function YourReviews() {
   const { getRow } = useProducts()
+  const { user } = useAuth()
+  const userId = user?.id || ''
   const [state, setState] = useState({ loading: true, reviews: [] })
 
   useEffect(() => {
     let alive = true
+    if (!userId) {
+      setState({ loading: false, reviews: [] })
+      return () => { alive = false }
+    }
     supabase
       .from('product_reviews')
       .select('id, product_id, rating, body, status, created_at')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         if (!alive) return
@@ -126,7 +136,7 @@ function YourReviews() {
         setState({ loading: false, reviews: data || [] })
       })
     return () => { alive = false }
-  }, [])
+  }, [userId])
 
   if (state.loading || !state.reviews.length) return null
 

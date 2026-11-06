@@ -13,17 +13,28 @@
 //                    to the queue — a retraction is as possible as a
 //                    publication, which is the point of moderation.
 //
+// Separately from those three, the owner decides which reviews carry the
+// "Verified purchase" label on the product page (20261106120000_open_reviews.sql).
+// Anyone may write a review from the website, so the panel shows her what she
+// needs to check it: where it came from, the reviewer's PRIVATE email, mobile
+// and order number, and the paid orders those details match. The panel only
+// shows the evidence — the label is set by her button and nothing else.
+//
 // Every button writes the `status` column through the table's admin-only
 // policy. The panel does not decide who may press it (the policy does), and
 // it does not cache a verdict: each row is re-read from the database, so two
 // admins cannot approve over each other without seeing it.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Ban, Check, Edit2 as Edit, Loader2, RefreshCw, Search, Star, Trash2, X } from 'lucide-react'
-import { fetchAllReviews, deleteReview, setReviewStatus, updateReview } from '../lib/reviewStore'
+import { AlertTriangle, BadgeCheck, Ban, Check, Edit2 as Edit, EyeOff, Loader2, RefreshCw, Search, Star, Trash2, X } from 'lucide-react'
+import {
+  fetchAllReviews, fetchReviewContacts, fetchReviewOrders, deleteReview, setReviewStatus, setReviewVerified, updateReview,
+} from '../lib/reviewStore'
 import { homepageReviews, isSiteReview } from '../lib/siteReviews'
-import { MODERATION_FILTERS, moderationCopy, starLabel } from '../lib/reviews'
+import { MODERATION_FILTERS, moderationCopy, reviewEvidence, sourceCopy, starLabel } from '../lib/reviews'
 import { formatShopDate } from '../lib/shopTime'
+import { isPurchase } from '../lib/tracking'
+import { designGroupId } from '../lib/trackingItems'
 
 const inputCls =
   'w-full border border-black/30 rounded-lg px-4 h-[44px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
@@ -185,8 +196,105 @@ function Save() {
   )
 }
 
+/** "Matched by email and mobile" — the reasons an order was found. */
+const joinReasons = (reasons) =>
+  reasons.length > 1 ? `${reasons.slice(0, -1).join(', ')} and ${reasons[reasons.length - 1]}` : reasons[0] || ''
+
+/**
+ * What the owner checks before she marks a review "Verified purchase": where
+ * it came from, the reviewer's private details, and the orders they match.
+ * It only informs; the label is set by her own button.
+ */
+function Evidence({ review, contact, orders, evidenceError, sameDesign }) {
+  const { purchases, orderRef } = reviewEvidence(review, contact, orders, { isPaid: isPurchase, sameDesign })
+  const typedRef = String(contact?.order_ref || '').trim()
+  return (
+    <div className="mt-3 border border-black/10 bg-neutral-50 rounded-lg px-3 py-2.5 text-[13px] text-black/70 space-y-1.5">
+      <p>
+        <span className="font-semibold text-black/80">{sourceCopy(review.source)}</span>
+        {review.source === 'public'
+          ? ' — written on the product page, by anyone.'
+          : ' — written from a signed-in account, against one of its orders.'}
+      </p>
+
+      {contact ? (
+        <p>
+          <span className="font-semibold text-black/80">Private details</span>{' '}
+          <span className="text-black/45">(given by the reviewer, not confirmed; never shown on the site)</span>:{' '}
+          {[
+            contact.email && `email ${contact.email}`,
+            contact.phone && `mobile ${contact.phone}`,
+            typedRef && `order number ${typedRef}`,
+          ].filter(Boolean).join(' · ')}
+        </p>
+      ) : review.source === 'public' ? (
+        <p className="text-black/45">No private details were saved with this review.</p>
+      ) : null}
+
+      {evidenceError ? (
+        <p className="text-amber-800">The orders could not be checked: {evidenceError}</p>
+      ) : (
+        <>
+          <div>
+            <span className="font-semibold text-black/80">Matching orders</span>
+            {purchases.length === 0 ? (
+              <span className="text-black/55"> — no paid order matches these details.</span>
+            ) : (
+              <ul className="mt-1 space-y-0.5">
+                {purchases.slice(0, 5).map(({ order, reasons, hasDesign }) => (
+                  <li key={order.id}>
+                    <span className="font-mono">{order.reference}</span>
+                    <span className="text-black/45"> · {formatShopDate(order.created_at)}</span>
+                    {' · matched by '}{joinReasons(reasons)}
+                    {' · '}
+                    {hasDesign
+                      ? <span className="font-semibold text-green-800">has this design</span>
+                      : <span className="text-black/55">other products only</span>}
+                  </li>
+                ))}
+                {purchases.length > 5 && <li className="text-black/45">and {purchases.length - 5} more</li>}
+              </ul>
+            )}
+          </div>
+          {typedRef && (
+            <p>
+              {orderRef ? (
+                <>
+                  Order number <span className="font-mono">{typedRef}</span> is order{' '}
+                  <span className="font-mono">{orderRef.order.reference}</span>
+                  {' — '}{orderRef.paid ? 'paid' : 'not paid'}
+                  {', '}{orderRef.hasDesign ? 'has this design' : 'not this design'}
+                  {'. '}
+                  {/* Order numbers follow the date and are easy to guess, so
+                      the number alone says nothing about who is writing. */}
+                  {orderRef.matchedBy.length
+                    ? <>Its {joinReasons(orderRef.matchedBy)} {orderRef.matchedBy.length > 1 ? 'are' : 'is'} the one the reviewer gave.</>
+                    : <span className="font-semibold text-amber-800">Its email and mobile are not the ones the reviewer gave.</span>}
+                </>
+              ) : (
+                <>No order has the number <span className="font-mono">{typedRef}</span>.</>
+              )}
+            </p>
+          )}
+          {/* A match is a lead, not proof: anyone can type a customer's email,
+              mobile or a guessable order number. */}
+          {review.source === 'public' && (
+            <p className="text-black/55">
+              Anyone can type a customer’s email, mobile or order number. Before you mark “Verified purchase”,
+              check with the customer using the email or mobile saved on the order itself.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function ReviewsPanel({ notify, products = [] }) {
   const [state, setState] = useState({ loading: true, reviews: [], error: '' })
+  // The evidence behind the "Verified purchase" decision: website reviewers'
+  // private details by review id, and the shop's orders to match them to.
+  const [evidence, setEvidence] = useState({ contacts: new Map(), orders: [], error: '' })
   const [status, setStatus] = useState('all')
   const [query, setQuery] = useState('')
   const [busyId, setBusyId] = useState('')
@@ -205,6 +313,17 @@ export default function ReviewsPanel({ notify, products = [] }) {
       // same copy the homepage reads (src/lib/siteReviews.js) and are never
       // written to the database — shown here, not stored twice.
       setState({ loading: false, reviews: [...homepageReviews(), ...rows], error: '' })
+      // A failure here only hides the evidence: the reviews themselves are
+      // already on screen and can still be moderated.
+      try {
+        const [contacts, orders] = await Promise.all([
+          fetchReviewContacts(rows.map((r) => r.id)),
+          rows.length ? fetchReviewOrders() : Promise.resolve([]),
+        ])
+        setEvidence({ contacts, orders, error: '' })
+      } catch (e) {
+        setEvidence({ contacts: new Map(), orders: [], error: e?.message || 'The orders could not be read.' })
+      }
     } catch (e) {
       // Even a failed read must not hide the reviews that are on the site
       // right now — those do not come from the database.
@@ -228,6 +347,13 @@ export default function ReviewsPanel({ notify, products = [] }) {
     }
     return map
   }, [products])
+
+  // A design is all of its colours: an order of the blue one counts as having
+  // bought the design a review of the black one is about.
+  const designOf = useCallback((productId) => {
+    const row = byProduct.get(productId)
+    return (row && (designGroupId(row) || row.id)) || productId
+  }, [byProduct])
 
   const counts = useMemo(() => {
     const out = { all: state.reviews.length, pending: 0, approved: 0, rejected: 0 }
@@ -261,6 +387,25 @@ export default function ReviewsPanel({ notify, products = [] }) {
       }))
       const word = { approved: 'published on the product page', pending: 'back in the queue', rejected: 'rejected' }[next]
       notify?.('success', `“${review.customer_name}”'s review is now ${word}.`)
+    } catch (e) {
+      notify?.('error', e?.message || 'That change could not be saved.')
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  // "Verified purchase" on or off — separate from approve/reject.
+  const toggleVerified = async (review) => {
+    setBusyId(review.id)
+    try {
+      const saved = await setReviewVerified(review, !review.verified)
+      setState((s) => ({
+        ...s,
+        reviews: s.reviews.map((r) => (r.id === review.id ? { ...r, ...saved } : r)),
+      }))
+      notify?.('success', saved.verified
+        ? `“${review.customer_name}”'s review now shows “Verified purchase”.`
+        : `“${review.customer_name}”'s review no longer shows “Verified purchase”.`)
     } catch (e) {
       notify?.('error', e?.message || 'That change could not be saved.')
     } finally {
@@ -389,7 +534,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
       ) : shown.length === 0 ? (
         <p className="mt-6 text-[15px] text-black/55">
           {counts.all === 0
-            ? 'No reviews have been written yet. When a customer reviews a product she bought, it will wait here for you.'
+            ? 'No reviews have been written yet. When someone reviews a product on the website, it will wait here for you.'
             : query
               ? 'No reviews match that search.'
               : 'No reviews in this state — switch the filter to All to see every review.'}
@@ -436,6 +581,11 @@ export default function ReviewsPanel({ notify, products = [] }) {
                       <span className="text-[13px] text-black/45">Always on the site</span>
                     )}
                     <span className={`rounded-full border px-2 py-[1px] text-[11px] font-medium ${cls}`}>{word}</span>
+                    {!site && r.verified && (
+                      <span className="rounded-full border border-green-300 bg-green-50 text-green-800 px-2 py-[1px] text-[11px] font-medium inline-flex items-center gap-1">
+                        <BadgeCheck size={12} /> Verified purchase
+                      </span>
+                    )}
                   </p>
                   <p className="text-[14px] text-black/65 mt-0.5">
                     for{' '}
@@ -445,6 +595,16 @@ export default function ReviewsPanel({ notify, products = [] }) {
                     {product?.id && <span className="font-mono text-black/45 ml-2">{product.id}</span>}
                   </p>
                   <p className="text-[15px] leading-6 text-black/70 mt-2 whitespace-pre-line">{r.body}</p>
+                  {!site && (
+                    <Evidence
+                      review={r}
+                      contact={evidence.contacts.get(r.id)}
+                      orders={evidence.orders}
+                      evidenceError={evidence.error}
+                      sameDesign={(productId) =>
+                        Boolean(productId) && (productId === r.product_id || designOf(productId) === designOf(r.product_id))}
+                    />
+                  )}
                 </div>
 
                 <div className="shrink-0 flex flex-col items-end gap-2">
@@ -466,6 +626,23 @@ export default function ReviewsPanel({ notify, products = [] }) {
                       ) : (
                         <>
                           <Actions review={r} busy={busyId === r.id} onDecide={decide} />
+                          {/* Her own check, separate from publishing: it puts
+                              "Verified purchase" on the product page or takes
+                              it off, and changes nothing else. */}
+                          <button
+                            type="button"
+                            onClick={() => toggleVerified(r)}
+                            disabled={busyId === r.id}
+                            aria-pressed={Boolean(r.verified)}
+                            className={`inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[13px] font-semibold border transition disabled:opacity-60 ${
+                              r.verified
+                                ? 'border-black/30 text-black/70 hover:bg-black hover:text-white'
+                                : 'border-green-300 bg-white text-green-800 hover:bg-green-50'
+                            }`}
+                          >
+                            <BadgeCheck size={14} />
+                            {r.verified ? 'Remove “Verified purchase”' : 'Mark “Verified purchase”'}
+                          </button>
                           <button
                             type="button"
                             onClick={() => setEditingId(r.id)}
