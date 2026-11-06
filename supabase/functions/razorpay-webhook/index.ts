@@ -9,11 +9,17 @@
 //      event is refused, not waved through;
 //   3. each event id is consumed once (`razorpay_webhook_events`), and the
 //      marker is rolled back if processing fails so Razorpay's retry lands.
+//
+// And two rules for what an event may change: it must name the Razorpay order
+// the payment was made on (every write is pinned to it), and a capture only
+// marks an order paid when it is exactly the order's total, in rupees. The
+// cart behind an unpaid order can change after its Razorpay order was made,
+// so the amount paid must be checked here, as verify-razorpay-payment does.
 
 import { serve } from '../_shared/deno.ts'
 import { env } from '../_shared/env.ts'
 import { asString, fail, json, preflight, type Json } from '../_shared/http.ts'
-import { verifyWebhookSignature } from '../_shared/razorpay.ts'
+import { toPaise, verifyWebhookSignature } from '../_shared/razorpay.ts'
 import { sendOrderConfirmation } from '../_shared/confirmation.ts'
 import { sendOwnerNotification } from '../_shared/ownerNotification.ts'
 import { syncSheetQuietly } from '../_shared/sheetSyncTrigger.ts'
@@ -86,7 +92,14 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
   // checkout restarted with a different cart gets a new Razorpay order, and a
   // late payment or refund on the old one must not settle or refund the new.
   const rzpOrderId = asString(payment?.order_id)
-  const pinned = rzpOrderId ? `&razorpay_order_id=eq.${encodeURIComponent(rzpOrderId)}` : ''
+  // Checkout always pays against a Razorpay order. A payment without one was
+  // not made through this shop's checkout, and the order it would be matched
+  // to could only come from the payment's notes, which the payer controls.
+  if (!rzpOrderId) {
+    console.warn('[razorpay-webhook] payment has no Razorpay order; nothing changed:', eventType)
+    return
+  }
+  const pinned = `&razorpay_order_id=eq.${encodeURIComponent(rzpOrderId)}`
 
   switch (eventType) {
     case 'order.paid':
@@ -95,6 +108,16 @@ async function applyEvent(eventType: string, event: Json): Promise<void> {
       // capture event after the owner has refunded; it is acknowledged and
       // changes nothing — no status, and no confirmation mails sent again.
       if (order.payment_status === 'refunded') return
+      // Only the full amount pays for the order. Anything else (a cart made
+      // dearer after its Razorpay order was created, another currency) is
+      // acknowledged and left for the owner: the money is in Razorpay, the
+      // order stays unpaid, and nothing is announced.
+      const paidPaise = Number(payment?.amount)
+      if (asString(payment?.currency) !== 'INR' || paidPaise !== toPaise(Number(order.total))) {
+        console.error('[razorpay-webhook] amount does not match the order; not marked paid:',
+          asString(order.reference), asString(payment?.currency), paidPaise, toPaise(Number(order.total)))
+        return
+      }
       const paid = {
         payment_status: 'paid',
         paid_at: new Date().toISOString(),

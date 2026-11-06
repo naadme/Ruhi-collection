@@ -152,6 +152,9 @@ const event = (id, eventType, extra = {}) => JSON.stringify({
       entity: {
         id: 'pay_test_1',
         order_id: 'order_rzp_1',
+        // The order's total (₹900) in paise, as Razorpay sends it.
+        amount: 90000,
+        currency: 'INR',
         notes: { reference: 'RCH-TESTTEST' },
         ...extra,
       },
@@ -349,6 +352,35 @@ const realEvent = (eventType, extra = {}) => {
   const patch = callsTo('/rest/v1/orders').find((c) => c.method === 'PATCH')
   check('payment on a replaced Razorpay order → write pinned to that Razorpay order',
     !!patch && patch.url.includes('razorpay_order_id=eq.order_rzp_1'), patch ? patch.url : 'no patch')
+}
+
+// 10g. A capture that is not exactly the order's total, in rupees, never
+//      marks the order paid: the cart behind an unpaid order can be made
+//      dearer after its Razorpay order was created.
+for (const [label, extra] of [
+  ['an underpayment (cart made dearer after the Razorpay order)', { amount: 47900 }],
+  ['an overpayment', { amount: 90100 }],
+  ['another currency', { currency: 'USD' }],
+  ['no amount at all', { amount: undefined }],
+]) {
+  reset()
+  const raw = event(`evt_amount_${label.length}`, 'payment.captured', extra)
+  const res = await post(raw, { 'x-razorpay-signature': sig(raw) })
+  const body = await res.json()
+  check(`${label} → acknowledged, so Razorpay stops redelivering`, res.status === 200 && body.ok === true)
+  check(`${label} → order not marked paid, nothing announced`,
+    state.calls.every((c) => c.url.includes('razorpay_webhook_events') || (c.url.includes('/rest/v1/orders') && c.method === 'GET')),
+    state.calls.map((c) => `${c.method} ${c.url}`).join(', '))
+}
+
+// 10h. An event whose payment names no Razorpay order changes nothing, even
+//      when its notes point at a real order: the payer controls the notes.
+for (const type of ['payment.captured', 'payment.failed', 'refund.processed']) {
+  reset()
+  const raw = event(`evt_no_rzp_order_${type}`, type, { order_id: undefined, captured: true, amount_refunded: 90000, refund_status: 'full' })
+  const res = await post(raw, { 'x-razorpay-signature': sig(raw) })
+  check(`${type} without a Razorpay order → acknowledged, order not written`,
+    res.status === 200 && callsTo('/rest/v1/orders').filter((c) => c.method === 'PATCH').length === 0)
 }
 
 // 11. payment.failed ⇒ pending → failed only.
