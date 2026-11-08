@@ -8,6 +8,7 @@ import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent } from '../lib/trackingItems'
 import Img from './Img'
 import QtyControl from './QtyControl'
+import { ShopRatingNote } from './Stars'
 export default function CartDrawer() {
   const { open, setOpen, lines, trackedItems, subtotal, setQty, remove } = useCart()
   const panel = useRef(null)
@@ -45,6 +46,8 @@ export default function CartDrawer() {
             <div className="flex justify-between text-xl mb-4"><span>Total</span><span className="font-ui font-semibold">{inr(totalFor(subtotal))}</span></div>
             <Link to="/cart" onClick={close} className="block text-center border border-black/60 py-3.5 rounded-lg hover:bg-black hover:text-white transition">View cart</Link>
             <Link to="/checkout" onClick={close} className="block text-center bg-brand-cta text-white font-medium py-4 rounded-lg mt-3 hover:bg-brand-cta-hover transition">Check out</Link>
+            {/* The shop's published rating, where the shopper commits. */}
+            <ShopRatingNote className="mt-3" />
           </div>
         </>)}
       </aside>

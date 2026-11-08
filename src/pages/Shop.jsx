@@ -4,6 +4,8 @@ import ProductGrid, { ResetLink } from '../components/ProductGrid'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { searchResultProducts } from '../lib/productSearch'
+import { topRatedFirst } from '../lib/ratingSummary'
+import { useRatings } from '../context/RatingsContext'
 import { newEventId, trackEvent } from '../lib/tracking'
 import { searchEvent } from '../lib/trackingItems'
 import usePageTitle from '../hooks/usePageTitle'
@@ -22,6 +24,7 @@ const Sel = ({ label, value, onChange, opts }) => (
 export default function Shop() {
   usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — co-ord sets, dresses, tops and shirts. Filter by category, sort by price and find your fit. Free shipping for all products.')
   const { products, loading, error, source } = useProducts()
+  const { totals } = useRatings()
   // The Type filter is the client's own category list, so a category added in
   // the dashboard is filterable here the moment it is saved.
   const { optionsFor, typeLabel } = useCategories()
@@ -78,10 +81,12 @@ export default function Shop() {
     const sorted = [...filtered]
     if (sort === 'low') sorted.sort((a, b) => a.price - b.price)
     if (sort === 'high') sorted.sort((a, b) => b.price - a.price)
-    if (sort === 'rating') sorted.sort((a, b) => b.rating - a.rating)
+    // "Top rated" ranks by what customers said: published reviews only
+    // (src/lib/ratingSummary.js), never the numbers typed into the editor.
+    if (sort === 'rating') return topRatedFirst(sorted, totals)
     if (sort === 'name') sorted.sort((a, b) => a.title.localeCompare(b.title))
     return sorted
-  }, [filtered, sort])
+  }, [filtered, sort, totals])
 
   // Unfiltered catalogue reads "All Products"; a category or search still
   // names itself, so only the default label changed.

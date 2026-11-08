@@ -6,6 +6,7 @@ import { useCart } from '../context/CartContext'
 import { useProducts } from '../context/ProductsContext'
 import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
+import { ShopRatingNote } from '../components/Stars'
 import { inr, shippingFor, totalFor } from '../lib/pricing'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent } from '../lib/trackingItems'
@@ -134,6 +135,8 @@ export default function Cart() {
           <p className="text-[13px] text-black/50 mt-3 flex items-center justify-center gap-1.5">
             <Lock size={13} /> Secure checkout
           </p>
+          {/* The shop's published rating, where the shopper commits. */}
+          <ShopRatingNote className="mt-2" />
           <button onClick={empty} className="w-full mt-3 text-[14px] text-black/50 hover:text-black underline underline-offset-2">Empty the cart</button>
         </aside>
       </div>

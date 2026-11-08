@@ -6,6 +6,7 @@ import { useCart } from '../context/CartContext'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import Img from '../components/Img'
+import { ShopRatingNote } from '../components/Stars'
 import { saveOrder } from '../lib/orderStore'
 import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
 import { discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
@@ -796,6 +797,8 @@ export default function Checkout() {
             {submitting && <Loader2 size={18} className="animate-spin" />}
             {submitting ? 'Opening secure payment…' : `${placingTest ? 'Place test order' : 'Pay now'} · ${inr(totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0))}`}
           </button>
+          {/* The shop's published rating, beside the last button. */}
+          <ShopRatingNote className="mt-3" />
           <p className="text-[13px] text-black/50 mt-3 text-center">
             By placing this order you agree to our <Link to="/policies/terms-of-service" className="underline underline-offset-2">terms</Link> and <Link to="/policies/refund-policy" className="underline underline-offset-2">return &amp; refund policy</Link>.
           </p>
