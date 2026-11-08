@@ -206,7 +206,48 @@ export const MODERATION_FILTERS = [
 ]
 
 /** Where a review was written, in the panel's words. */
-export const sourceCopy = (source) => (source === 'public' ? 'Website form' : 'Customer account')
+export const sourceCopy = (source) =>
+  source === 'public' ? 'Website form' : source === 'imported' ? 'Uploaded from a sheet' : 'Customer account'
+
+/** How an uploaded review reached the shop (product_review_contacts.channel),
+ *  in the panel's words. Private: never shown on the site. */
+export const CHANNELS = [
+  ['whatsapp', 'WhatsApp'],
+  ['instagram', 'Instagram'],
+  ['phone', 'Phone call'],
+  ['in_store', 'In store'],
+  ['email', 'Email'],
+  ['other', 'Other'],
+]
+export const channelCopy = (channel) => (CHANNELS.find(([v]) => v === channel) || [])[1] || ''
+
+/**
+ * The name a review is shown under, and the place shown beside it.
+ *
+ * A review uploaded from a sheet may have no name: the owner leaves it out when
+ * the customer has not agreed to her name being shown. Its label is worked out
+ * here, every time the review is drawn, never stored — so marking the review
+ * "Verified purchase" later changes the label by itself:
+ *
+ *   * a name             → the name, with "City, State" beside it;
+ *   * no name, verified  → "Verified Buyer", with "City, State";
+ *   * no name, a city    → "Shopper from City", with the state alone;
+ *   * no name, no city   → "Ruhi Shopper", with the state if there is one.
+ *
+ * `named` says whether the label is the reviewer's own name.
+ */
+export const NO_NAME_LABELS = { verified: 'Verified Buyer', fromCity: 'Shopper from', plain: 'Ruhi Shopper' }
+
+export function reviewerLabel(review = {}) {
+  const name = String(review?.customer_name ?? '').trim()
+  const city = String(review?.reviewer_city ?? '').trim()
+  const state = String(review?.reviewer_state ?? '').trim()
+  const both = [city, state].filter(Boolean).join(', ')
+  if (name) return { name, place: both, named: true }
+  if (review?.verified === true) return { name: NO_NAME_LABELS.verified, place: both, named: false }
+  if (city) return { name: `${NO_NAME_LABELS.fromCity} ${city}`, place: state, named: false }
+  return { name: NO_NAME_LABELS.plain, place: state, named: false }
+}
 
 /** One sentence per state, used as the badge in the moderation list. */
 export const moderationCopy = (status) => ({

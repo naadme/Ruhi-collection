@@ -13,6 +13,11 @@
 //     verified (`verified`), after checking it against her orders. Nothing the
 //     reviewer types can set it.
 //
+// A review the owner uploaded from a sheet may have no name, when the customer
+// has not agreed to hers being shown. It is shown as "Verified Buyer" once the
+// owner has verified it, else "Shopper from <city>" (reviewerLabel). With the
+// name come the city and state, and the size and colour bought, when known.
+//
 // The email, mobile and order number the form asks for go to the shop's
 // private table, never onto the review, and are never shown on the site.
 
@@ -20,7 +25,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Check, Loader2, Plus, Star } from 'lucide-react'
 import { formatShopDate } from '../lib/shopTime'
 import {
-  CONTACT_LIMITS, REVIEW_LIMITS, contactProblem, reviewProblem, reviewSummary, starLabel,
+  CONTACT_LIMITS, REVIEW_LIMITS, contactProblem, reviewProblem, reviewSummary, reviewerLabel, starLabel,
 } from '../lib/reviews'
 import { submitPublicReview } from '../lib/reviewStore'
 
@@ -80,6 +85,16 @@ export default function ReviewsSection({ product, reviews = [] }) {
   }, [productId])
 
   const summary = useMemo(() => reviewSummary(reviews), [reviews])
+  // The colour of each colour row of this design, for "Colour: Pink" under a
+  // review: a review belongs to the row that was bought.
+  const colourOf = useMemo(() => {
+    const map = new Map()
+    for (const row of [product, ...(product?.colors || [])]) {
+      const colour = String(row?.colour || row?.color || '').trim()
+      if (row?.id && colour && !map.has(row.id)) map.set(row.id, colour)
+    }
+    return map
+  }, [product])
   const problem = reviewProblem(draft) || contactProblem(draft)
   const set = (key) => (e) => setDraft((d) => ({ ...d, [key]: e.target.value }))
 
@@ -145,7 +160,13 @@ export default function ReviewsSection({ product, reviews = [] }) {
         </p>
       ) : (
         <ul className="mt-5 space-y-5">
-          {reviews.map((r) => (
+          {reviews.map((r) => {
+            const who = reviewerLabel(r)
+            const bought = [
+              r.size_bought && `Size ${r.size_bought}`,
+              colourOf.get(r.product_id) && `Colour ${colourOf.get(r.product_id)}`,
+            ].filter(Boolean)
+            return (
             <li key={r.id} className="border-b border-black/10 pb-5 last:border-0 last:pb-0">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span
@@ -162,7 +183,8 @@ export default function ReviewsSection({ product, reviews = [] }) {
                     />
                   ))}
                 </span>
-                <b className="font-ui text-[15px]">{r.customer_name}</b>
+                <b className="font-ui text-[15px]">{who.name}</b>
+                {who.place && <span className="text-[13px] text-black/55">{who.place}</span>}
                 {/* The shop's own calendar: the review was written against an
                     order whose date the same clock names. */}
                 <span className="text-[13px] text-black/45">{formatShopDate(r.created_at)}</span>
@@ -175,11 +197,16 @@ export default function ReviewsSection({ product, reviews = [] }) {
                   </span>
                 )}
               </div>
+              {bought.length > 0 && (
+                <p className="mt-1 text-[13px] text-black/50">{bought.join(' · ')}</p>
+              )}
+              {r.title && <p className="mt-2 text-[15px] font-semibold">{r.title}</p>}
               {/* Plain text with `whitespace-pre-line`: her paragraphs are her
                   own, and no markup she typed is ever interpreted. */}
-              <p className="mt-2 text-[15px] leading-7 text-black/70 whitespace-pre-line">{r.body}</p>
+              <p className={`${r.title ? 'mt-1' : 'mt-2'} text-[15px] leading-7 text-black/70 whitespace-pre-line`}>{r.body}</p>
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
 

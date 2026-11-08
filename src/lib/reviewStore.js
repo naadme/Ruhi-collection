@@ -10,9 +10,10 @@
 //   * a customer may read her own review wherever it stands;
 //   * only an admin may move a review between states, mark it "Verified
 //     purchase", or read a website reviewer's private email and mobile;
-//   * NOBODY inserts from here — `submit_review()` (a signed-in purchase) and
-//     `submit_public_review()` (the website form) are the only ways a row is
-//     ever born, and both land it as pending and unverified.
+//   * NOBODY inserts from here — `submit_review()` (a signed-in purchase),
+//     `submit_public_review()` (the website form) and the admin-only
+//     `import_reviews()` (a sheet the owner uploads) are the only ways a row
+//     is ever born, and all three land it as pending and unverified.
 
 import { supabase } from './supabase'
 import { contactProblem, normalizeReview, reviewProblem } from './reviews'
@@ -34,9 +35,9 @@ export async function fetchPublishedReviews(productIds, { strict = false } = {})
     const { data, error } = await supabase
       .from('product_reviews')
       // Exactly the columns the public may read (20261106120000_open_reviews.sql
-      // grants `anon` these and no others). `verified` is the owner's own
-      // "Verified purchase" decision.
-      .select('id, product_id, rating, body, customer_name, created_at, verified')
+      // and 20261108120000_review_sheet_import.sql grant `anon` these and no
+      // others). `verified` is the owner's own "Verified purchase" decision.
+      .select('id, product_id, rating, title, body, customer_name, reviewer_city, reviewer_state, size_bought, created_at, verified')
       .in('product_id', ids)
       .eq('status', 'approved')
       .order('created_at', { ascending: false })
@@ -142,7 +143,7 @@ export async function updateReview(review, changes) {
     .from('product_reviews')
     .update(changes)
     .eq('id', review.id)
-    .select('id, title, rating, body, customer_name, status')
+    .select('id, title, rating, body, customer_name, reviewer_city, reviewer_state, size_bought, status')
     .single()
   if (error) throw new Error(error.message || 'The change could not be saved.')
   return data
@@ -182,7 +183,7 @@ function readableSubmitError(error) {
 export async function fetchAllReviews() {
   const { data, error } = await supabase
     .from('product_reviews')
-    .select('id, product_id, order_item_id, user_id, source, title, rating, body, customer_name, status, verified, verified_at, created_at, decided_at')
+    .select('id, product_id, order_item_id, user_id, source, title, rating, body, customer_name, reviewer_city, reviewer_state, size_bought, status, verified, verified_at, created_at, decided_at')
     .order('created_at', { ascending: false })
     .limit(500)
   if (error) throw new Error(error.message || 'The reviews could not be loaded.')
@@ -213,15 +214,17 @@ export async function setReviewStatus(review, status) {
 }
 
 /**
- * The private email, mobile and order number given with website reviews, by
- * review id. Admin-only: the table's policy hands anyone else nothing.
+ * The private details of website and uploaded reviews, by review id: email,
+ * mobile and order number, and for an upload how the review reached the shop,
+ * the owner's note, which upload it came in and when. Admin-only: the table's
+ * policy hands anyone else nothing.
  */
 export async function fetchReviewContacts(reviewIds) {
   const ids = (Array.isArray(reviewIds) ? reviewIds : []).filter(Boolean)
   if (!ids.length) return new Map()
   const { data, error } = await supabase
     .from('product_review_contacts')
-    .select('review_id, email, phone, order_ref')
+    .select('review_id, email, phone, order_ref, channel, note, import_batch, created_at')
     .in('review_id', ids)
   if (error) throw new Error(error.message || 'The reviewers\' contact details could not be loaded.')
   return new Map((data || []).map((c) => [c.review_id, c]))
@@ -265,4 +268,64 @@ export async function setReviewVerified(review, verified) {
     throw new Error('The change was not saved — only an admin account can verify reviews.')
   }
   return data
+}
+
+/**
+ * Add the checked rows of an uploaded sheet to the queue.
+ *
+ * `rows` are the payloads `checkSheet()` built (src/lib/reviewSheet.js). The
+ * admin-only `import_reviews()` checks every row again and stores all of them
+ * or none: the first refused row stops the upload, and its message names the
+ * row. Returns { batch, count }.
+ */
+export async function importReviews(rows) {
+  const list = (Array.isArray(rows) ? rows : []).filter(Boolean)
+  if (!list.length) throw new Error('There are no reviews to add.')
+  const { data, error } = await supabase.rpc('import_reviews', { p_rows: list })
+  if (error) {
+    throw new Error(error.code === 'P0001' && error.message
+      ? `Nothing was added. ${error.message}`
+      : error.code === '42501' || /permission denied|admin/i.test(error.message || '')
+        ? 'Nothing was added — only the shop\'s admin account can upload reviews. Sign in again and retry.'
+        : `Nothing was added. ${error.message || 'Please check your connection and try again.'}`)
+  }
+  return { batch: data?.batch || '', count: Number(data?.count) || 0 }
+}
+
+/**
+ * Take back an upload: delete every review of it that is not published.
+ *
+ * Published reviews stay — taking a review off the site is a decision the
+ * owner makes one review at a time, with Unpublish. Returns { removed, kept },
+ * `kept` being how many of the upload are published and were left alone.
+ */
+export async function undoImport(batch) {
+  if (!batch) throw new Error('That upload could not be found — reload and try again.')
+  const { data: contacts, error: readError } = await supabase
+    .from('product_review_contacts')
+    .select('review_id')
+    .eq('import_batch', batch)
+  if (readError) throw new Error(readError.message || 'The upload could not be read.')
+  const ids = (contacts || []).map((c) => c.review_id).filter(Boolean)
+  if (!ids.length) return { removed: 0, kept: 0 }
+  // A hundred ids per request keeps each request's address short.
+  let removed = 0
+  let kept = 0
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100)
+    const { data, error } = await supabase
+      .from('product_reviews')
+      .delete()
+      .in('id', chunk)
+      .neq('status', 'approved')
+      .select('id')
+    if (error) throw new Error(error.message || 'The upload could not be undone.')
+    removed += (data || []).length
+    const left = await supabase
+      .from('product_reviews')
+      .select('id', { count: 'exact', head: true })
+      .in('id', chunk)
+    kept += Number(left.count) || 0
+  }
+  return { removed, kept }
 }
