@@ -173,7 +173,7 @@ export const Hero = () => {
             onClick={() => trackSafely(() => promotionEvent('select_promotion', promotion, { eventId: newEventId(), item: promotedItem }))}
             className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none"
           >
-              <Img src={cur.image} alt={cur.label} loading="eager" style={bannerPositionStyle(cur.position)} className="absolute inset-0 w-full h-full object-cover" />
+              <Img src={cur.image} alt={cur.label} loading="eager" sizes="(max-width: 768px) 100vw, 50vw" style={bannerPositionStyle(cur.position)} className="absolute inset-0 w-full h-full object-cover" />
           </Link>
         )}
         {n > 1 && (
@@ -349,7 +349,7 @@ export const OurStory = () => {
         <div className="flex flex-wrap gap-3 mt-10"><Link to="/shop" className="inline-flex items-center justify-center h-10 px-6 rounded-lg bg-brand-yellow font-bold text-[15px] transition hover:opacity-90">Shop Now</Link><Link to="/about" className="inline-flex items-center justify-center h-10 px-6 rounded-lg border-2 border-black/10 font-bold text-[15px] transition hover:bg-black/5">About</Link></div>
       </div>
       <div className="w-full aspect-square overflow-hidden shadow-[0_30px_60px_rgba(74,44,35,.12)]">
-        <Img src={story.image} style={story.style} alt="Our story" className="w-full h-full object-cover" />
+        <Img src={story.image} style={story.style} alt="Our story" sizes="(max-width: 1024px) 100vw, 50vw" className="w-full h-full object-cover" />
       </div>
     </section>
   )
@@ -379,7 +379,7 @@ export const Reviews = () => {
         const href = shown ? productHref(shown) : ''
         return (
         <div key={r.name} className="border border-black/10 p-4 hover:shadow-lg transition">
-          <Img src={r.img} alt={`Customer wearing ${p ? p.title : 'Ruhi Womens Clothing'}`} className="w-full aspect-[1.1] object-cover" />
+          <Img src={r.img} sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw" alt={`Customer wearing ${p ? p.title : 'Ruhi Womens Clothing'}`} className="w-full aspect-[1.1] object-cover" />
           <p className="text-[#C08576] text-[28px] mt-6 tracking-widest">
             <span role="img" aria-label="5 out of 5 stars">★★★★★</span>
           </p>
@@ -387,7 +387,7 @@ export const Reviews = () => {
           <p className="text-[18px] leading-[29px] text-black/70 mt-5 pb-4 border-b border-black/10">{r.text}</p>
           {href ? (
             <Link to={href} className="flex gap-4 mt-4 items-center">
-              <Img src={shown.image} alt={p ? p.title : shown.title} className="w-[68px] h-[68px] object-cover rounded" />
+              <Img src={shown.image} alt={p ? p.title : shown.title} sizes="68px" className="w-[68px] h-[68px] object-cover rounded" />
               <div><p className="text-[17px] leading-6">{p ? p.title : shown.title}</p>{shown.price > 0 && <p className="font-ui font-semibold text-black/60 mt-2">{inr(shown.price)}</p>}</div>
             </Link>
           ) : null}

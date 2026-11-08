@@ -10,11 +10,12 @@ export default function Img({ src, alt = '', className = '', sizes = '', ...rest
   // When the caller says how wide the photo is shown, the browser is offered
   // the smaller copy as well — the same photograph, a fraction of the bytes.
   //
-  // The smaller copy only exists for the photographs that were copied when the
-  // site was built. If the browser picks one that is not there, the picture is
-  // retried from the original, so a photograph is never lost because of an
-  // optimisation; only if the original fails too does the neutral placeholder
-  // appear.
+  // Smaller copies come from the photographs copied when the site was built,
+  // or from Supabase's resizing for uploaded photos. If the browser's pick
+  // fails to load (a missing copy, or the resizing service refusing), the
+  // picture is retried from the original, so a photograph is never lost
+  // because of an optimisation; only if the original fails too does the
+  // neutral placeholder appear.
   const copy = sizes ? imageCopy(src) : null
   const srcSet = copy && !original ? copy.srcset : undefined
   // The picture's own `src` is the *smaller* copy while one is offered, and

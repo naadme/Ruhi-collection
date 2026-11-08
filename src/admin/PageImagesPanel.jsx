@@ -244,6 +244,9 @@ export default function PageImagesPanel({ notify }) {
     const path = `page-image-${slot}-${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, {
       contentType: file.type,
+      // Every upload gets a new file name, so the file never changes: browsers
+      // and Supabase's CDN may keep it for a year instead of the default hour.
+      cacheControl: '31536000',
       upsert: false,
     })
     if (upErr) throw upErr

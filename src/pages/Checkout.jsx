@@ -98,7 +98,7 @@ function Summary({
         {lines.map((l) => (
           <li key={l.id + l.size} className="flex gap-3">
             <div className="relative w-14 h-[74px] shrink-0 bg-neutral-100 rounded overflow-hidden">
-              <Img src={l.image} alt={l.product.title} className="w-full h-full object-cover" />
+              <Img src={l.image} alt={l.product.title} sizes="56px" className="w-full h-full object-cover" />
               {l.qty > 1 && (
                 <span className="absolute top-0 right-0 bg-black/75 text-white text-[11px] font-ui px-1.5 py-[1px] rounded-bl">{l.qty}</span>
               )}

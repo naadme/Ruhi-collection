@@ -133,7 +133,7 @@ export default function OrderConfirmation() {
             {items.map((it, i) => (
               <li key={`${it.product_id}-${it.size}-${i}`} className="py-3 flex gap-3">
                 <div className="w-14 h-[74px] shrink-0 rounded overflow-hidden bg-neutral-100">
-                  <Img src={it.image} alt={it.title} className="w-full h-full object-cover" />
+                  <Img src={it.image} alt={it.title} sizes="56px" className="w-full h-full object-cover" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <Link to={`/product/${it.product_id}`} className="text-[15px] leading-snug hover:underline line-clamp-2">{orderLineName(it.title)}</Link>

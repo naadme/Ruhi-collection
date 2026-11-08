@@ -71,7 +71,7 @@ export default function SearchBar({ onClose }) {
           {res.map((p, index) => (
             <li key={p.id}>
               <Link to={productHref(p)} onClick={() => { suggestionOpened(p, index); onClose() }} className="flex items-center gap-4 py-2 hover:bg-black/5">
-                <Img src={p.image} alt={p.title} className="w-12 h-14 object-cover" />
+                <Img src={p.image} alt={p.title} sizes="48px" className="w-12 h-14 object-cover" />
                 <span className="flex-1">{p.title}</span>
                 <span className="font-ui font-semibold">{p.price > 0 ? inr(p.price) : ''}</span>
               </Link>
