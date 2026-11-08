@@ -74,15 +74,16 @@ export function SizeChartPanel({ type, sizes, selected, showAllRows = false }) {
   )
 }
 
-/** The "Size chart" link for a product page, and the sheet it opens. */
-export function SizeChartLink({ type, sizes, selected }) {
+/** The "Size chart" link for a product page, and the sheet it opens.
+ *  `onOpen` is told each time the shopper opens it (GA4's view_size_chart). */
+export function SizeChartLink({ type, sizes, selected, onOpen }) {
   const [open, setOpen] = useState(false)
   const panel = useRef(null)
   const close = useCallback(() => setOpen(false), [])
   useOverlay(open, close, panel)
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 text-[14px] underline underline-offset-4 text-black/80 hover:text-black">
+      <button type="button" onClick={() => { setOpen(true); onOpen?.() }} className="inline-flex items-center gap-1.5 text-[14px] underline underline-offset-4 text-black/80 hover:text-black">
         <Ruler size={15} aria-hidden="true" /> Size chart
       </button>
       {/* Rendered on <body>, so no positioned or transformed parent on the

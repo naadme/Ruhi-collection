@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight, Plus, Check } from 'lucide-react'
 import { reviews } from '../data/products'
 import ReviewForm from './ReviewForm'
@@ -17,6 +17,10 @@ import { derivedBestsellers } from '../lib/bestsellerRules'
 import { bestsellerArrows, bestsellerPages, bestsellerSlice } from '../lib/bestsellerCarousel'
 import { inr } from '../lib/pricing'
 import { productHref } from '../lib/productLinks'
+import { newEventId, trackSafely } from '../lib/tracking'
+import { contactEvent, heroPromotion, productIdFromPath, promotionEvent, viewedItem } from '../lib/trackingItems'
+import { LISTS } from '../lib/itemLists'
+import ItemList from './ItemList'
 import Img from './Img'
 import ProductGrid from './ProductGrid'
 const icons = { Truck, Headset, IndianRupee }
@@ -59,8 +63,8 @@ export const Hero = () => {
   // banner — and when the read does not come back, so the hero can never be
   // left empty.
   const [bannersKnown, setBannersKnown] = useState(false)
-  const { products } = useProducts()
-  const { categories } = useCategories()
+  const { products, getProduct, answered } = useProducts()
+  const { categories, typeLabel } = useCategories()
   useEffect(() => {
     let alive = true
     const settle = () => { if (alive) setBannersKnown(true) }
@@ -108,6 +112,23 @@ export const Hero = () => {
   // start again from the top rather than landing somewhere in the middle of a
   // set of photos they never saw.
   useEffect(() => { setAt(0) }, [banners.length])
+
+  // GA4's view_promotion for each photo the hero actually shows (once per
+  // photo per visit to the page) and select_promotion for a tap on it, so the
+  // owner can see which banner leads shoppers on. A photo that opens a product
+  // carries that product (the colour it opens, in its first size); it waits
+  // for the real catalogue, which is what gives the product its IDs.
+  const bannerKeys = useMemo(() => new Set(banners.map((b) => String(b.id ?? b.image))), [banners])
+  const promotion = cur ? heroPromotion(cur, at, { banner: bannerKeys.has(cur.key) }) : null
+  const promotedRow = productIdFromPath(cur?.to)
+  const promotedProduct = promotedRow ? getProduct(promotedRow) : null
+  const promotedItem = promotedProduct ? viewedItem(promotedProduct, promotedRow, null, { category: typeLabel(promotedProduct.type) }) : null
+  const promoted = useRef(new Set())
+  useEffect(() => {
+    if (!promotion || !bannersKnown || !answered || promoted.current.has(promotion.id)) return
+    promoted.current.add(promotion.id)
+    trackSafely(() => promotionEvent('view_promotion', promotion, { eventId: newEventId(), item: promotedItem }))
+  }, [promotion?.id, bannersKnown, answered])
   return (
     <section className="grid min-h-[560px] md:grid-cols-2 md:h-[600px] lg:h-[684px] bg-[#4A2C23] text-white">
       {/* The poster is completely static: same wording, type, colours and
@@ -147,7 +168,11 @@ export const Hero = () => {
           touch target the wishlist button already uses. */}
       <div className="relative overflow-hidden h-[380px] md:h-auto">
         {cur && bannersKnown && (
-          <Link key={cur.key} to={cur.to} className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none">
+          <Link
+            key={cur.key} to={cur.to}
+            onClick={() => trackSafely(() => promotionEvent('select_promotion', promotion, { eventId: newEventId(), item: promotedItem }))}
+            className="absolute inset-0 animate-[fade_.35s_ease] motion-reduce:animate-none"
+          >
               <Img src={cur.image} alt={cur.label} loading="eager" style={bannerPositionStyle(cur.position)} className="absolute inset-0 w-full h-full object-cover" />
           </Link>
         )}
@@ -244,7 +269,10 @@ export const BestSellers = () => {
   const shown = arrows ? bestsellerSlice(items, page) : items
   const go = (step) => setPage((p) => Math.min(pages - 1, Math.max(0, p + step)))
 
+  // GA4's view_item_list / select_item: the whole row is one list, so a
+  // design on the second page keeps its place (5th, 6th, …).
   const grid = (
+    <ItemList list={LISTS.homeBestSellers} products={items}>
     <ProductGrid
       items={shown}
       loading={gridLoading}
@@ -260,6 +288,7 @@ export const BestSellers = () => {
           }
       }
     />
+    </ItemList>
   )
 
   return (
@@ -422,6 +451,7 @@ export const ContactStrip = () => {
               <a
                 key={label}
                 href={href}
+                onClick={() => trackSafely(() => contactEvent(href, { location: 'home_contact', eventId: newEventId() }))}
                 {...(external ? { target: '_blank', rel: 'noreferrer' } : {})}
                 {...(iconOnly ? { 'aria-label': label, title: label } : {})}
                 className="inline-flex items-center gap-2.5 border border-black/30 rounded-full px-5 md:px-6 py-3 text-[17px] hover:bg-black hover:text-white transition"

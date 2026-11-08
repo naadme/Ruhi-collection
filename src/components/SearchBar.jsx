@@ -7,6 +7,9 @@ import { useCategories } from '../context/CategoriesContext'
 import { searchPath, searchResultProducts } from '../lib/productSearch'
 import { productHref } from '../lib/productLinks'
 import { inr } from '../lib/pricing'
+import { newEventId, trackSafely } from '../lib/tracking'
+import { listEvent, listItem } from '../lib/trackingItems'
+import { LISTS } from '../lib/itemLists'
 
 export default function SearchBar({ onClose }) {
   const { products, loading } = useProducts()
@@ -35,6 +38,16 @@ export default function SearchBar({ onClose }) {
   // (sorting never hides a result).
   const go = (e) => { e?.preventDefault?.(); nav(searchPath(term, { sort: sp.get('sort') })); onClose() }
 
+  // GA4's select_item for a suggestion opened straight from the box, with the
+  // words typed: such a search never reaches the results page, where the
+  // brief's search event is sent.
+  const suggestionOpened = (p, index) => trackSafely(() => listEvent('select_item', [listItem(p, { index, category: typeLabel(p.type) })], {
+    listId: LISTS.searchSuggestions.id,
+    listName: LISTS.searchSuggestions.name,
+    eventId: newEventId(),
+    params: { search_term: term },
+  }))
+
   return (
     <div className="absolute inset-x-0 top-full bg-[#FAF0E7] border-b border-black/10 pb-4 shadow">
       <form onSubmit={go} role="search" className="flex items-center gap-6 max-w-[1000px] mx-auto px-4 pt-6">
@@ -55,9 +68,9 @@ export default function SearchBar({ onClose }) {
 
       {res.length > 0 && (
         <ul className="max-w-[1000px] mx-auto px-4 mt-3">
-          {res.map((p) => (
+          {res.map((p, index) => (
             <li key={p.id}>
-              <Link to={productHref(p)} onClick={onClose} className="flex items-center gap-4 py-2 hover:bg-black/5">
+              <Link to={productHref(p)} onClick={() => { suggestionOpened(p, index); onClose() }} className="flex items-center gap-4 py-2 hover:bg-black/5">
                 <Img src={p.image} alt={p.title} className="w-12 h-14 object-cover" />
                 <span className="flex-1">{p.title}</span>
                 <span className="font-ui font-semibold">{p.price > 0 ? inr(p.price) : ''}</span>

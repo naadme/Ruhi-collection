@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Loader2 } from 'lucide-react'
+import { newEventId, trackSafely } from '../lib/tracking'
+import { interactionEvent } from '../lib/trackingItems'
+
+// GA4's generate_lead for a sign-up the shopper is thanked for. Never the address.
+const subscribed = () => trackSafely(() => interactionEvent('generate_lead', { lead_source: 'newsletter' }, { eventId: newEventId() }))
 
 export default function Newsletter() {
   const [email, setEmail] = useState('')
@@ -14,11 +19,12 @@ export default function Newsletter() {
     const { error } = await supabase.from('newsletter_subscribers').insert({ email: email.trim() })
     if (error) {
       // A duplicate is not a failure worth alarming anyone about.
-      if (/duplicate|unique/i.test(error.message || '')) setStatus('done')
+      if (/duplicate|unique/i.test(error.message || '')) { setStatus('done'); subscribed() }
       else setStatus('error')
       return
     }
     setStatus('done')
+    subscribed()
     setEmail('')
   }
 
