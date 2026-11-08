@@ -7,6 +7,7 @@ import { CategoriesProvider } from './context/CategoriesContext'
 import { AuthProvider } from './context/AuthContext'
 import { CartProvider } from './context/CartContext'
 import { WishlistProvider } from './context/WishlistContext'
+import { RatingsProvider } from './context/RatingsContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import PageTracker from './components/PageTracker'
 import { captureLanding } from './lib/adClicks'
@@ -21,6 +22,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           label on the storefront read the list the client manages. */}
       <CategoriesProvider>
         <ProductsProvider>
+          {/* Published star ratings for cards, the buy bar and the cart. */}
+          <RatingsProvider>
           <AuthProvider>
             <CartProvider>
               <WishlistProvider>
@@ -31,6 +34,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               </WishlistProvider>
             </CartProvider>
           </AuthProvider>
+          </RatingsProvider>
         </ProductsProvider>
       </CategoriesProvider>
     </BrowserRouter>

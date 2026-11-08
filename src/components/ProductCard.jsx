@@ -1,11 +1,13 @@
 import { memo } from 'react'
 import { Link } from 'react-router-dom'
-import { Star, Heart } from 'lucide-react'
+import { Heart } from 'lucide-react'
 import Img from './Img'
 import { inr } from '../lib/pricing'
 import { productHref } from '../lib/productLinks'
 import { useWishlist } from '../context/WishlistContext'
 import { imageFramingStyle } from '../lib/imageFraming'
+import { useRatings } from '../context/RatingsContext'
+import { RatingPill } from './Stars'
 // The second photo that fades in on hover is for a mouse only. On a touch
 // screen (every phone, including Instagram's and Facebook's in-app browsers)
 // iOS treats the first tap on a link whose hover reveals new content as the
@@ -20,12 +22,13 @@ const canHover = typeof window !== 'undefined' &&
 function ProductCard({ product: p }) {
   const { has, toggle } = useWishlist(); const fav = has(p.id)
   const off = p.compare ? Math.round((1 - p.price / p.compare) * 100) : 0
-  const rating = Math.min(p.rating, 5)
-  // Prices and reviews are only rendered once the client has actually set
-  // them: an unset price would otherwise read as "₹0" and an unwritten review
-  // count as "0.0 (0)", which looks broken rather than unfinished.
+  // The design's published reviews, every colour together
+  // (src/context/RatingsContext.jsx); null — and nothing drawn — until it has
+  // one. The numbers typed into the product editor are never shown.
+  const rating = useRatings().ratingFor(p)
+  // A price is only rendered once the client has actually set it: an unset
+  // price would otherwise read as "₹0", which looks broken, not unfinished.
   const priced = p.price > 0
-  const rated = p.reviews > 0
   // The link is the product's OWN route — the row whose photograph, price and
   // sizes this card shows (src/lib/productLinks.js). One rule, used by every
   // card on the site, so a card can never advertise one product and open
@@ -42,7 +45,7 @@ function ProductCard({ product: p }) {
         <Img src={p.image} style={imageFramingStyle(p.image_framing, p.image)} alt={p.title} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className={`absolute inset-0 w-full h-full object-cover${swap ? ' transition-opacity duration-500 group-hover:opacity-0' : ''}`} />
         {swap && <Img src={p.hover} style={imageFramingStyle(p.image_framing, p.hover)} alt="" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />}
         {p.badge && <span className="absolute top-2 left-1 bg-brand-badge text-white text-[10px] font-bold px-1.5 py-[3px] rounded-sm font-ui">{p.badge}</span>}
-        {rated && <span className="absolute bottom-2 left-2 bg-white/90 rounded-md px-2 py-0.5 text-[11px] flex items-center gap-1 font-ui"><Star size={11} fill="#C08576" stroke="#C08576" />{rating.toFixed(1)} ({p.reviews})</span>}
+        {rating && <RatingPill rating={rating} className="absolute bottom-2 left-2" />}
       </div>
       <h3 className="text-[19px] md:text-[21px] leading-snug mt-2 pr-1 group-hover:underline underline-offset-2">{p.title}</h3>
       {priced && <p className="font-ui font-bold text-[17px] flex flex-wrap gap-x-3 items-baseline"><span className="text-red-600">{inr(p.price)}</span>

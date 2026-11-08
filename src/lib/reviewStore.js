@@ -51,6 +51,35 @@ export async function fetchPublishedReviews(productIds, { strict = false } = {})
 }
 
 /**
+ * Every published rating in the shop — just the product and the stars — for
+ * the ratings on cards, the buy bar, the cart and the checkout
+ * (src/context/RatingsContext.jsx). Read a thousand rows at a time, the most
+ * the API hands out in one answer. A rating that cannot be read is not worth
+ * failing a page over: any failure answers with what was read so far.
+ */
+export async function fetchRatingRows({ pageSize = 1000, maxRows = 20000 } = {}) {
+  const rows = []
+  try {
+    for (let from = 0; from < maxRows; from += pageSize) {
+      const { data, error } = await supabase
+        .from('product_reviews')
+        .select('product_id, rating')
+        .eq('status', 'approved')
+        .order('id', { ascending: true })
+        .range(from, from + pageSize - 1)
+        .retry(false)
+      if (error) break
+      const page = Array.isArray(data) ? data : []
+      rows.push(...page)
+      if (page.length < pageSize) break
+    }
+  } catch {
+    /* the page is not the ratings */
+  }
+  return rows
+}
+
+/**
  * The purchases this signed-in customer still owe a review of.
  *
  * The WHOLE design is asked for at once — every colour row — because a

@@ -11,11 +11,14 @@ import QtyControl from '../components/QtyControl'
 import { imageFramingStyle } from '../lib/imageFraming'
 import ProductCard from '../components/ProductCard'
 import ReviewsSection from '../components/ReviewsSection'
+import ReviewHighlight from '../components/ReviewHighlight'
+import { RatingLine, RatingPill } from '../components/Stars'
+import { useRatings } from '../context/RatingsContext'
 import { inr } from '../lib/pricing'
 import { MAX_QTY } from '../lib/checkout'
 import { shownDescription, variantFor } from '../lib/productGrouping'
 import { fetchPublishedReviews } from '../lib/reviewStore'
-import { reviewSummary, starLabel } from '../lib/reviews'
+import { reviewSummary } from '../lib/reviews'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent, viewedItem } from '../lib/trackingItems'
 import { site } from '../data/site'
@@ -29,7 +32,7 @@ import { SizeChartLink } from '../components/SizeChart'
 // before that choice resets; the wait keeps the in-between state out of GTM.
 const VIEW_SETTLE_MS = 300
 
-function Gallery({ product }) {
+function Gallery({ product, rating, onRating }) {
   const shots = [...new Set(
     (product.gallery?.length ? product.gallery : [product.image, product.hover]).filter(Boolean)
   )]
@@ -45,6 +48,10 @@ function Gallery({ product }) {
         {product.badge && (
           <span className="absolute top-3 left-3 bg-brand-badge text-white text-[11px] font-bold px-2 py-1 rounded-sm font-ui">{product.badge}</span>
         )}
+        {/* The rating on the photo itself: on a phone the photo fills the
+            first screen, so this is where a shopper arriving from an ad first
+            sees what customers thought. Tapping it opens the reviews. */}
+        {rating && <RatingPill rating={rating} onClick={onRating} large className="absolute bottom-3 left-3" />}
       </div>
       {shots.length > 1 && (
         <div className="flex flex-wrap gap-2 mt-3">
@@ -147,9 +154,16 @@ export default function Product() {
       .catch(() => { /* the page is not the reviews */ })
     return () => { alive = false }
   }, [reviewIds])
-  // Real reviews win over the numbers typed into the product editor: when
-  // customers have spoken, their average is the honest one to show.
+  // The rating every touchpoint on this page shows — the photo, the title, the
+  // quote beside the buttons, the phone buy bar: this design's published
+  // reviews. Until its own list has loaded, the shop-wide ratings already read
+  // for the cards (the same reviews) stand in, so the stars do not pop in
+  // late for a shopper who came from a listing. The numbers typed into the
+  // product editor are never shown.
   const summary = useMemo(() => reviewSummary(reviews), [reviews])
+  const { ratingFor } = useRatings()
+  const listed = p ? ratingFor(p) : null
+  const rating = summary.count > 0 ? { average: summary.average, count: summary.count } : listed
 
   // GTM's view_item (tracking brief, Annexure A3): the colour and size on
   // screen — the first size until the shopper picks one — and again each time
@@ -253,6 +267,14 @@ export default function Product() {
     setProblem('Choose a size before adding this item.')
   }
 
+  // Every rating on the page opens the reviews: scrolled to, and focus moved to
+  // their heading so a keyboard or screen reader lands there too.
+  const toReviews = () => {
+    const el = document.getElementById('reviews')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    document.getElementById('reviews-heading')?.focus({ preventScroll: true })
+  }
+
   const place = (goToCheckout) => {
     if (needsSize) {
       setProblem('Choose a size before adding this item.')
@@ -282,7 +304,7 @@ export default function Product() {
       </nav>
 
       <div className="grid md:grid-cols-2 gap-10 lg:gap-16">
-        <Gallery key={shown.id} product={shown} />
+        <Gallery key={shown.id} product={shown} rating={rating} onRating={toReviews} />
 
         {/* `min-w-0`: a grid item is never narrower than its content by
             default, and the colour row is wider than a phone on purpose. */}
@@ -300,29 +322,11 @@ export default function Product() {
             </button>
           </div>
 
-          {/* aria-label lives on a <span> so screen readers hear the rating
-              instead of five separate "star" glyphs. Ratings and prices the
-              client has not supplied yet are not rendered at all: "0.0 (0
-              reviews)" and "₹0" would read as broken rather than unfinished.
-              Once real reviews exist they are what the line reports — a number
-              typed into the editor must not overrule what customers said. */}
-          {summary.count > 0 ? (
-            <p className="font-ui mt-3 text-sm text-black/70">
-              <span role="img" aria-label={starLabel(Math.round(summary.average * 10) / 10)}>
-                ★ {Math.min(summary.average, 5).toFixed(1)}
-              </span>{' '}
-              <span className="text-black/50">({summary.count} review{summary.count === 1 ? '' : 's'})</span>
-            </p>
-          ) : (
-            p.reviews > 0 && (
-              <p className="font-ui mt-3 text-sm text-black/70">
-                <span role="img" aria-label={`Rated ${Math.min(p.rating, 5).toFixed(1)} out of 5`}>
-                  ★ {Math.min(p.rating, 5).toFixed(1)}
-                </span>{' '}
-                <span className="text-black/50">({p.reviews} reviews)</span>
-              </p>
-            )
-          )}
+          {/* Stars, the average and the count, under the title where a shopper
+              looks before the price; the count opens the reviews. Nothing is
+              drawn until the design has a published review: "0.0 (0 reviews)"
+              would read as broken rather than new. */}
+          <RatingLine rating={rating} onClick={toReviews} className="mt-3" />
 
           {shown.price > 0 && (
             <>
@@ -421,6 +425,10 @@ export default function Product() {
             </button>
           </div>
 
+          {/* One customer's words where the decision is made, with a way to
+              every review (src/components/ReviewHighlight.jsx). */}
+          <ReviewHighlight reviews={reviews} count={summary.count} onSeeAll={toReviews} />
+
           <p className="mt-6 flex items-start gap-2 text-[14px] text-black/60">
             <Truck size={16} className="mt-[1px] shrink-0 text-brand-green" />
             Free shipping for all products · Delivery in 7-10 working days
@@ -477,6 +485,8 @@ export default function Product() {
         visible={!ctaInView}
         price={shown.price}
         compare={shown.compare}
+        rating={rating}
+        onRating={toReviews}
         needsSize={needsSize}
         onChooseSize={chooseSizeFromBar}
         onAdd={() => place(false)}

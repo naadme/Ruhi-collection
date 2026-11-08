@@ -28,6 +28,11 @@ import {
   CONTACT_LIMITS, REVIEW_LIMITS, contactProblem, reviewProblem, reviewSummary, reviewerLabel, starLabel,
 } from '../lib/reviews'
 import { submitPublicReview } from '../lib/reviewStore'
+import { Stars } from './Stars'
+
+// How many reviews show before "Show all": enough to read a range of voices,
+// few enough that the form and "You may also like" stay within reach.
+const FIRST_REVIEWS = 4
 
 /** The five stars, as buttons a keyboard and a screen reader both understand. */
 function StarPicker({ value, onChange, busy }) {
@@ -72,6 +77,7 @@ export default function ReviewsSection({ product, reviews = [] }) {
   const [error, setError] = useState('')
   const [sent, setSent] = useState(false)
   const [writing, setWriting] = useState(false)
+  const [showAll, setShowAll] = useState(false)
 
   // The product route keeps this section mounted when she opens a related
   // product or another colour, so the form starts over whenever the product
@@ -83,8 +89,12 @@ export default function ReviewsSection({ product, reviews = [] }) {
     setError('')
     setDraft(EMPTY_DRAFT)
   }, [productId])
+  // Another design opens on its first few reviews again.
+  useEffect(() => { setShowAll(false) }, [productId])
 
   const summary = useMemo(() => reviewSummary(reviews), [reviews])
+  const verifiedCount = useMemo(() => reviews.filter((r) => r?.verified === true).length, [reviews])
+  const listed = showAll ? reviews : reviews.slice(0, FIRST_REVIEWS)
   // The colour of each colour row of this design, for "Colour: Pink" under a
   // review: a review belongs to the row that was bought.
   const colourOf = useMemo(() => {
@@ -116,21 +126,26 @@ export default function ReviewsSection({ product, reviews = [] }) {
   }
 
   return (
-    <section className="mt-10 border-t border-black/10 pt-7" aria-labelledby="reviews-heading">
+    // `id="reviews"`: every rating on the product page jumps here. The scroll
+    // margin keeps the heading clear of the sticky header.
+    <section id="reviews" className="mt-10 border-t border-black/10 pt-7 scroll-mt-[96px] md:scroll-mt-[116px]" aria-labelledby="reviews-heading">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 id="reviews-heading" className="text-[18px] font-bold">Customer reviews</h2>
+        <h2 id="reviews-heading" tabIndex={-1} className="text-[18px] font-bold outline-none">Customer reviews</h2>
         {summary.count > 0 && (
-          <p className="text-[15px] text-black/70 flex items-center gap-2">
+          <p className="text-[15px] text-black/70 flex flex-wrap items-center gap-x-2 gap-y-1">
             <span
               role="img"
               aria-label={starLabel(Math.round(summary.average * 10) / 10)}
-              className="inline-flex items-center gap-1"
+              className="inline-flex items-center gap-1.5"
             >
-              <Star size={16} className="text-amber-500" fill="#f59e0b" strokeWidth={0} />
+              <Stars value={summary.average} size={16} />
               <b className="font-ui">{summary.average.toFixed(1)}</b>
             </span>
             <span className="text-black/50">
               {summary.count} review{summary.count === 1 ? '' : 's'}
+              {/* Only the reviews the owner has checked against her orders and
+                  marked herself. */}
+              {verifiedCount > 0 && ` · ${verifiedCount} verified purchase${verifiedCount === 1 ? '' : 's'}`}
             </span>
           </p>
         )}
@@ -160,7 +175,7 @@ export default function ReviewsSection({ product, reviews = [] }) {
         </p>
       ) : (
         <ul className="mt-5 space-y-5">
-          {reviews.map((r) => {
+          {listed.map((r) => {
             const who = reviewerLabel(r)
             const bought = [
               r.size_bought && `Size ${r.size_bought}`,
@@ -208,6 +223,16 @@ export default function ReviewsSection({ product, reviews = [] }) {
             )
           })}
         </ul>
+      )}
+
+      {!showAll && reviews.length > FIRST_REVIEWS && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-6 w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-black/40 px-5 h-[46px] rounded-lg text-[15px] font-semibold hover:bg-black hover:text-white transition"
+        >
+          Show all {reviews.length} reviews
+        </button>
       )}
 
       {/* Open to everyone. A clearly labelled button opens the form, so a
