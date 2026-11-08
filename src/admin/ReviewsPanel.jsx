@@ -20,18 +20,26 @@
 // and order number, and the paid orders those details match. The panel only
 // shows the evidence — the label is set by her button and nothing else.
 //
+// Reviews customers sent the shop directly (WhatsApp, Instagram, a phone call,
+// the shop) are uploaded from a sheet with "Upload from sheet" (ReviewImport.jsx).
+// They arrive pending and unverified like any other review, and one whole
+// upload can be taken back while its reviews are unpublished.
+//
 // Every button writes the `status` column through the table's admin-only
 // policy. The panel does not decide who may press it (the policy does), and
 // it does not cache a verdict: each row is re-read from the database, so two
 // admins cannot approve over each other without seeing it.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, BadgeCheck, Ban, Check, Edit2 as Edit, EyeOff, Loader2, RefreshCw, Search, Star, Trash2, X } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, Ban, Check, Edit2 as Edit, EyeOff, FileSpreadsheet, Loader2, RefreshCw, Search, Star, Trash2, Undo2, X } from 'lucide-react'
 import {
-  fetchAllReviews, fetchReviewContacts, fetchReviewOrders, deleteReview, setReviewStatus, setReviewVerified, updateReview,
+  fetchAllReviews, fetchReviewContacts, fetchReviewOrders, deleteReview, setReviewStatus, setReviewVerified, undoImport, updateReview,
 } from '../lib/reviewStore'
 import { homepageReviews, isSiteReview } from '../lib/siteReviews'
-import { MODERATION_FILTERS, moderationCopy, reviewEvidence, sourceCopy, starLabel } from '../lib/reviews'
+import {
+  MODERATION_FILTERS, channelCopy, moderationCopy, reviewEvidence, reviewerLabel, sourceCopy, starLabel,
+} from '../lib/reviews'
+import ReviewImport from './ReviewImport'
 import { formatShopDate } from '../lib/shopTime'
 import { isPurchase } from '../lib/tracking'
 import { designGroupId } from '../lib/trackingItems'
@@ -89,27 +97,36 @@ function Actions({ review, busy, onDecide }) {
   )
 }
 
-/** Correct a review's headline, rating, name and body. Its state (pending,
- *  approved, rejected) is untouched — editing never publishes a review. */
+/** Correct a review's headline, rating, name, place, size and body. Its state
+ *  (pending, approved, rejected) is untouched — editing never publishes a
+ *  review. Only an uploaded review may have its name left empty. */
 function EditForm({ review, onSave, onCancel, busy }) {
   const [draft, setDraft] = useState({
     title: review.title ?? '',
     rating: Number(review.rating || 0),
-    name: review.customer_name,
+    name: review.customer_name ?? '',
+    city: review.reviewer_city ?? '',
+    state: review.reviewer_state ?? '',
+    size: review.size_bought ?? '',
     body: review.body,
   })
+  const nameOptional = review.source === 'imported'
+  const blank = (v) => String(v ?? '').trim() || null
 
   const save = async (e) => {
     e.preventDefault()
     const rating = Number(draft.rating)
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) return
-    if (!draft.name) return
+    if (!nameOptional && !String(draft.name).trim()) return
     if (!draft.body || draft.body.length < 10) return
     try {
       await onSave(review, {
         title: draft.title || null,
         rating,
-        customer_name: draft.name,
+        customer_name: blank(draft.name),
+        reviewer_city: blank(draft.city),
+        reviewer_state: blank(draft.state),
+        size_bought: blank(draft.size),
         body: draft.body,
       })
       onCancel()
@@ -155,15 +172,33 @@ function EditForm({ review, onSave, onCancel, busy }) {
         </div>
       </div>
       <label className="block">
-        <span className="block text-[12px] font-semibold text-black/60 mb-1">Name to show</span>
+        <span className="block text-[12px] font-semibold text-black/60 mb-1">
+          Name to show{nameOptional && ' (leave empty if she has not agreed to it)'}
+        </span>
         <input
           value={draft.name}
           onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           disabled={busy}
-          placeholder="e.g. Priya S."
+          placeholder={nameOptional
+            ? reviewerLabel({ ...review, customer_name: '', reviewer_city: draft.city }).name
+            : 'e.g. Priya S.'}
           className="w-full border border-black/30 rounded-lg px-3 h-[38px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 disabled:bg-neutral-100"
         />
       </label>
+      <div className="grid grid-cols-3 gap-2">
+        {[['city', 'City', 'Hyderabad'], ['state', 'State', 'Telangana'], ['size', 'Size bought', 'M']].map(([key, label, hint]) => (
+          <label key={key} className="block min-w-0">
+            <span className="block text-[12px] font-semibold text-black/60 mb-1">{label}</span>
+            <input
+              value={draft[key]}
+              onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
+              disabled={busy}
+              placeholder={hint}
+              className="w-full border border-black/30 rounded-lg px-3 h-[38px] text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 disabled:bg-neutral-100"
+            />
+          </label>
+        ))}
+      </div>
       <label className="block">
         <span className="block text-[12px] font-semibold text-black/60 mb-1">Review</span>
         <textarea
@@ -205,31 +240,46 @@ const joinReasons = (reasons) =>
  * it came from, the reviewer's private details, and the orders they match.
  * It only informs; the label is set by her own button.
  */
-function Evidence({ review, contact, orders, evidenceError, sameDesign }) {
+function Evidence({ review, contact, orders, evidenceError, sameDesign, batch, onUndoBatch, busy }) {
   const { purchases, orderRef } = reviewEvidence(review, contact, orders, { isPaid: isPurchase, sameDesign })
   const typedRef = String(contact?.order_ref || '').trim()
+  const imported = review.source === 'imported'
+  const [confirming, setConfirming] = useState(false)
+  const privateBits = [
+    contact?.email && `email ${contact.email}`,
+    contact?.phone && `mobile ${contact.phone}`,
+    typedRef && `order number ${typedRef}`,
+  ].filter(Boolean)
   return (
     <div className="mt-3 border border-black/10 bg-neutral-50 rounded-lg px-3 py-2.5 text-[13px] text-black/70 space-y-1.5">
       <p>
         <span className="font-semibold text-black/80">{sourceCopy(review.source)}</span>
-        {review.source === 'public'
-          ? ' — written on the product page, by anyone.'
-          : ' — written from a signed-in account, against one of its orders.'}
+        {imported
+          ? <>
+              {' — added by you'}
+              {contact?.created_at && <> on {formatShopDate(contact.created_at)}</>}
+              {contact?.channel && <>; the customer sent it by {channelCopy(contact.channel)}</>}
+              {'.'}
+            </>
+          : review.source === 'public'
+            ? ' — written on the product page, by anyone.'
+            : ' — written from a signed-in account, against one of its orders.'}
       </p>
 
-      {contact ? (
+      {contact && privateBits.length > 0 ? (
         <p>
           <span className="font-semibold text-black/80">Private details</span>{' '}
-          <span className="text-black/45">(given by the reviewer, not confirmed; never shown on the site)</span>:{' '}
-          {[
-            contact.email && `email ${contact.email}`,
-            contact.phone && `mobile ${contact.phone}`,
-            typedRef && `order number ${typedRef}`,
-          ].filter(Boolean).join(' · ')}
+          <span className="text-black/45">
+            ({imported ? 'from your sheet' : 'given by the reviewer, not confirmed'}; never shown on the site)
+          </span>:{' '}
+          {privateBits.join(' · ')}
         </p>
-      ) : review.source === 'public' ? (
-        <p className="text-black/45">No private details were saved with this review.</p>
+      ) : review.source !== 'account' ? (
+        <p className="text-black/45">No mobile, email or order number was saved with this review.</p>
       ) : null}
+      {imported && contact?.note && (
+        <p><span className="font-semibold text-black/80">Your note:</span> {contact.note}</p>
+      )}
 
       {evidenceError ? (
         <p className="text-amber-800">The orders could not be checked: {evidenceError}</p>
@@ -284,7 +334,46 @@ function Evidence({ review, contact, orders, evidenceError, sameDesign }) {
               check with the customer using the email or mobile saved on the order itself.
             </p>
           )}
+          {imported && (
+            <p className="text-black/55">
+              Mark “Verified purchase” only once you have found her purchase in your own records: a website order
+              above, or your Instagram, WhatsApp or shop sales.
+            </p>
+          )}
         </>
+      )}
+
+      {imported && contact?.import_batch && batch && batch.unpublished > 0 && (
+        confirming ? (
+          <p className="flex flex-wrap items-center gap-2 text-red-800">
+            Remove the {batch.unpublished} unpublished review{batch.unpublished === 1 ? '' : 's'} of this upload
+            {batch.published > 0 && <> ({batch.published} published stay)</>}?
+            <button
+              type="button"
+              onClick={() => { setConfirming(false); onUndoBatch?.(contact.import_batch) }}
+              disabled={busy}
+              className="inline-flex items-center gap-1 h-[28px] px-2.5 rounded-lg border border-red-400 text-[12px] font-semibold hover:bg-red-100 transition disabled:opacity-60"
+            >
+              <Undo2 size={12} /> Remove them
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="h-[28px] px-2.5 rounded-lg border border-black/30 text-[12px] font-semibold text-black/60 hover:bg-white transition"
+            >
+              Keep them
+            </button>
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            disabled={busy}
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-black/50 hover:text-black transition disabled:opacity-60"
+          >
+            <Undo2 size={12} /> Undo this upload ({batch.total} review{batch.total === 1 ? '' : 's'})
+          </button>
+        )
       )}
     </div>
   )
@@ -302,6 +391,9 @@ export default function ReviewsPanel({ notify, products = [] }) {
   // awaiting a permanent-delete confirmation.
   const [editingId, setEditingId] = useState('')
   const [deletingId, setDeletingId] = useState('')
+  // The "Upload from sheet" box, open or closed, and an upload being undone.
+  const [importing, setImporting] = useState(false)
+  const [undoingBatch, setUndoingBatch] = useState('')
 
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: '' }))
@@ -316,9 +408,11 @@ export default function ReviewsPanel({ notify, products = [] }) {
       // A failure here only hides the evidence: the reviews themselves are
       // already on screen and can still be moderated.
       try {
+        // The orders are read even with no reviews yet: an upload checks each
+        // customer's mobile against them.
         const [contacts, orders] = await Promise.all([
           fetchReviewContacts(rows.map((r) => r.id)),
-          rows.length ? fetchReviewOrders() : Promise.resolve([]),
+          fetchReviewOrders(),
         ])
         setEvidence({ contacts, orders, error: '' })
       } catch (e) {
@@ -372,10 +466,44 @@ export default function ReviewsPanel({ notify, products = [] }) {
       if (status !== 'all' && r.status !== status) return false
       if (!needle) return true
       const product = byProduct.get(r.product_id)
-      return [r.customer_name, r.body, product?.title, product?.id]
+      return [reviewerLabel(r).name, r.reviewer_city, r.reviewer_state, r.title, r.body, product?.title, product?.id, product?.sku]
         .filter(Boolean).join(' ').toLowerCase().includes(needle)
     })
   }, [state.reviews, status, query, byProduct])
+
+  // Each upload's size, and how many of it are not published — what "Undo
+  // this upload" would remove.
+  const batches = useMemo(() => {
+    const out = new Map()
+    for (const r of state.reviews) {
+      const batch = evidence.contacts.get(r.id)?.import_batch
+      if (!batch) continue
+      const b = out.get(batch) || { total: 0, published: 0, unpublished: 0 }
+      b.total += 1
+      if (r.status === 'approved') b.published += 1
+      else b.unpublished += 1
+      out.set(batch, b)
+    }
+    return out
+  }, [state.reviews, evidence.contacts])
+
+  const undoBatch = async (batch) => {
+    setUndoingBatch(batch)
+    try {
+      const { removed, kept } = await undoImport(batch)
+      notify?.('success', kept
+        ? `Upload undone: ${removed} removed. ${kept} already published stay on the site.`
+        : `Upload undone: ${removed} review${removed === 1 ? '' : 's'} removed.`)
+      await load()
+    } catch (e) {
+      notify?.('error', e?.message || 'The upload could not be undone.')
+    } finally {
+      setUndoingBatch('')
+    }
+  }
+
+  // The name a review is listed under in messages.
+  const who = (review) => reviewerLabel(review).name
 
   const decide = async (review, next) => {
     setBusyId(review.id)
@@ -386,7 +514,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
         reviews: s.reviews.map((r) => (r.id === review.id ? { ...r, status: saved.status } : r)),
       }))
       const word = { approved: 'published on the product page', pending: 'back in the queue', rejected: 'rejected' }[next]
-      notify?.('success', `“${review.customer_name}”'s review is now ${word}.`)
+      notify?.('success', `“${who(review)}”'s review is now ${word}.`)
     } catch (e) {
       notify?.('error', e?.message || 'That change could not be saved.')
     } finally {
@@ -404,8 +532,8 @@ export default function ReviewsPanel({ notify, products = [] }) {
         reviews: s.reviews.map((r) => (r.id === review.id ? { ...r, ...saved } : r)),
       }))
       notify?.('success', saved.verified
-        ? `“${review.customer_name}”'s review now shows “Verified purchase”.`
-        : `“${review.customer_name}”'s review no longer shows “Verified purchase”.`)
+        ? `“${who(review)}”'s review now shows “Verified purchase”.`
+        : `“${who(review)}”'s review no longer shows “Verified purchase”.`)
     } catch (e) {
       notify?.('error', e?.message || 'That change could not be saved.')
     } finally {
@@ -469,16 +597,38 @@ export default function ReviewsPanel({ notify, products = [] }) {
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={state.loading}
-          className="inline-flex items-center gap-2 h-[46px] px-5 rounded-lg border border-black/40 text-[15px] font-semibold hover:bg-black hover:text-white transition disabled:opacity-60"
-        >
-          {state.loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-          Reload
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setImporting(true)}
+            disabled={importing}
+            className="inline-flex items-center gap-2 h-[46px] px-5 rounded-lg border border-black bg-black text-white text-[15px] font-semibold hover:bg-black/85 transition disabled:opacity-60"
+          >
+            <FileSpreadsheet size={16} />
+            Upload from sheet
+          </button>
+          <button
+            type="button"
+            onClick={load}
+            disabled={state.loading}
+            className="inline-flex items-center gap-2 h-[46px] px-5 rounded-lg border border-black/40 text-[15px] font-semibold hover:bg-black hover:text-white transition disabled:opacity-60"
+          >
+            {state.loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+            Reload
+          </button>
+        </div>
       </div>
+
+      {importing && (
+        <ReviewImport
+          products={products}
+          existing={state.reviews.filter((r) => !isSiteReview(r))}
+          orders={evidence.orders}
+          notify={notify}
+          onImported={load}
+          onClose={() => setImporting(false)}
+        />
+      )}
 
       {state.error && (
         <div className="mt-6 flex items-start gap-3 border border-amber-200 bg-amber-50 text-amber-900 rounded-xl px-4 py-3 text-[14px]">
@@ -534,7 +684,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
       ) : shown.length === 0 ? (
         <p className="mt-6 text-[15px] text-black/55">
           {counts.all === 0
-            ? 'No reviews have been written yet. When someone reviews a product on the website, it will wait here for you.'
+            ? 'No reviews have been written yet. When someone reviews a product on the website, or you upload reviews from a sheet, they will wait here for you.'
             : query
               ? 'No reviews match that search.'
               : 'No reviews in this state — switch the filter to All to see every review.'}
@@ -564,7 +714,13 @@ export default function ReviewsPanel({ notify, products = [] }) {
 
                 <div className="flex-1 min-w-[260px]">
                   <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <b className="font-ui text-[15px]">{r.customer_name}</b>
+                    <b className="font-ui text-[15px]">{who(r)}</b>
+                    {!site && !reviewerLabel(r).named && (
+                      <span className="text-[12px] text-black/45">(no name given)</span>
+                    )}
+                    {!site && reviewerLabel(r).place && (
+                      <span className="text-[13px] text-black/55">{reviewerLabel(r).place}</span>
+                    )}
                     {/* A testimonial has no stars. Showing five grey ones
                         would read as "she gave it zero", which is not what
                         the site says about it. */}
@@ -593,8 +749,10 @@ export default function ReviewsPanel({ notify, products = [] }) {
                       ? <span className="font-semibold text-black/80">{product.title || product.id}</span>
                       : <span className="italic">a product that has since been removed</span>}
                     {product?.id && <span className="font-mono text-black/45 ml-2">{product.id}</span>}
+                    {r.size_bought && <span> · Size {r.size_bought}</span>}
                   </p>
-                  <p className="text-[15px] leading-6 text-black/70 mt-2 whitespace-pre-line">{r.body}</p>
+                  {r.title && <p className="text-[15px] font-semibold mt-2">{r.title}</p>}
+                  <p className={`text-[15px] leading-6 text-black/70 whitespace-pre-line ${r.title ? 'mt-1' : 'mt-2'}`}>{r.body}</p>
                   {!site && (
                     <Evidence
                       review={r}
@@ -603,6 +761,9 @@ export default function ReviewsPanel({ notify, products = [] }) {
                       evidenceError={evidence.error}
                       sameDesign={(productId) =>
                         Boolean(productId) && (productId === r.product_id || designOf(productId) === designOf(r.product_id))}
+                      batch={batches.get(evidence.contacts.get(r.id)?.import_batch)}
+                      onUndoBatch={undoBatch}
+                      busy={Boolean(undoingBatch)}
                     />
                   )}
                 </div>
@@ -654,7 +815,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
                           {deletingId === r.id ? (
                             <div className="mt-2 border border-red-200 bg-red-50 rounded-xl p-3">
                               <p className="text-[13px] text-red-800">
-                                Permanently delete this review by “{r.customer_name}”? This cannot be undone.
+                                Permanently delete this review by “{who(r)}”? This cannot be undone.
                               </p>
                               <div className="mt-2 flex items-center gap-2">
                                 <button

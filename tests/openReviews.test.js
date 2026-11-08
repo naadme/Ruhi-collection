@@ -76,12 +76,16 @@ test('the public read is narrowed to the columns the product page shows', () => 
   for (const hidden of ['user_id', 'order_item_id', 'decided_by', 'verified_by', 'decided_at', 'verified_at']) {
     assert.ok(!cols.includes(hidden), `${hidden} is not public`)
   }
-  // Everything the product page asks for is in the grant, or the page would
-  // be refused and silently show no reviews.
+  // Everything the product page asks for is in a grant, or the page would be
+  // refused and silently show no reviews. Column grants add up, so the later
+  // migration's grant (city, state and size, 20261108120000) counts too.
+  const later = read('supabase/migrations/20261108120000_review_sheet_import.sql')
+    .match(/grant\s+select \(([^)]*)\)\s+on table public\.product_reviews to anon;/)
+  const granted = [...cols, ...(later ? later[1].split(',').map((c) => c.trim()) : [])]
   const store = read('src/lib/reviewStore.js')
   const select = store.match(/fetchPublishedReviews[\s\S]*?\.select\('([^']*)'\)/)[1]
   for (const col of select.split(',').map((c) => c.trim())) {
-    assert.ok(cols.includes(col), `the product page reads ${col}, so anon may`)
+    assert.ok(granted.includes(col), `the product page reads ${col}, so anon may`)
   }
   assert.ok(!select.includes('order_item_id'), 'the page no longer reads the order line')
 })
