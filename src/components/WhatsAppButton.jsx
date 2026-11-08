@@ -14,8 +14,9 @@ function seenThisVisit() {
   try { return sessionStorage.getItem(SEEN) === '1' } catch { return false }
 }
 
-// `lifted` raises it above the product page's phone buy bar.
-export default function WhatsAppButton({ href, lifted = false }) {
+// `lifted` raises it above the product page's phone buy bar. `onClick` is
+// told about a tap (GA4's contact event); the link opens WhatsApp as before.
+export default function WhatsAppButton({ href, lifted = false, onClick }) {
   const [visible, setVisible] = useState(seenThisVisit)
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export default function WhatsAppButton({ href, lifted = false }) {
   return (
     <a
       href={href}
+      onClick={onClick}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Ask about this product on WhatsApp"

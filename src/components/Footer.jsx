@@ -4,6 +4,10 @@ import Newsletter from './Newsletter'
 import Logo from './Logo'
 import { site } from '../data/site'
 import { useCategories } from '../context/CategoriesContext'
+import { newEventId, trackSafely } from '../lib/tracking'
+import { contactEvent } from '../lib/trackingItems'
+// GA4's contact event for a tap on one of the footer's contact links.
+const tapped = (href) => () => trackSafely(() => contactEvent(href, { location: 'footer', eventId: newEventId() }))
 // Which glyph each social label wears. `site.social` stays the only source of
 // the URL — this decides the icon and nothing else.
 const SOCIAL_ICON = { Instagram, WhatsApp: MessageCircle }
@@ -30,7 +34,7 @@ export default function Footer() {
             directly beneath it. Below `xl` the blocks stack two per row. */}
         <div className="grid gap-12 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr]">
           <div className="min-w-0"><Logo light /><p className="mt-6 text-[17px] leading-7 max-w-[280px] text-[#4A2C23]/90">{site.tagline}</p>
-            <div className="flex flex-wrap gap-x-5 gap-y-2 mt-6 text-[15px]">{site.social.map((s) => { const I = SOCIAL_ICON[s.label]; return (<a key={s.label} href={s.href} target="_blank" rel="noreferrer" aria-label={s.label} title={s.label} className="inline-flex items-center underline-offset-4 hover:underline">{I ? <I size={18} aria-hidden="true" /> : s.label}</a>) })}</div></div>
+            <div className="flex flex-wrap gap-x-5 gap-y-2 mt-6 text-[15px]">{site.social.map((s) => { const I = SOCIAL_ICON[s.label]; return (<a key={s.label} href={s.href} onClick={tapped(s.href)} target="_blank" rel="noreferrer" aria-label={s.label} title={s.label} className="inline-flex items-center underline-offset-4 hover:underline">{I ? <I size={18} aria-hidden="true" /> : s.label}</a>) })}</div></div>
           <Col title="Shop" links={shopLinks} /><Col title="Customer service" links={site.service} />
           <div className="min-w-0">
             <div>
@@ -39,8 +43,8 @@ export default function Footer() {
                   flex row squeezes the SVG to nothing when the e-mail address
                   is wider than the column. */}
               <ul className="mt-6 space-y-4 text-[17px]">
-                <li><a href={site.phoneHref} className="flex gap-3 items-center min-w-0 underline-offset-4 hover:underline"><Phone size={20} className="shrink-0" />{site.phone}</a></li>
-                <li><a href={`mailto:${site.email}`} className="flex gap-3 items-center min-w-0 underline-offset-4 hover:underline"><Mail size={20} className="shrink-0" /><span className="min-w-0 break-all">{site.email}</span></a></li></ul>
+                <li><a href={site.phoneHref} onClick={tapped(site.phoneHref)} className="flex gap-3 items-center min-w-0 underline-offset-4 hover:underline"><Phone size={20} className="shrink-0" />{site.phone}</a></li>
+                <li><a href={`mailto:${site.email}`} onClick={tapped(`mailto:${site.email}`)} className="flex gap-3 items-center min-w-0 underline-offset-4 hover:underline"><Mail size={20} className="shrink-0" /><span className="min-w-0 break-all">{site.email}</span></a></li></ul>
             </div>
             <div className="mt-10"><h3 className="text-[22px] font-medium">Stay updated</h3><p className="mt-6 text-[17px] leading-7 max-w-[300px]">Subscribe to get updates on new arrivals and offers.</p><Newsletter /></div>
           </div>

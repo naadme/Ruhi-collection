@@ -1,13 +1,17 @@
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Heart } from 'lucide-react'
 import Img from './Img'
 import { inr } from '../lib/pricing'
 import { productHref } from '../lib/productLinks'
 import { useWishlist } from '../context/WishlistContext'
+import { useCategories } from '../context/CategoriesContext'
 import { imageFramingStyle } from '../lib/imageFraming'
 import { useRatings } from '../context/RatingsContext'
 import { RatingPill } from './Stars'
+import { newEventId, trackSafely } from '../lib/tracking'
+import { cartEvent, viewedItem } from '../lib/trackingItems'
+import { useItemList } from './ItemList'
 // The second photo that fades in on hover is for a mouse only. On a touch
 // screen (every phone, including Instagram's and Facebook's in-app browsers)
 // iOS treats the first tap on a link whose hover reveals new content as the
@@ -21,6 +25,20 @@ const canHover = typeof window !== 'undefined' &&
 // still reach every card — a context update is never blocked by memo().
 function ProductCard({ product: p }) {
   const { has, toggle } = useWishlist(); const fav = has(p.id)
+  const { typeLabel } = useCategories()
+  // GA4 (src/components/ItemList.jsx): the list this card sits in learns when
+  // the card has been on screen and when it is opened.
+  const list = useItemList()
+  const listRef = useCallback((el) => list?.register(p.id, el), [list, p.id])
+  const save = () => {
+    // add_to_wishlist for a save, not for taking one back: the colour on the
+    // card, in its first size, as view_item describes a product before a size
+    // is chosen.
+    if (!fav) {
+      trackSafely(() => cartEvent('add_to_wishlist', [viewedItem(p, p.id, null, { category: typeLabel(p.type) })], { eventId: newEventId() }))
+    }
+    toggle(p.id)
+  }
   const off = p.compare ? Math.round((1 - p.price / p.compare) * 100) : 0
   // The design's published reviews, every colour together
   // (src/context/RatingsContext.jsx); null — and nothing drawn — until it has
@@ -53,11 +71,11 @@ function ProductCard({ product: p }) {
     </>
   )
   return (
-    <div className="group relative">
-      {href ? <Link to={href} className="block">{card}</Link> : <div className="block">{card}</div>}
+    <div className="group relative" ref={list ? listRef : undefined}>
+      {href ? <Link to={href} onClick={list ? () => list.select(p.id) : undefined} className="block">{card}</Link> : <div className="block">{card}</div>}
       {/* The heart is a sibling of the link, never a child of it: tapping it
           saves the product and does not open its page. */}
-      <button onClick={() => toggle(p.id)} aria-label={fav ? `Remove ${p.title} from wishlist` : `Add ${p.title} to wishlist`} aria-pressed={fav} className="absolute top-2 right-2 w-9 h-9 rounded-full bg-white/90 grid place-items-center hover:scale-105 transition">
+      <button onClick={save} aria-label={fav ? `Remove ${p.title} from wishlist` : `Add ${p.title} to wishlist`} aria-pressed={fav} className="absolute top-2 right-2 w-9 h-9 rounded-full bg-white/90 grid place-items-center hover:scale-105 transition">
         <Heart size={18} strokeWidth={1.6} fill={fav ? '#C08576' : 'none'} stroke={fav ? '#C08576' : '#4A2C23'} /></button>
     </div>
   )

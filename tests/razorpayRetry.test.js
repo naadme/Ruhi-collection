@@ -122,3 +122,29 @@ test('a straightforward payment resolves with Razorpay\'s response', async () =>
 
   assert.deepEqual(await result, PAID);
 });
+
+// GA4's checkout_error (event schema of 8 Nov 2026) hears about every failed
+// attempt through `onFailure`. Measuring must never change how a payment
+// ends: a retry that pays is still paid, and a hook that throws is ignored.
+test('onFailure hears each failed attempt with Razorpay\'s reason, and the payment still settles as before', async () => {
+  const w = makeWindow();
+  const { openRazorpay } = load(w);
+  const heard = [];
+  const result = openRazorpay({ ...ARGS, onFailure: (reason) => heard.push(reason) });
+  await tick();
+  w.checkout.fail('instrument_declined');
+  w.checkout.fail('payment_failed');
+  w.checkout.pay(PAID);
+  assert.deepEqual(await result, PAID);
+  assert.deepEqual(heard, ['instrument_declined', 'payment_failed']);
+});
+
+test('a closed window after a failure reports the failure with its reason, even if onFailure throws', async () => {
+  const w = makeWindow();
+  const { openRazorpay, PaymentFailed } = load(w);
+  const result = openRazorpay({ ...ARGS, onFailure: () => { throw new Error('a bug in measuring') } });
+  await tick();
+  w.checkout.fail('instrument_declined');
+  w.checkout.close();
+  await assert.rejects(result, (err) => err instanceof PaymentFailed && err.reason === 'instrument_declined')
+});

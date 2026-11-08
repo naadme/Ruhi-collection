@@ -73,13 +73,16 @@ export function CartProvider({ children }) {
   // once the basket has changed — never for a click that changed nothing.
   // Emptying the basket after a purchase and pruning lines the shop no longer
   // sells are not the shopper's doing, so `clear` and `prune` send nothing.
-  const track = useCallback((event, moved) => {
+  // `method` is the control used, which GA4 receives as `method`: add_to_cart,
+  // buy_now or sticky_bar on the product page; quantity, remove or empty_cart
+  // in the basket.
+  const track = useCallback((event, moved, method) => {
     const { getProduct: product, getRow: row, typeLabel: label } = catalogue.current
     const described = moved.map(({ line, units }) => {
       const shown = resolveLine(line, product, row)
       return shown && cartLineItem(shown, { category: label(shown.row?.type || shown.product.type), quantity: units })
     })
-    const message = cartEvent(event, described, { eventId: newEventId() })
+    const message = cartEvent(event, described, { eventId: newEventId(), params: { method } })
     if (message) trackEcommerce(message)
   }, [])
 
@@ -88,7 +91,7 @@ export function CartProvider({ children }) {
   // colours are already two distinct lines.
   // `openDrawer: false` is for "Buy it now", which goes straight to checkout:
   // the drawer would only cover the page it is heading to.
-  const add = useCallback((id, qty = 1, size = 'M', color, { openDrawer = true } = {}) => {
+  const add = useCallback((id, qty = 1, size = 'M', color, { openDrawer = true, method } = {}) => {
     const wanted = Math.min(MAX_QTY, Math.max(1, qty))
     const c = latest.current
     const k = c.find((i) => i.id === id && i.size === size)
@@ -100,7 +103,7 @@ export function CartProvider({ children }) {
     commit(k ? c.map((i) => (i === k ? line : i)) : [...c, line])
     if (openDrawer) setOpen(true)
     const units = line.qty - (k ? k.qty : 0)
-    if (units > 0) track('add_to_cart', [{ line, units }])
+    if (units > 0) track('add_to_cart', [{ line, units }], method)
   }, [commit, track])
   const setQty = useCallback((id, size, qty) => {
     const c = latest.current
@@ -108,15 +111,15 @@ export function CartProvider({ children }) {
     if (!k) return
     const line = { ...k, qty: Math.min(MAX_QTY, Math.max(1, qty)) }
     commit(c.map((i) => (i === k ? line : i)))
-    if (line.qty > k.qty) track('add_to_cart', [{ line, units: line.qty - k.qty }])
-    if (line.qty < k.qty) track('remove_from_cart', [{ line, units: k.qty - line.qty }])
+    if (line.qty > k.qty) track('add_to_cart', [{ line, units: line.qty - k.qty }], 'quantity')
+    if (line.qty < k.qty) track('remove_from_cart', [{ line, units: k.qty - line.qty }], 'quantity')
   }, [commit, track])
   const remove = useCallback((id, size) => {
     const c = latest.current
     const gone = c.filter((i) => i.id === id && i.size === size)
     if (!gone.length) return
     commit(c.filter((i) => !(i.id === id && i.size === size)))
-    track('remove_from_cart', gone.map((line) => ({ line, units: line.qty })))
+    track('remove_from_cart', gone.map((line) => ({ line, units: line.qty })), 'remove')
   }, [commit, track])
   // The shopper's own "Empty the cart": every line is removed, so every line
   // goes into one remove_from_cart.
@@ -124,7 +127,7 @@ export function CartProvider({ children }) {
     const gone = latest.current
     if (!gone.length) return
     commit([])
-    track('remove_from_cart', gone.map((line) => ({ line, units: line.qty })))
+    track('remove_from_cart', gone.map((line) => ({ line, units: line.qty })), 'empty_cart')
   }, [commit, track])
   const clear = useCallback(() => commit([]), [commit])
   // Drop lines whose product no longer resolves (deleted or hidden by the

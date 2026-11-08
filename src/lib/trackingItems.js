@@ -187,18 +187,43 @@ export function orderLineItem(line, { category, compare, row } = {}) {
 const valueOf = (items) => round(items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0))
 const known = (items) => (items || []).filter(Boolean)
 
+// GA4 keeps the first 100 characters of a parameter's value; longer text is
+// cut here, so what GA4 shows is exactly what was sent.
+const MAX_PARAM_LENGTH = 100
+
+/**
+ * An event's own parameters (src/lib/tracking.js, PARAMS_KEY) in GA4's terms:
+ * text tidied and cut to GA4's length, finite numbers, true and false.
+ * Anything else — undefined, null, an empty string, an object — is left out,
+ * as Annexure A asks for unknown values. Undefined when nothing is left.
+ */
+export function eventParams(params) {
+  const out = {}
+  for (const [key, value] of Object.entries(params || {})) {
+    if (typeof value === 'string') {
+      const t = text(value).slice(0, MAX_PARAM_LENGTH)
+      if (t) out[key] = t
+    } else if ((typeof value === 'number' && Number.isFinite(value)) || typeof value === 'boolean') {
+      out[key] = value
+    }
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
 /**
  * view_item, add_to_cart, remove_from_cart, view_cart and begin_checkout
- * (A3–A7). `value` defaults to price × quantity over the items; begin_checkout
- * passes the total after a coupon instead, with the coupon's code. Null when
- * no item can be described.
+ * (A3–A7), and add_to_wishlist. `value` defaults to price × quantity over the
+ * items; begin_checkout passes the total after a coupon instead, with the
+ * coupon's code. `params` are the event's own parameters (eventParams), such
+ * as which button added the item. Null when no item can be described.
  */
-export function cartEvent(event, items, { eventId, value, coupon } = {}) {
+export function cartEvent(event, items, { eventId, value, coupon, params } = {}) {
   const list = known(items)
   if (!list.length) return null
   return compact({
     event,
     event_id: eventId,
+    event_params: eventParams(params),
     ecommerce: compact({
       currency: CURRENCY,
       value: amount(value) ?? valueOf(list),
@@ -336,10 +361,20 @@ export function purchaseEvent(order, items) {
   })
 }
 
-/** search (A13): the term exactly as typed, tidied of stray spaces. */
-export function searchEvent(term, { eventId } = {}) {
+/**
+ * search (A13): the term exactly as typed, tidied of stray spaces, and — once
+ * the catalogue has answered — how many styles it found (`results`), so GA4
+ * can show the searches that found nothing.
+ */
+export function searchEvent(term, { eventId, results } = {}) {
   const searched = text(term)
-  return searched ? compact({ event: 'search', event_id: eventId, search_term: searched }) : null
+  if (!searched) return null
+  return compact({
+    event: 'search',
+    event_id: eventId,
+    search_term: searched,
+    event_params: eventParams({ search_results: Number.isInteger(results) && results >= 0 ? results : undefined }),
+  })
 }
 
 /** Two pushes of the same step with nothing new in them (a retry after the payment window was closed). */
@@ -347,4 +382,194 @@ export function sameStep(a, b) {
   if (!a || !b) return false
   const strip = ({ event_id: _ignored, ...rest }) => JSON.stringify(rest)
   return strip(a) === strip(b)
+}
+
+// ---- GA4 product analytics (event schema of 8 Nov 2026) ----------------------
+//
+// Events beyond the brief's Section 3, for understanding how shoppers use the
+// shop: which lists and banners lead to products, which sizes they weigh up,
+// where they ask for help and what stops a checkout. GA4's own recommended
+// events where one fits (view_item_list, select_item, view_promotion,
+// select_promotion, add_to_wishlist, generate_lead), otherwise an event of the
+// shop's own whose parameters ride in `event_params`.
+
+/**
+ * A product card as an item of a list: the colour row the card shows, in its
+ * first size — what view_item describes before a size is chosen — and its
+ * 0-based place in the list (GA4's `index`). Null without a Product ID.
+ */
+export function listItem(product, { index, category } = {}) {
+  const item = viewedItem(product, product?.id, null, { category })
+  if (!item) return null
+  return Number.isInteger(index) && index >= 0 ? { ...item, index } : item
+}
+
+/**
+ * view_item_list (cards that have been on screen) and select_item (the card
+ * that was opened), with the list's id and name. Null when no item can be
+ * described.
+ */
+export function listEvent(event, items, { listId, listName, eventId, params } = {}) {
+  const list = known(items)
+  if (!list.length) return null
+  return compact({
+    event,
+    event_id: eventId,
+    event_params: eventParams(params),
+    ecommerce: compact({
+      item_list_id: text(listId),
+      item_list_name: text(listName),
+      items: list,
+    }),
+  })
+}
+
+/**
+ * view_promotion and select_promotion for a banner: its id, name, the photo
+ * (creative_name) and where it sits (creative_slot). Null without an id or a
+ * name.
+ *
+ * GA4 requires `items` on view_promotion and reports promotions through them,
+ * so the banner carries the product it leads to (`item`), or — for a banner
+ * that leads to a category or the whole shop — one entry naming where it
+ * leads.
+ */
+export function promotionEvent(event, promotion, { eventId, item } = {}) {
+  const cut = (value) => text(value).slice(0, MAX_PARAM_LENGTH)
+  const promo = compact({
+    promotion_id: cut(promotion?.id),
+    promotion_name: cut(promotion?.name),
+    creative_name: cut(promotion?.creative),
+    creative_slot: cut(promotion?.slot),
+  })
+  if (!promo.promotion_id && !promo.promotion_name) return null
+  const destination = compact({ item_id: cut(promotion?.to) || promo.promotion_id, item_name: promo.promotion_name || promo.promotion_id })
+  return compact({ event, event_id: eventId, ecommerce: { ...promo, items: [item || destination] } })
+}
+
+/** The route id of the product page a link opens (/product/<id>); undefined for any other link. */
+export function productIdFromPath(to) {
+  const match = /^\/product\/([^/?#]+)/.exec(String(to ?? ''))
+  if (!match) return undefined
+  try { return decodeURIComponent(match[1]) } catch { return match[1] }
+}
+
+/**
+ * An event of the shop's own (select_size, contact, checkout_error, …): its
+ * name, a new event_id like every event (Annexure A, rule 9) and its
+ * parameters in `event_params`.
+ */
+export function interactionEvent(event, params, { eventId } = {}) {
+  const name = text(event)
+  if (!name) return null
+  return compact({ event: name, event_id: eventId, event_params: eventParams(params) })
+}
+
+/**
+ * The product an interaction is about, from its item (trackedItem): the
+ * design ID, the name and the category. Their own names, not item_*: outside
+ * `items` GA4 would not read them as product fields anyway.
+ */
+export function productParams(item) {
+  if (!item) return {}
+  return { design_id: item.item_group_id, product_name: item.item_name, product_category: item.item_category }
+}
+
+/** The channel a contact link opens: whatsapp, instagram, phone or email; undefined for anything else. */
+export function contactMethod(href) {
+  const link = String(href ?? '').trim().toLowerCase()
+  if (link.startsWith('tel:')) return 'phone'
+  if (link.startsWith('mailto:')) return 'email'
+  let host = ''
+  try { host = new URL(link).hostname.replace(/^www\./, '') } catch { return undefined }
+  if (host === 'wa.me' || host === 'whatsapp.com' || host.endsWith('.whatsapp.com')) return 'whatsapp'
+  if (host === 'instagram.com' || host.endsWith('.instagram.com')) return 'instagram'
+  return undefined
+}
+
+/**
+ * contact: a tap on a WhatsApp, Instagram, phone or email link. `location`
+ * says which link; `product` is the item a product page's link asks about.
+ * Never the number or the address itself. Null for any other link.
+ */
+export function contactEvent(href, { location, product, eventId } = {}) {
+  const method = contactMethod(href)
+  if (!method) return null
+  return interactionEvent('contact', { method, link_location: location, ...productParams(product) }, { eventId })
+}
+
+/** The shop's sort options (src/pages/Shop.jsx) as sort_products reports them. */
+export const SORT_ORDERS = { '': 'featured', low: 'price_low_to_high', high: 'price_high_to_low', rating: 'top_rated', name: 'name_a_to_z' }
+
+/** sort_products: the order the shopper chose; null for an option the shop does not have. */
+export function sortEvent(sort, { eventId } = {}) {
+  const order = SORT_ORDERS[String(sort ?? '')]
+  return order ? interactionEvent('sort_products', { sort_order: order }, { eventId }) : null
+}
+
+/** The file name a photo's address ends in: a banner's creative_name. */
+function photoName(url) {
+  const last = String(url ?? '').split(/[?#]/)[0].split('/').pop() || ''
+  try { return decodeURIComponent(last) } catch { return last }
+}
+
+/**
+ * A homepage hero slide as a promotion (view_promotion, select_promotion).
+ * The owner's banner goes by its id and, having no name of its own, is named
+ * after where it leads; a category photo goes by its category. The photo's
+ * file name is the creative, and the slide's place in the slider the slot.
+ */
+export function heroPromotion(slide, index, { banner = false } = {}) {
+  if (!slide) return null
+  return {
+    id: slide.key,
+    name: banner ? `Banner: ${slide.to || '/shop'}` : slide.label,
+    creative: photoName(slide.image),
+    slot: Number.isInteger(index) && index >= 0 ? `home_hero_${index + 1}` : 'home_hero',
+    to: slide.to,
+  }
+}
+
+/**
+ * A typed coupon code as apply_coupon reports it: upper case, and only when
+ * it looks like a code (letters, perhaps digits, - or _). An email address, a
+ * phone number or a PIN code typed into the wrong box is left out.
+ */
+export function couponCodeParam(code) {
+  const typed = text(code).toUpperCase()
+  return /^(?=.*[A-Z])[A-Z0-9_-]{2,30}$/.test(typed) ? typed : undefined
+}
+
+/** apply_coupon: a code tried at checkout and what came of it — applied, rejected or error. */
+export function couponEvent(code, result, { eventId } = {}) {
+  return interactionEvent('apply_coupon', { coupon_code: couponCodeParam(code), coupon_result: result }, { eventId })
+}
+
+/** What can stop a checkout, as checkout_error's error_type. */
+export const CHECKOUT_ERRORS = new Set([
+  'invalid_details', // the form was sent with fields to fix
+  'too_many_items', // more lines than one order can hold
+  'coupon_refused', // the server would not take the coupon
+  'order_failed', // the order could not be created
+  'price_changed', // the total moved before the payment window opened
+  'payment_attempt_failed', // one attempt inside Razorpay's window failed (the shopper may retry)
+  'payment_failed', // the window was closed after a failed attempt
+  'payment_cancelled', // the window was closed without paying
+  'payment_unavailable', // the payment window could not open
+  'payment_unverified', // paid, but the server could not confirm it yet
+])
+
+/**
+ * checkout_error: what stopped a checkout. `fields` are the NAMES of the
+ * fields that need fixing — never what was typed in them; `reason` is the
+ * payment gateway's own reason code. Null for a kind not listed above.
+ */
+export function checkoutErrorEvent(type, { fields, reason, eventId } = {}) {
+  if (!CHECKOUT_ERRORS.has(type)) return null
+  const names = Array.isArray(fields) ? fields.map(text).filter(Boolean) : []
+  return interactionEvent('checkout_error', {
+    error_type: type,
+    error_fields: names.length ? names.join(',') : undefined,
+    error_reason: reason,
+  }, { eventId })
 }

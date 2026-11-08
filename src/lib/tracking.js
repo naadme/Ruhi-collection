@@ -263,19 +263,50 @@ export function createPageGate(push) {
 
 const gate = createPageGate(pushToDataLayer)
 
-const currentPageKey = () => pageKey(window.location.pathname, window.location.search)
+/** The page key of the address on screen (see pageKey). */
+export const currentPageKey = () => pageKey(window.location.pathname, window.location.search)
 
 /** PageTracker's signal that the entry for `key` is in the data layer. */
 export const pageShown = (key) => gate.shown(key)
 
-/** Push an event for the page on screen, after that page's entry. */
-export const trackEvent = (message) => gate.send(currentPageKey(), [message])
+/**
+ * Where the GA4 event schema (8 Nov 2026) puts an event's own parameters —
+ * the ones the brief's Section 3 has no field for, such as the size a shopper
+ * picked or why a payment failed.
+ *
+ * GTM keeps every value it has been given until something overwrites it, so a
+ * parameter that one event leaves out would otherwise reach GA4 carrying an
+ * earlier event's value. Each event therefore starts by clearing this object
+ * and `ecommerce` (Annexure A, rule 1 — Google's own instruction), and a tag
+ * only ever reads what the event in hand sent.
+ */
+export const PARAMS_KEY = 'event_params'
+
+const cleanSlate = () => ({ ecommerce: null, [PARAMS_KEY]: null })
 
 /**
- * Push an e-commerce event, clearing the previous one first (Annexure A,
- * rule 1 — Google's own instruction, so items never leak between events).
+ * Push an event for a page, after that page's entry: the page on screen
+ * unless `key` names the page the event was seen on.
  */
-export const trackEcommerce = (message) => gate.send(currentPageKey(), [{ ecommerce: null }, message])
+export const trackEvent = (message, key = currentPageKey()) => {
+  if (message) gate.send(key, [cleanSlate(), message])
+}
+
+/** The same for an e-commerce event: items never leak from one event into the next. */
+export const trackEcommerce = trackEvent
+
+/**
+ * Build an event and push it, never throwing. For the product-analytics
+ * events, which run inside clicks, the checkout and the payment: a mistake in
+ * measuring something must never stop the shopper doing it.
+ */
+export function trackSafely(build, key) {
+  try {
+    trackEvent(build(), key)
+  } catch {
+    /* the shop carries on */
+  }
+}
 
 const PURCHASES_KEY = 'ruhi:tracked-purchases'
 const PURCHASES_KEPT = 50

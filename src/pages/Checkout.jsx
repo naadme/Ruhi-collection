@@ -11,12 +11,17 @@ import { saveOrder } from '../lib/orderStore'
 import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
 import { discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
 import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, validateAddress } from '../lib/checkout'
-import { onlinePaymentReady, openRazorpay } from '../lib/razorpay'
+import { PaymentCancelled, PaymentFailed, onlinePaymentReady, openRazorpay } from '../lib/razorpay'
 import { checkPendingPayment, createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
 import { clearPendingPayment, loadPendingPayment, savePendingPayment } from '../lib/pendingPayment'
-import { newEventId, trackEcommerce } from '../lib/tracking'
-import { cartEvent, paymentEvent, sameStep, shippingEvent } from '../lib/trackingItems'
+import { newEventId, trackEcommerce, trackSafely } from '../lib/tracking'
+import { cartEvent, checkoutErrorEvent, couponEvent, paymentEvent, sameStep, shippingEvent } from '../lib/trackingItems'
 import { attributionForOrder } from '../lib/adClicks'
+
+// GA4 (event schema of 8 Nov 2026): the coupons shoppers try, and what stops
+// a checkout — by kind, never with anything the shopper typed.
+const checkoutError = (type, details) => trackSafely(() => checkoutErrorEvent(type, { ...details, eventId: newEventId() }))
+const couponTried = (code, result) => trackSafely(() => couponEvent(code, result, { eventId: newEventId() }))
 
 const Section = ({ n, title, children }) => (
   <section className="border-t border-black/10 pt-7 mt-7 first:border-0 first:pt-0 first:mt-0">
@@ -395,17 +400,21 @@ export default function Checkout() {
   const applyCoupon = async () => {
     setCouponNote(null)
     setCouponBusy(true)
+    const tried = couponInput
     try {
       const res = await validateCoupon(couponInput, subtotal)
       if (res.valid) {
         setCoupon(res)
         setCouponNote({ kind: 'ok', text: res.message || 'Coupon applied.' })
+        couponTried(tried, 'applied')
       } else {
         setCoupon(null)
         setCouponNote({ kind: 'err', text: res.message || 'That coupon code is not valid.' })
+        couponTried(tried, 'rejected')
       }
     } catch (err) {
       setCouponNote({ kind: 'err', text: err?.message || 'We could not check that coupon code.' })
+      couponTried(tried, 'error')
     } finally {
       setCouponBusy(false)
     }
@@ -457,6 +466,7 @@ export default function Checkout() {
     // refused — the prices are re-read from the database instead of letting
     // the shopper discover the difference at the payment window.
     if (!displayedTotalMatchesCharge(shownTotal, started)) {
+      checkoutError('price_changed')
       reload()
       setFailure('The total changed while you were checking out, so we have refreshed the prices from the store. Please review the amount below and try again — you have not been charged.')
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -509,8 +519,15 @@ export default function Checkout() {
           contact: customer.phone.replace(/\D/g, ''),
         },
         notes: { reference: started.reference },
+        onFailure: (reason) => checkoutError('payment_attempt_failed', { reason }),
       })
     } catch (error) {
+      checkoutError(
+        error instanceof PaymentCancelled ? 'payment_cancelled'
+          : error instanceof PaymentFailed ? 'payment_failed'
+            : 'payment_unavailable',
+        { reason: error instanceof PaymentFailed ? error.reason : undefined },
+      )
       // Closed, declined or offline. Usually nothing was charged — but a UPI
       // payment approved in the shopper's app can still land after the window
       // closes, so Razorpay is asked before the page says so. If nothing was
@@ -532,12 +549,14 @@ export default function Checkout() {
     } catch (error) {
       // The shopper has paid: keep the saved payment, so "Check again" (and
       // the next visit to this page) can settle it from Razorpay's side.
+      checkoutError('payment_unverified')
       setRecovery({ reference: started.reference, state: 'error', message: error?.message })
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
     if (!verified?.order?.reference) {
+      checkoutError('payment_unverified')
       setRecovery({
         reference: started.reference,
         state: 'error',
@@ -562,11 +581,13 @@ export default function Checkout() {
     setErrors(found)
     const firstBad = Object.keys(found)[0]
     if (firstBad) {
+      checkoutError('invalid_details', { fields: Object.keys(found) })
       document.getElementById(`co-${firstBad}`)?.focus()
       return
     }
     if (!lines.length) { setFailure('Your cart is empty.'); return }
     if (lines.length > MAX_CART_LINES) {
+      checkoutError('too_many_items')
       setFailure(`An order can hold up to ${MAX_CART_LINES} different items, and your basket has ${lines.length}. Please remove a few items before checking out — nothing has been charged.`)
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
@@ -609,6 +630,7 @@ export default function Checkout() {
       // it and prices the order itself.
       await payOnline(customer, items, coupon?.code || '')
     } catch (err) {
+      checkoutError(/coupon/i.test(err?.message || '') ? 'coupon_refused' : 'order_failed')
       setFailure(err?.message || 'We could not place your order. Please try again.')
       // A coupon the server refused must not stay applied — the customer
       // fixes it (or pays without it) on the next attempt.

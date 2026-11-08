@@ -19,8 +19,10 @@ import { MAX_QTY } from '../lib/checkout'
 import { shownDescription, variantFor } from '../lib/productGrouping'
 import { fetchPublishedReviews } from '../lib/reviewStore'
 import { reviewSummary } from '../lib/reviews'
-import { newEventId, trackEcommerce } from '../lib/tracking'
-import { cartEvent, viewedItem } from '../lib/trackingItems'
+import { newEventId, trackEcommerce, trackSafely } from '../lib/tracking'
+import { cartEvent, contactEvent, interactionEvent, productParams, viewedItem } from '../lib/trackingItems'
+import { LISTS } from '../lib/itemLists'
+import ItemList from '../components/ItemList'
 import { site } from '../data/site'
 import { cleanProductUrl, productWhatsAppLink } from '../lib/whatsapp'
 import WhatsAppButton from '../components/WhatsAppButton'
@@ -169,12 +171,22 @@ export default function Product() {
   // screen — the first size until the shopper picks one — and again each time
   // either changes. Nothing goes out until the real catalogue has given the
   // product its Product ID.
+  //
+  // A send for a new size on the same colour page is marked size_change: Meta
+  // gets every one, as the brief asks, while GA4 counts one product view per
+  // page and learns about the size from select_size instead.
   const viewed = viewedItem(p, id, size, { category: p ? typeLabel(p.type) : '' })
   const viewedId = viewed?.item_id || ''
+  const viewedPage = useRef(null)
   useEffect(() => {
     if (!viewedId) return undefined
     const timer = setTimeout(() => {
-      const message = cartEvent('view_item', [viewed], { eventId: newEventId() })
+      const sizeChange = viewedPage.current === id
+      viewedPage.current = id
+      const message = cartEvent('view_item', [viewed], {
+        eventId: newEventId(),
+        params: sizeChange ? { size_change: true } : undefined,
+      })
       if (message) trackEcommerce(message)
     }, VIEW_SETTLE_MS)
     return () => clearTimeout(timer)
@@ -258,7 +270,20 @@ export default function Product() {
   const off = shown.compare ? Math.round((1 - shown.price / shown.compare) * 100) : 0
   const needsSize = shown.sizes.length > 1 && !size
 
-  const choose = (s) => { setSize(s); setProblem('') }
+  // The colour on screen, as the cart and the order name it.
+  const shownColour = (colors.length ? chosen?.color : '') || p.colour
+  const choose = (s) => {
+    // GA4's select_size: the size a shopper picks, also when it is the first
+    // size the page already assumed — which sizes people weigh up, per design.
+    if (s !== size) {
+      trackSafely(() => interactionEvent('select_size', {
+        size: s,
+        color: shownColour,
+        ...productParams(viewedItem(p, id, s, { category: typeLabel(p.type) })),
+      }, { eventId: newEventId() }))
+    }
+    setSize(s); setProblem('')
+  }
   // The bar's "Choose size": bring the sizes into view and say why.
   const chooseSizeFromBar = () => {
     const el = document.getElementById('size-options')
@@ -275,7 +300,9 @@ export default function Product() {
     document.getElementById('reviews-heading')?.focus({ preventScroll: true })
   }
 
-  const place = (goToCheckout) => {
+  // `method` is the button used, which GA4 receives with add_to_cart:
+  // add_to_cart, buy_now or sticky_bar.
+  const place = (goToCheckout, method) => {
     if (needsSize) {
       setProblem('Choose a size before adding this item.')
       document.getElementById('size-options')?.focus()
@@ -285,9 +312,18 @@ export default function Product() {
       setProblem(`Quantity must be between 1 and ${MAX_QTY}.`)
       return
     }
-    add(shown.id, qty, size || shown.sizes[0], chosen && chosen.color, { openDrawer: !goToCheckout })
+    add(shown.id, qty, size || shown.sizes[0], chosen && chosen.color, { openDrawer: !goToCheckout, method })
     if (goToCheckout) navigate('/checkout')
   }
+
+  const whatsAppHref = productWhatsAppLink({
+    number: site.whatsappNumber,
+    title: p.title,
+    color: chosen && chosen.color,
+    size,
+    price: shown.price > 0 ? inr(shown.price) : '',
+    url: cleanProductUrl(window.location.origin, shown.id),
+  })
 
   const rel = products.filter((x) => x.type === p.type && x.id !== p.id).slice(0, 4)
   const fallback = products.filter((x) => x.id !== p.id).slice(0, 4)
@@ -313,7 +349,12 @@ export default function Product() {
           <div className="flex items-start justify-between gap-4 mt-2">
             <h1 className="text-[32px] md:text-[42px] leading-tight">{p.title}</h1>
             <button
-              onClick={() => toggle(savedId)}
+              onClick={() => {
+                // GA4's add_to_wishlist for a save (not for taking one back),
+                // with the colour and size on screen.
+                if (!fav) trackSafely(() => cartEvent('add_to_wishlist', [viewed], { eventId: newEventId() }))
+                toggle(savedId)
+              }}
               aria-label={fav ? 'Remove from wishlist' : 'Add to wishlist'}
               aria-pressed={fav}
               className="shrink-0 w-11 h-11 rounded-full border border-black/20 grid place-items-center hover:border-black transition"
@@ -387,7 +428,10 @@ export default function Product() {
             {/* The chart for this category, opened from a link so the page
                 itself does not grow (src/components/SizeChart.jsx). */}
             <div className="absolute right-0 top-0 -translate-y-0.5">
-              <SizeChartLink type={p.type} sizes={shown.sizes} selected={size} />
+              <SizeChartLink
+                type={p.type} sizes={shown.sizes} selected={size}
+                onOpen={() => trackSafely(() => interactionEvent('view_size_chart', productParams(viewed), { eventId: newEventId() }))}
+              />
             </div>
             <div className="flex flex-wrap gap-3">
               {shown.sizes.map((s) => (
@@ -415,12 +459,12 @@ export default function Product() {
 
           <div ref={setCtaEl}>
             <button
-              onClick={() => place(false)}
+              onClick={() => place(false, 'add_to_cart')}
               className="block w-full mt-7 h-14 border-2 border-black text-lg rounded-lg hover:bg-black hover:text-white transition"
             >
               Add to cart
             </button>
-            <button onClick={() => place(true)} className="block w-full mt-3 h-14 bg-brand-cta text-white text-lg font-medium rounded-lg hover:bg-brand-cta-hover transition">
+            <button onClick={() => place(true, 'buy_now')} className="block w-full mt-3 h-14 bg-brand-cta text-white text-lg font-medium rounded-lg hover:bg-brand-cta-hover transition">
               Buy it now
             </button>
           </div>
@@ -470,9 +514,11 @@ export default function Product() {
       {related.length > 0 && (
         <>
           <h2 className="text-[30px] mt-20 mb-6">You may also like</h2>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-1 gap-y-6">
-            {related.map((x) => <ProductCard key={x.id} product={x} />)}
-          </div>
+          <ItemList list={LISTS.related} products={related}>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-1 gap-y-6">
+              {related.map((x) => <ProductCard key={x.id} product={x} />)}
+            </div>
+          </ItemList>
         </>
       )}
 
@@ -489,19 +535,13 @@ export default function Product() {
         onRating={toReviews}
         needsSize={needsSize}
         onChooseSize={chooseSizeFromBar}
-        onAdd={() => place(false)}
+        onAdd={() => place(false, 'sticky_bar')}
       />
 
       <WhatsAppButton
         lifted={shown.price > 0 && !ctaInView}
-        href={productWhatsAppLink({
-          number: site.whatsappNumber,
-          title: p.title,
-          color: chosen && chosen.color,
-          size,
-          price: shown.price > 0 ? inr(shown.price) : '',
-          url: cleanProductUrl(window.location.origin, shown.id),
-        })}
+        href={whatsAppHref}
+        onClick={() => trackSafely(() => contactEvent(whatsAppHref, { location: 'product_whatsapp_button', product: viewed, eventId: newEventId() }))}
       />
     </section>
   )

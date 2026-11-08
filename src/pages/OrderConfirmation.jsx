@@ -11,8 +11,8 @@ import { site } from '../data/site'
 import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
-import { claimPurchase, isPurchase, trackEcommerce } from '../lib/tracking'
-import { orderLineItem, purchaseEvent } from '../lib/trackingItems'
+import { claimPurchase, isPurchase, newEventId, trackEcommerce, trackSafely } from '../lib/tracking'
+import { contactEvent, orderLineItem, purchaseEvent } from '../lib/trackingItems'
 import ReviewForm from '../components/ReviewForm'
 
 const PACKING = [PackageCheck, 'We start packing', 'Your order is checked and packed at our studio.']
@@ -201,7 +201,7 @@ export default function OrderConfirmation() {
               Message us as soon as you can and we'll do our best to amend or cancel the order before it ships.
             </p>
             <div className="flex flex-col gap-2.5 mt-4">
-              <a href={mailHref} className="inline-flex items-center justify-center gap-2 h-[46px] rounded-lg border border-black/60 text-[15px] hover:bg-black hover:text-white transition">
+              <a href={mailHref} onClick={() => trackSafely(() => contactEvent(mailHref, { location: 'order_page', eventId: newEventId() }))} className="inline-flex items-center justify-center gap-2 h-[46px] rounded-lg border border-black/60 text-[15px] hover:bg-black hover:text-white transition">
                 <Mail size={16} /> Email us about this order
               </a>
               <Link to="/contact" className="inline-flex items-center justify-center gap-2 h-[46px] rounded-lg border border-black/60 text-[15px] hover:bg-black hover:text-white transition">

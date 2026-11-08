@@ -1,13 +1,15 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import ProductGrid, { ResetLink } from '../components/ProductGrid'
+import ItemList from '../components/ItemList'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { searchResultProducts } from '../lib/productSearch'
 import { topRatedFirst } from '../lib/ratingSummary'
 import { useRatings } from '../context/RatingsContext'
-import { newEventId, trackEvent } from '../lib/tracking'
-import { searchEvent } from '../lib/trackingItems'
+import { newEventId, trackEvent, trackSafely } from '../lib/tracking'
+import { searchEvent, sortEvent } from '../lib/trackingItems'
+import { shopList } from '../lib/itemLists'
 import usePageTitle from '../hooks/usePageTitle'
 
 const Sel = ({ label, value, onChange, opts }) => (
@@ -23,7 +25,7 @@ const Sel = ({ label, value, onChange, opts }) => (
 
 export default function Shop() {
   usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — co-ord sets, dresses, tops and shirts. Filter by category, sort by price and find your fit. Free shipping for all products.')
-  const { products, loading, error, source } = useProducts()
+  const { products, loading, answered, error, source } = useProducts()
   const { totals } = useRatings()
   // The Type filter is the client's own category list, so a category added in
   // the dashboard is filterable here the moment it is saved.
@@ -38,6 +40,11 @@ export default function Shop() {
   // and shows the catalogue again. It used to keep the search, which left a
   // button on screen that changed nothing.
   const clearAll = () => setSp(new URLSearchParams())
+  // GA4's sort_products: which order shoppers ask for (price low to high, …).
+  const chooseSort = (v) => {
+    set('sort')(v)
+    trackSafely(() => sortEvent(v, { eventId: newEventId() }))
+  }
 
   // A search and a category are two different ways of looking at the shop.
   //
@@ -49,16 +56,21 @@ export default function Shop() {
   const searching = q.trim().length > 0
 
   // GTM's search (tracking brief, Annexure A13) as the results page loads, and
-  // again for each new term. Sorting the results is not a new search.
+  // again for each new term. Sorting the results is not a new search. It
+  // waits for the catalogue to answer, so it can say how many styles the
+  // term found (the GA4 schema's search_results; 0 is a search that found
+  // nothing). If the catalogue cannot be read, it goes without the count.
   const term = q.trim()
+  const termResults = useRef(0)
   useEffect(() => {
-    if (!term) return undefined
+    if (!term || !answered) return undefined
     const timer = setTimeout(() => {
-      const message = searchEvent(term, { eventId: newEventId() })
+      const results = source === 'database' ? termResults.current : undefined
+      const message = searchEvent(term, { eventId: newEventId(), results })
       if (message) trackEvent(message)
     }, 0)
     return () => clearTimeout(timer)
-  }, [term])
+  }, [term, answered])
 
   // Picking a category while a search is running means "browse this
   // category", so the search is dropped rather than silently ignored.
@@ -77,6 +89,7 @@ export default function Shop() {
     () => searchResultProducts(products, { q, type: t, typeLabel }),
     [products, q, t, typeLabel],
   )
+  termResults.current = filtered.length
   const items = useMemo(() => {
     const sorted = [...filtered]
     if (sort === 'low') sorted.sort((a, b) => a.price - b.price)
@@ -116,7 +129,7 @@ export default function Shop() {
           instead of ever being pushed out of view. */}
       <div className="flex flex-wrap items-center gap-4 my-8 border-y border-black/10 py-4">
         <Sel label="Type" value={searching ? '' : t} onChange={setType} opts={[['', 'All'], ...optionsFor(t).map((x) => [x.key, x.label])]} />
-        <Sel label="Sort" value={sort} onChange={set('sort')} opts={[
+        <Sel label="Sort" value={sort} onChange={chooseSort} opts={[
           ['', 'Featured'], ['low', 'Price, low to high'], ['high', 'Price, high to low'],
           ['rating', 'Top rated'], ['name', 'Name, A–Z'],
         ]} />
@@ -135,6 +148,8 @@ export default function Shop() {
         )}
       </div>
 
+      {/* GA4's view_item_list and select_item for this listing (src/components/ItemList.jsx). */}
+      <ItemList list={shopList({ q, type: t, label: t ? typeLabel(t) : '' })} products={items}>
       <ProductGrid
         items={items}
         loading={loading && source !== 'database'}
@@ -146,6 +161,7 @@ export default function Shop() {
           action: hasFilters ? <ResetLink to="/shop" label="Show all products" /> : null,
         }}
       />
+      </ItemList>
 
       {source === 'database' && !loading && !items.length && hasFilters && (
         <p className="text-center mt-4 text-[15px] text-black/50">

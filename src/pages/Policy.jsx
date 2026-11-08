@@ -1,6 +1,8 @@
 import usePageTitle from '../hooks/usePageTitle'
 import { useParams, Link } from 'react-router-dom'
 import { site } from '../data/site'
+import { newEventId, trackSafely } from '../lib/tracking'
+import { contactEvent } from '../lib/trackingItems'
 
 // A legal page must not claim it was updated "today" every day it is read, so
 // this is a fixed value rather than `new Date()`. Bump it whenever the policy
@@ -193,7 +195,11 @@ export default function Policy() {
 
       <div className="mt-12 border-t border-black/10 pt-6 text-[17px] text-black/70">
         Questions? <Link to="/contact" className="underline underline-offset-2">Contact us</Link> or email{' '}
-        <a href={`mailto:${site.email}`} className="underline underline-offset-2">{site.email}</a>.
+        <a
+          href={`mailto:${site.email}`}
+          onClick={() => trackSafely(() => contactEvent(`mailto:${site.email}`, { location: 'policy_page', eventId: newEventId() }))}
+          className="underline underline-offset-2"
+        >{site.email}</a>.
       </div>
     </section>
   )

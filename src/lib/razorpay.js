@@ -112,6 +112,7 @@ export async function openRazorpay({
   description,
   prefill = {},
   notes = {},
+  onFailure,
 }) {
   // Checkout must be loaded before it can be opened — and loading it is what
   // proves the window will actually appear rather than failing silently.
@@ -163,6 +164,11 @@ export async function openRazorpay({
           ? 'Your bank declined this payment. Nothing has been charged — please try another method.'
           : 'Payment could not be completed. Your order has not been charged. Please try again.',
       )
+      // Razorpay's reason code (instrument_declined, …), for GA4's checkout_error.
+      lastFailure.reason = reason
+      // `onFailure` hears about every failed attempt, also one the shopper
+      // then retries — and can never interrupt Razorpay's own handling of it.
+      try { onFailure?.(reason) } catch { /* measuring must not get in the way of paying */ }
     })
 
     checkout.open()
