@@ -91,7 +91,7 @@ export default function Contact() {
   const banner = usePageImage('contact_hero')
   return (
     <>
-      <div className="relative overflow-hidden h-[160px] md:h-[220px] bg-neutral-300"><Img src={banner.image} style={banner.style} alt="" loading="eager" className="absolute inset-0 w-full h-full object-cover" /><div className="absolute inset-0 bg-black/30" />
+      <div className="relative overflow-hidden h-[160px] md:h-[220px] bg-neutral-300"><Img src={banner.image} style={banner.style} alt="" loading="eager" sizes="100vw" className="absolute inset-0 w-full h-full object-cover" /><div className="absolute inset-0 bg-black/30" />
         <h1 className="relative h-full grid place-items-center text-white font-serif font-bold text-[44px] md:text-[64px]">Contact us</h1></div>
       <section className="max-w-[1200px] mx-auto px-4 py-16 grid lg:grid-cols-[1.4fr_1fr] gap-14">
         <div>

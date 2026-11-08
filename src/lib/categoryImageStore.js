@@ -45,6 +45,9 @@ export const uploadCategoryImage = async (file) => {
   const path = `category-${Date.now()}.${ext}`
   const { error } = await supabase.storage.from(CATEGORY_IMAGE_BUCKET).upload(path, file, {
     contentType: file.type,
+    // Every upload gets a new file name, so the file never changes: browsers
+    // and Supabase's CDN may keep it for a year instead of the default hour.
+    cacheControl: '31536000',
     upsert: false,
   })
   if (error) throw new Error(uploadProblem(error))

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { IMAGE_SIZES, imageSrcSet } from '../src/lib/imageSrcSet.js'
+import { IMAGE_SIZES, UPLOAD_WIDTHS, imageCopy, imageSrcSet, resizedUpload } from '../src/lib/imageSrcSet.js'
 import derivatives from '../src/lib/imageDerivatives.js'
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
@@ -26,12 +26,59 @@ test('the logo is offered at its own smaller size', () => {
   assert.match(set, new RegExp(`ruhi-logo\\.jpg ${derivatives['/images/ruhi-logo.jpg'].original}w`))
 })
 
-test('a photo in the store\'s own storage is offered as it is', () => {
-  // There is no smaller copy of an uploaded photo, so no srcset is invented.
-  assert.equal(imageSrcSet('https://xhsjwhzutalckeektluj.supabase.co/storage/v1/object/public/product-images/a.jpg'), undefined)
+test('an uploaded photo is offered as Supabase-resized copies', () => {
+  const upload = 'https://xhsjwhzutalckeektluj.supabase.co/storage/v1/object/public/product-images/a-photo1-1793956711552.jpg'
+  const set = imageSrcSet(upload)
+  assert.ok(set, 'an uploaded photo has smaller copies')
+  const candidates = set.split(', ')
+  assert.equal(candidates.length, UPLOAD_WIDTHS.length)
+  for (const [i, w] of UPLOAD_WIDTHS.entries()) {
+    assert.equal(
+      candidates[i],
+      `https://xhsjwhzutalckeektluj.supabase.co/storage/v1/render/image/public/product-images/a-photo1-1793956711552.jpg?width=${w}&resize=contain&quality=80 ${w}w`,
+    )
+  }
+  // The picture's own src is the 640 copy; the original is kept for the
+  // fallback when a resized copy cannot be loaded.
+  const copy = imageCopy(upload)
+  assert.equal(copy.small, resizedUpload(upload, 640))
+  assert.equal(copy.original, upload)
+})
+
+test('a resized upload always keeps the photo\'s proportions', () => {
+  // Without resize=contain, Supabase keeps the full height and crops a
+  // 640-wide request to a narrow strip of the photo (checked 8 Nov 2026).
+  const url = resizedUpload('https://abc.supabase.co/storage/v1/object/public/b/c.jpg', 480)
+  assert.match(url, /[?&]resize=contain(&|$)/)
+  assert.match(url, /[?&]width=480(&|$)/)
+  assert.doesNotMatch(url, /height=/, 'no height, so nothing is stretched or cropped')
+})
+
+test('only plain public Supabase photos are resized', () => {
+  assert.equal(resizedUpload('https://abc.supabase.co/storage/v1/object/public/b/c.jpg?x=1', 640), null, 'an address that already has a query')
+  assert.equal(resizedUpload('https://abc.supabase.co/storage/v1/object/sign/b/c.jpg', 640), null, 'a private, signed address')
+  assert.equal(resizedUpload('https://example.com/storage/v1/object/public/b/c.jpg', 640), null, 'another host')
+  assert.equal(resizedUpload('/images/products/denim-shirt-blue.jpg', 640), null, 'a bundled photograph')
   assert.equal(imageSrcSet(''), undefined)
   assert.equal(imageSrcSet(null), undefined)
   assert.equal(imageSrcSet('/images/products/photo.webp'), undefined, 'only the photographs that were copied')
+})
+
+test('every storefront photo says how wide it is shown', () => {
+  // Without `sizes` the component offers no smaller copy at all, so a
+  // 56-pixel cart thumbnail would download the full-size upload.
+  const dirs = ['src/components', 'src/pages']
+  const missing = []
+  for (const dir of dirs) {
+    for (const file of fs.readdirSync(path.join(process.cwd(), dir))) {
+      if (!file.endsWith('.jsx')) continue
+      const source = read(`${dir}/${file}`)
+      for (const tag of source.match(/<Img\b[^>]*\/>/g) ?? []) {
+        if (!/\bsizes="/.test(tag)) missing.push(`${dir}/${file}: ${tag.slice(0, 60)}`)
+      }
+    }
+  }
+  assert.deepEqual(missing, [])
 })
 
 test('a photograph without a smaller copy is served as it is', () => {
