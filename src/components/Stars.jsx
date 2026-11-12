@@ -82,11 +82,11 @@ export function RatingLine({ rating, onClick, size = 15, className = '' }) {
  * The shop's own rating, beside a checkout button: what every published review
  * across the shop averages out to. Draws nothing until there is one.
  */
-export function ShopRatingNote({ className = '' }) {
+export function ShopRatingNote({ className = '', align = 'center' }) {
   const { shop } = useRatings()
   if (!shop) return null
   return (
-    <p className={`flex items-center justify-center gap-1.5 text-[13px] text-black/60 ${className}`}>
+    <p className={`flex items-center ${align === 'start' ? 'justify-start' : 'justify-center'} gap-1.5 text-[13px] text-black/60 ${className}`}>
       <span role="img" aria-label={ratingAria(shop)} className="inline-flex items-center gap-1.5">
         <Stars value={shop.average} size={13} />
         <b className="font-ui font-semibold text-black/80">{ratingText(shop.average)}</b>

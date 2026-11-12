@@ -11,6 +11,10 @@ export default function Layout() {
   // `window.scrollTo()` can return a non-function value, which React would later
   // try to invoke as a cleanup and crash on every route change.
   useEffect(() => { window.scrollTo(0, 0) }, [pathname])
+  // Checkout is a focused page (12 Nov 2026): no announcement strip, menus or
+  // footer, so nothing leads away from paying. It draws its own slim header
+  // (CheckoutHeader.jsx) with the way back to the cart and WhatsApp.
+  const focused = pathname.replace(/\/+$/, '') === '/checkout'
   return (
     <>
       <a
@@ -19,10 +23,10 @@ export default function Layout() {
       >
         Skip to content
       </a>
-      <AnnouncementBar />
-      <Header />
+      {!focused && <AnnouncementBar />}
+      {!focused && <Header />}
       <main id="main-content"><Outlet /></main>
-      <Footer />
+      {!focused && <Footer />}
       <CartDrawer />
       <PaymentRecovery />
     </>

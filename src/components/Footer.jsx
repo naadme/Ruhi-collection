@@ -51,6 +51,8 @@ export default function Footer() {
         </div>
         <div className="mt-16 border-t border-[#4A2C23]/25 pt-8 flex flex-wrap gap-4 justify-between items-center">
           <p className="text-[#4A2C23]/70 text-[15px]">© {new Date().getFullYear()} {site.name}. All rights reserved. {site.legal.map((l) => <Link key={l.to} to={l.to} className="ml-4 underline-offset-4 hover:underline">{l.label}</Link>)}</p>
+          {/* Who sells: the GST-registered trade name, as under Pay at checkout. */}
+          <p className="text-[#4A2C23]/70 text-[15px]">Sold by {site.seller.name}, {site.seller.city} · GSTIN {site.seller.gstin}</p>
         </div>
       </div>
     </footer>

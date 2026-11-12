@@ -17,6 +17,21 @@ import { normalizeCode, discountFor, serverHonoursCoupon } from './couponRules.j
 export { normalizeCode, discountFor, serverHonoursCoupon }
 
 /**
+ * Whether any coupon is live right now (`public.coupons_available()`, which
+ * answers yes or no and reveals no code). Checkout offers "Have a coupon?"
+ * only then, so shoppers aren't sent hunting for codes that don't exist.
+ * Never throws: when the check fails, the link stays hidden.
+ */
+export async function couponsAvailable() {
+  try {
+    const { data, error } = await supabase.rpc('coupons_available')
+    return !error && data === true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Ask the database whether a coupon is valid for this subtotal.
  *
  * Resolves to the RPC's own answer — `{ valid, code, kind, value, discount,

@@ -12,6 +12,30 @@ export function productWhatsAppLink({ number, title, color, size, price, url }) 
   return `https://wa.me/${number}?text=${encodeURIComponent(text)}`
 }
 
+/**
+ * `https://wa.me/<number>?text=…` from the checkout page: the cart and the
+ * total, so whoever answers can see the order without asking. `lines` are
+ * `{ title, color, size, qty, amount }`, with `amount` already written as
+ * money; at most five are listed.
+ */
+export function checkoutWhatsAppLink({ number, lines = [], total }) {
+  const describe = (l) => {
+    const details = [l.color, l.size ? `size ${l.size}` : ''].filter(Boolean).join(', ')
+    return `${l.qty} × ${l.title}${details ? ` – ${details}` : ''}${l.amount ? ` (${l.amount})` : ''}`
+  }
+  const listed = lines.slice(0, 5).map(describe)
+  const more = lines.length - listed.length
+  if (more > 0) listed.push(`and ${more} more item${more === 1 ? '' : 's'}`)
+  const cart = listed.length === 1 ? `My cart: ${listed[0]}.`
+    : listed.length ? `My cart:\n${listed.map((t) => `• ${t}`).join('\n')}` : ''
+  const text = [
+    "Hi Ruhi Collections! I'm at checkout and have a question before paying.",
+    cart,
+    total ? `Total: ${total}` : '',
+  ].filter(Boolean).join('\n')
+  return `https://wa.me/${number}?text=${encodeURIComponent(text)}`
+}
+
 /** The product page's own address, without its query string or fragment. */
 export function cleanProductUrl(origin, id) {
   return `${origin}/product/${encodeURIComponent(id)}`

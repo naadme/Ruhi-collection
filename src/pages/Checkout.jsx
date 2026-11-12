@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Loader2, Lock, ShieldCheck, AlertTriangle, Tag, X } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Lock, ShieldCheck, Store, Tag, Truck, X } from 'lucide-react'
 import usePageTitle from '../hooks/usePageTitle'
 import { useCart } from '../context/CartContext'
 import { useProducts } from '../context/ProductsContext'
 import { useAuth } from '../context/AuthContext'
 import Img from '../components/Img'
+import CheckoutHeader from '../components/CheckoutHeader'
 import { ShopRatingNote } from '../components/Stars'
+import { site } from '../data/site'
 import { saveOrder } from '../lib/orderStore'
 import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
-import { discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
+import { couponsAvailable, discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
 import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, validateAddress } from '../lib/checkout'
+import { deliveryWindowText } from '../lib/delivery'
+import { suggestEmail } from '../lib/emailTypos'
+import { checkoutWhatsAppLink } from '../lib/whatsapp'
 import { PaymentCancelled, PaymentFailed, onlinePaymentReady, openRazorpay, preloadRazorpay } from '../lib/razorpay'
 import { checkPendingPayment, createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
 import { clearPendingPayment, loadPendingPayment, savePendingPayment } from '../lib/pendingPayment'
 import { newEventId, trackEcommerce, trackSafely } from '../lib/tracking'
-import { cartEvent, checkoutErrorEvent, couponEvent, paymentEvent, sameStep, shippingEvent } from '../lib/trackingItems'
+import { cartEvent, checkoutErrorEvent, contactEvent, couponEvent, paymentEvent, sameStep, shippingEvent } from '../lib/trackingItems'
 import { attributionForOrder } from '../lib/adClicks'
 
 // GA4 (event schema of 8 Nov 2026): the coupons shoppers try, and what stops
@@ -23,163 +28,167 @@ import { attributionForOrder } from '../lib/adClicks'
 const checkoutError = (type, details) => trackSafely(() => checkoutErrorEvent(type, { ...details, eventId: newEventId() }))
 const couponTried = (code, result) => trackSafely(() => couponEvent(code, result, { eventId: newEventId() }))
 
-const Section = ({ n, title, children }) => (
-  <section className="border-t border-black/10 pt-7 mt-7 first:border-0 first:pt-0 first:mt-0">
-    <h2 className="flex items-baseline gap-3 text-[20px] font-semibold">
-      <span className="font-ui text-[13px] text-white bg-black/70 w-6 h-6 grid place-items-center rounded-full shrink-0 translate-y-[-1px]">{n}</span>
-      {title}
-    </h2>
-    <div className="mt-5">{children}</div>
-  </section>
-)
+// The order the fields appear in, which is also the order Pay moves the
+// cursor through when something is missing (validateAddress lists them
+// differently).
+const FIELD_ORDER = ['phone', 'full_name', 'email', 'pincode', 'city', 'state', 'address', 'note']
 
-function Field({ label, name, value, onChange, error, ...rest }) {
+// A clear green for "this is fine": ticks, Free, the discount. (The theme's
+// own `green` scale is remapped to the brand's browns.)
+const OK_GREEN = 'text-[#1F7A34]'
+
+// One labelled input. The tick shows once the value passes the same check Pay
+// runs (validateAddress); `hint` is a short line under the field.
+function Field({ label, name, value, onChange, error, valid, hint, children, ...rest }) {
+  const describedBy = [error && `co-${name}-err`, hint && `co-${name}-hint`].filter(Boolean).join(' ') || undefined
   return (
     <div>
       <label className="clabel" htmlFor={`co-${name}`}>{label}</label>
-      <input
-        id={`co-${name}`}
-        name={name}
-        value={value}
-        onChange={onChange}
-        aria-invalid={error ? 'true' : undefined}
-        aria-describedby={error ? `co-${name}-err` : undefined}
-        className="cfield"
-        {...rest}
-      />
+      <div className="relative">
+        <input
+          id={`co-${name}`}
+          name={name}
+          value={value}
+          onChange={onChange}
+          aria-invalid={error ? 'true' : undefined}
+          aria-describedby={describedBy}
+          className="cfield pr-10"
+          {...rest}
+        />
+        {valid && !error && (
+          <Check size={18} strokeWidth={2.5} aria-hidden="true" className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${OK_GREEN}`} />
+        )}
+      </div>
+      {hint && <span className="block text-[13px] text-black/60 mt-1.5" id={`co-${name}-hint`}>{hint}</span>}
       {error && <span className="cerror" id={`co-${name}-err`}>{error}</span>}
+      {children}
     </div>
   )
 }
 
-// One payment choice in Section 3. Native radio input underneath so keyboard,
-// screen readers and form semantics all behave; the visual dot matches the
-// card styling already used elsewhere on the checkout page.
-function PayOption({ value, checked, onChange, title, body }) {
-  return (
-    <label
-      className={`flex gap-3 rounded-xl p-4 border transition cursor-pointer ${
-        checked ? 'border-brand-green/40 bg-white' : 'border-black/15 bg-white/40 hover:border-black/30'
-      }`}
-    >
-      <input
-        type="radio"
-        name="payment-method"
-        value={value}
-        checked={checked}
-        onChange={() => onChange(value)}
-        className="sr-only peer"
-      />
-      <span
-        aria-hidden="true"
-        className={`mt-0.5 w-5 h-5 rounded-full border-[6px] bg-white shrink-0 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-green/60 peer-focus-visible:ring-offset-2 ${
-          checked ? 'border-brand-green' : 'border-black/25'
-        }`}
-      />
-      <span className="min-w-0">
-        <span className="block font-semibold text-[16px]">{title}</span>
-        <span className="block text-[14px] text-black/65 mt-1">{body}</span>
-      </span>
-    </label>
-  )
-}
-
+// The order, first thing on a phone and beside the form on a computer: what
+// is being bought, the total with nothing added later, a coupon link only
+// while a coupon is live, and the dates the parcel should arrive.
 function Summary({
-  lines, subtotal, coupon, couponInput, setCouponInput, couponBusy, couponNote, onApply, onRemoveCoupon,
+  lines, subtotal, coupon, couponsLive, couponInput, setCouponInput, couponBusy, couponNote, onApply, onRemoveCoupon, delivery,
 }) {
   const shipping = shippingFor()
   // Display only — the database recomputes the real discount when the order
   // is created and prices the payment from its own total.
   const discount = coupon ? discountFor(coupon, subtotal) : 0
+  const [couponOpen, setCouponOpen] = useState(false)
   return (
-    <div className="border border-black/10 rounded-xl bg-transparent p-5 shadow-[0_1px_2px_rgba(74,44,35,.04)]">
-      <h2 className="text-[17px] font-semibold">Order summary</h2>
-      <ul className="mt-4 space-y-4">
+    <div className="border border-black/10 rounded-xl bg-white/50 p-4 md:p-5 shadow-[0_1px_2px_rgba(74,44,35,.04)]">
+      <h2 className="sr-only">Your order</h2>
+      <ul className="space-y-3">
         {lines.map((l) => (
-          <li key={l.id + l.size} className="flex gap-3">
-            <div className="relative w-14 h-[74px] shrink-0 bg-neutral-100 rounded overflow-hidden">
-              <Img src={l.image} alt={l.product.title} sizes="56px" className="w-full h-full object-cover" />
+          <li key={l.id + l.size} className="flex gap-3 items-center">
+            <div className="relative w-12 h-16 shrink-0 bg-neutral-100 rounded overflow-hidden">
+              <Img src={l.image} alt={l.product.title} sizes="48px" className="w-full h-full object-cover" />
               {l.qty > 1 && (
                 <span className="absolute top-0 right-0 bg-black/75 text-white text-[11px] font-ui px-1.5 py-[1px] rounded-bl">{l.qty}</span>
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[15px] leading-snug line-clamp-2">{l.product.title}</p>
-              <p className="text-[13px] text-black/55 mt-0.5">Size {l.size}{l.color ? ` · ${l.color}` : ''} · Qty {l.qty}</p>
+              <p className="text-[15px] font-medium leading-snug line-clamp-2">{l.product.title}</p>
+              <p className="text-[13px] text-black/60 mt-0.5">{[l.color, `Size ${l.size}`, `Qty ${l.qty}`].filter(Boolean).join(' · ')}</p>
             </div>
             <p className="font-ui text-[15px] font-semibold shrink-0">{inr(l.price * l.qty)}</p>
           </li>
         ))}
       </ul>
 
-      {/* Coupon: one input to apply, one button to remove. The code is only
-          ever checked by the database — invalid, expired or inactive codes
-          are refused with the server's own message. */}
-      <div className="mt-5 pt-5 border-t border-black/10">
-        {!coupon ? (
-          <>
-            <label htmlFor="coupon-code" className="block text-[14px] font-medium">Have a coupon code?</label>
-            <div className="flex gap-2 mt-2">
-              <input
-                id="coupon-code"
-                type="text"
-                value={couponInput}
-                onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                placeholder="Coupon code"
-                autoCapitalize="characters"
-                autoComplete="off"
-                className="flex-1 min-w-0 h-[42px] px-3 rounded-lg border border-black/30 bg-white text-[14px] font-mono outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:font-sans placeholder:text-black/35"
-              />
-              <button
-                type="button"
-                onClick={onApply}
-                disabled={couponBusy || !couponInput.trim()}
-                className="h-[42px] px-4 rounded-lg border border-black/60 text-[14px] font-semibold inline-flex items-center gap-1.5 hover:bg-black hover:text-white transition disabled:opacity-60"
-              >
-                {couponBusy ? <Loader2 size={14} className="animate-spin" /> : <Tag size={14} />}
-                {couponBusy ? 'Checking…' : 'Apply'}
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[15px] min-w-0 truncate">
-              <Tag size={15} className="inline -mt-0.5 mr-1.5 text-brand-green" />
-              Coupon <span className="font-mono font-semibold">{coupon.code}</span>
-              <span className="text-brand-green font-semibold"> · −{inr(discount)}</span>
-            </p>
-            <button
-              type="button"
-              onClick={onRemoveCoupon}
-              className="inline-flex items-center gap-1 text-[13px] text-black/50 hover:text-red-600 shrink-0"
-            >
-              <X size={14} /> Remove
-            </button>
-          </div>
-        )}
-        {couponNote && (
-          <p role="status" aria-live="polite" className={`mt-2 text-[13px] ${couponNote.kind === 'ok' ? 'text-green-700' : 'text-red-600'}`}>
-            {couponNote.text}
-          </p>
-        )}
-      </div>
-
-      <dl className="mt-5 pt-5 border-t border-black/10 space-y-2 text-[15px]">
+      <dl className="mt-4 pt-3 border-t border-black/10 space-y-1.5 text-[15px]">
         <div className="flex justify-between"><dt className="text-black/65">Subtotal</dt><dd className="font-ui">{inr(subtotal)}</dd></div>
         {discount > 0 && (
           <div className="flex justify-between">
             <dt className="text-black/65">Discount</dt>
-            <dd className="font-ui text-brand-green font-semibold">−{inr(discount)}</dd>
+            <dd className={`font-ui font-semibold ${OK_GREEN}`}>−{inr(discount)}</dd>
           </div>
         )}
         <div className="flex justify-between">
           <dt className="text-black/65">Shipping</dt>
-          <dd className="font-ui">{shipping === 0 ? <span className="text-brand-green font-semibold">Free</span> : inr(shipping)}</dd>
+          <dd className="font-ui">{shipping === 0 ? <span className={`font-semibold ${OK_GREEN}`}>Free</span> : inr(shipping)}</dd>
         </div>
-        <div className="flex justify-between pt-3 border-t border-black/10 text-[18px] font-semibold">
-          <dt>Total</dt><dd className="font-ui">{inr(totalFor(subtotal, discount))}</dd>
+        {/* "Taxes included, no extra charges": extra costs at the last step
+            are the most common reason people abandon a checkout. */}
+        <div className="flex justify-between items-baseline gap-3 pt-2 border-t border-black/10">
+          <dt>
+            <span className="text-[17px] font-semibold">Total</span>{' '}
+            <span className="text-[13px] text-black/60">· taxes included, no extra charges</span>
+          </dt>
+          <dd className="font-ui text-[18px] font-semibold shrink-0">{inr(totalFor(subtotal, discount))}</dd>
         </div>
       </dl>
+
+      {/* Coupon: offered only while a coupon is live (couponsAvailable), and
+          behind a link, so an empty box doesn't send shoppers hunting for
+          codes. The code is only ever checked by the database — invalid,
+          expired or inactive codes are refused with the server's own message. */}
+      {(coupon || couponsLive || couponNote) && (
+        <div className="mt-3">
+          {coupon ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[14px] min-w-0 truncate">
+                <Tag size={15} className={`inline -mt-0.5 mr-1.5 ${OK_GREEN}`} />
+                Coupon <span className="font-mono font-semibold">{coupon.code}</span>
+                <span className={`font-semibold ${OK_GREEN}`}> · −{inr(discount)}</span>
+              </p>
+              <button
+                type="button"
+                onClick={onRemoveCoupon}
+                className="inline-flex items-center gap-1 text-[13px] text-black/55 hover:text-red-600 shrink-0"
+              >
+                <X size={14} /> Remove
+              </button>
+            </div>
+          ) : couponOpen ? (
+            <>
+              <label htmlFor="coupon-code" className="sr-only">Coupon code</label>
+              <div className="flex gap-2">
+                <input
+                  id="coupon-code"
+                  type="text"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="Coupon code"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  autoFocus
+                  className="flex-1 min-w-0 h-[44px] px-3 rounded-lg border border-black/30 bg-white text-[16px] font-mono outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:font-sans placeholder:text-black/40"
+                />
+                <button
+                  type="button"
+                  onClick={onApply}
+                  disabled={couponBusy || !couponInput.trim()}
+                  className="h-[44px] px-4 rounded-lg border border-black/60 text-[14px] font-semibold inline-flex items-center gap-1.5 hover:bg-black hover:text-white transition disabled:opacity-60"
+                >
+                  {couponBusy ? <Loader2 size={14} className="animate-spin" /> : <Tag size={14} />}
+                  {couponBusy ? 'Checking…' : 'Apply'}
+                </button>
+              </div>
+            </>
+          ) : couponsLive ? (
+            <button
+              type="button"
+              onClick={() => setCouponOpen(true)}
+              className="text-[14px] font-medium text-black/75 underline underline-offset-2 hover:text-black"
+            >
+              Have a coupon?
+            </button>
+          ) : null}
+          {couponNote && (
+            <p role="status" aria-live="polite" className={`mt-2 text-[13px] ${couponNote.kind === 'ok' ? OK_GREEN : 'text-red-600'}`}>
+              {couponNote.text}
+            </p>
+          )}
+        </div>
+      )}
+
+      <p className="mt-3 pt-3 border-t border-black/10 flex items-center gap-2 text-[14px] text-black/75">
+        <Truck size={17} aria-hidden="true" className={`shrink-0 ${OK_GREEN}`} />
+        <span>{shipping === 0 ? 'Free delivery' : 'Delivery'} · arrives <b className="font-semibold text-black">{delivery}</b></span>
+      </p>
     </div>
   )
 }
@@ -202,7 +211,6 @@ export default function Checkout() {
   // report the outcome, so the recovery check stays out of the way.
   const paying = useRef(false)
   const recovering = useRef(false)
-  const [pay, setPay] = useState('razorpay')
   // An admin's test order (tracking brief, rule 10): paid in Razorpay's test
   // mode, so no money moves. The server checks the admin itself.
   const [testOrder, setTestOrder] = useState(false)
@@ -218,10 +226,54 @@ export default function Checkout() {
   // retry with nothing changed is not counted twice.
   const sentShipping = useRef(null)
   const sentPayment = useRef(null)
+  // Whether any coupon is live: "Have a coupon?" is offered only then.
+  const [couponsLive, setCouponsLive] = useState(false)
+  // Set when the shopper leaves the email field, so "Did you mean …?" is
+  // about what they finished typing, not every keystroke.
+  const [emailLeft, setEmailLeft] = useState(false)
+  // The delivery note stays folded away until it is asked for.
+  const [noteOpen, setNoteOpen] = useState(false)
+  // The phone Pay bar shows only while the Pay button itself is off screen
+  // and the shopper isn't typing (their keyboard is up).
+  const [payInView, setPayInView] = useState(true)
+  const [typing, setTyping] = useState(false)
+  const payWatch = useRef(null)
 
   // Price against the live catalogue — never against a stale cache — before
   // any money changes hands.
   useEffect(() => { reload() }, [reload])
+  // Asked once, alongside the catalogue; nothing on the page waits for it.
+  useEffect(() => {
+    let alive = true
+    couponsAvailable().then((yes) => { if (alive) setCouponsLive(yes) })
+    return () => { alive = false }
+  }, [])
+  // Typing anywhere on the page (address or coupon) hides the Pay bar, so it
+  // never sits on top of the field being filled in.
+  useEffect(() => {
+    const isField = (el) => !!el && (el.tagName === 'TEXTAREA' ||
+      (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes(el.type)))
+    const onIn = (e) => { if (isField(e.target)) setTyping(true) }
+    const onOut = (e) => { if (!isField(e.relatedTarget)) setTyping(false) }
+    document.addEventListener('focusin', onIn)
+    document.addEventListener('focusout', onOut)
+    return () => {
+      document.removeEventListener('focusin', onIn)
+      document.removeEventListener('focusout', onOut)
+    }
+  }, [])
+  // Watches the Pay button once it is on the page (a callback ref, because the
+  // form only appears after the catalogue answers).
+  const payButton = useCallback((el) => {
+    payWatch.current?.disconnect()
+    payWatch.current = null
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    payWatch.current = new IntersectionObserver(
+      ([entry]) => setPayInView(entry.intersectionRatio >= 0.6),
+      { threshold: [0, 0.6, 1] },
+    )
+    payWatch.current.observe(el)
+  }, [])
   // Products the owner hid or deleted cannot be ordered.
   useEffect(() => { prune() }, [prune])
   // Fetch Razorpay's script while the shopper fills in the form, so tapping
@@ -583,7 +635,7 @@ export default function Checkout() {
     setFailure('')
     const found = validateAddress(f)
     setErrors(found)
-    const firstBad = Object.keys(found)[0]
+    const firstBad = FIELD_ORDER.find((k) => found[k])
     if (firstBad) {
       checkoutError('invalid_details', { fields: Object.keys(found) })
       document.getElementById(`co-${firstBad}`)?.focus()
@@ -649,6 +701,19 @@ export default function Checkout() {
     }
   }
 
+  // What the page is charging right now: the number in the summary, on Pay,
+  // on the phone Pay bar and in the WhatsApp message.
+  const total = totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0)
+  // "Chat with us" opens WhatsApp with the cart already written out.
+  const chatHref = checkoutWhatsAppLink({
+    number: site.whatsappNumber,
+    lines: lines.map((l) => ({ title: l.product.title, color: l.color, size: l.size, qty: l.qty, amount: inr(l.price * l.qty) })),
+    total: lines.length ? inr(total) : '',
+  })
+  // GA4's contact event for a tap on "Chat with us".
+  const chatTapped = () => trackSafely(() => contactEvent(chatHref, { location: 'checkout_whatsapp_button', eventId: newEventId() }))
+  const header = <CheckoutHeader chatHref={chatHref} onChat={chatTapped} />
+
   // Until the real catalogue answers, the basket can only be priced from the
   // bundled seed — wrong prices, or "empty" for products it does not know.
   // A shopper whose page reloaded mid-payment lands exactly here.
@@ -656,155 +721,184 @@ export default function Checkout() {
   // shop's, so nothing is priced from them.
   if (answered && catalogueError && source === 'seed' && !submitting) {
     return (
-      <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
-        <h1 className="text-[34px]">We couldn't load your checkout</h1>
-        <p className="text-black/60 mt-3 text-[17px]">Please check your connection and try again. Nothing has been charged.</p>
-        <button type="button" onClick={() => reload()} className="btn-outline mt-8">Try again</button>
-      </section>
+      <>
+        {header}
+        <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
+          <h1 className="text-[34px]">We couldn't load your checkout</h1>
+          <p className="text-black/60 mt-3 text-[17px]">Please check your connection and try again. Nothing has been charged.</p>
+          <button type="button" onClick={() => reload()} className="btn-outline mt-8">Try again</button>
+        </section>
+      </>
     )
   }
 
   if (!answered && !submitting) {
     return (
-      <section className="max-w-[720px] mx-auto px-4 py-24 text-center" aria-busy="true">
-        <Loader2 size={28} className="animate-spin mx-auto text-black/50" />
-        <p className="text-black/60 mt-4 text-[17px]">Loading your checkout…</p>
-      </section>
+      <>
+        {header}
+        <section className="max-w-[720px] mx-auto px-4 py-24 text-center" aria-busy="true">
+          <Loader2 size={28} className="animate-spin mx-auto text-black/50" />
+          <p className="text-black/60 mt-4 text-[17px]">Loading your checkout…</p>
+        </section>
+      </>
     )
   }
 
   if (!lines.length && !submitting && !recovery) {
     return (
-      <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
-        <h1 className="text-[38px]">Your cart is empty</h1>
-        <p className="text-black/60 mt-3 text-[17px]">Add something you love before checking out.</p>
-        <Link to="/shop" className="inline-block bg-brand-green text-white px-10 py-4 rounded-lg mt-8 text-[17px]">Continue shopping</Link>
-      </section>
+      <>
+        {header}
+        <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
+          <h1 className="text-[38px]">Your cart is empty</h1>
+          <p className="text-black/60 mt-3 text-[17px]">Add something you love before checking out.</p>
+          <Link to="/shop" className="inline-block bg-brand-green text-white px-10 py-4 rounded-lg mt-8 text-[17px]">Continue shopping</Link>
+        </section>
+      </>
     )
   }
 
+  // Every field Pay would refuse right now; a field not listed gets its tick.
+  const problems = validateAddress(f)
+  const ok = (k) => !problems[k]
+  const emailSuggestion = emailLeft ? suggestEmail(f.email) : null
+  const takeSuggestion = () => {
+    setF((v) => ({ ...v, email: emailSuggestion }))
+    setErrors((prev) => (prev.email ? { ...prev, email: undefined } : prev))
+  }
+  const payDisabled = submitting || awaitingPayment || !lines.length || !onlinePaymentReady
+  const showPayBar = !payInView && !typing && !awaitingPayment && lines.length > 0 && onlinePaymentReady
+
   return (
-    <section className="max-w-[1200px] mx-auto px-4 md:px-7 py-10 md:py-14">
-      <Link to="/cart" className="inline-flex items-center gap-1.5 text-[15px] text-black/60 hover:text-black">
-        <ArrowLeft size={16} /> Back to cart
-      </Link>
-      <h1 className="text-[36px] md:text-[44px] mt-4">Checkout</h1>
-      <p className="text-black/60 mt-2 flex items-center gap-2 text-[15px]">
-        <Lock size={15} /> Your details are sent securely and never shared.
-      </p>
+    <>
+      {header}
+      {/* Bottom room on phones for the Pay bar, so the last lines can scroll
+          clear of it. */}
+      <section className="max-w-[1100px] mx-auto px-4 md:px-7 pt-4 md:pt-8 pb-28 lg:pb-14">
+        <h1 className="sr-only">Checkout</h1>
 
-      {recovery && (
-        <div role="status" className="mt-6 flex items-start gap-3 border border-black/15 bg-white rounded-xl px-4 py-3.5 text-[15px]">
-          {recovery.state === 'error' || recovery.state === 'stalled'
-            ? <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-            : <Loader2 size={18} className="shrink-0 mt-0.5 animate-spin" />}
-          <div className="flex-1">
-            <p>
-              {recovery.state === 'checking' && <>Checking your payment for order <b>{recovery.reference}</b>…</>}
-              {recovery.state === 'processing' && (
-                <>Razorpay is still confirming your payment for order <b>{recovery.reference}</b>. If you approved it in your UPI app, please don't pay again — this page keeps checking. If you didn't finish paying, the request expires within about 10 minutes and you can pay again then.</>
-              )}
-              {recovery.state === 'stalled' && (
-                <>We haven't heard back from Razorpay about order <b>{recovery.reference}</b>. If you approved the payment, please don't pay again — tap Check again or contact us. If you didn't finish paying, you can pay again below.</>
-              )}
-              {recovery.state === 'error' && (
-                <>{recovery.message || "We couldn't check your payment just now. Please don't pay again."} Your order reference is <b>{recovery.reference}</b>.</>
-              )}
-            </p>
-            {recovery.state !== 'checking' && (
-              <button type="button" onClick={() => recoverPayment()} className="mt-2 font-semibold underline underline-offset-2">
-                Check again
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {failure && (
-        <div role="alert" className="mt-6 flex items-start gap-3 border border-red-200 bg-red-50 text-red-800 rounded-xl px-4 py-3.5 text-[15px]">
-          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-          <span>{failure}</span>
-        </div>
-      )}
-
-      <div className="mt-8 grid lg:grid-cols-[1.35fr_1fr] gap-8 lg:gap-12 items-start">
-        {/* No card background: the form sits directly on the page canvas so the
-            whole checkout reads as one continuous surface. Section dividers
-            (in `Section`) are what separate Contact / Delivery / Payment. */}
-        <form onSubmit={submit} noValidate>
-          <Section n="1" title="Contact">
-            <Field
-              label="Email" name="email" type="email" autoComplete="email"
-              placeholder="you@example.com" value={f.email} onChange={on('email')} error={errors.email}
-            />
-            {!user && (
-              <p className="text-[14px] text-black/55 mt-3">
-                Already have an account? <Link to="/account?next=/checkout" className="underline underline-offset-2 hover:text-black">Sign in</Link> to see your orders later.
+        {recovery && (
+          <div role="status" className="mb-4 flex items-start gap-3 border border-black/15 bg-white rounded-xl px-4 py-3.5 text-[15px]">
+            {recovery.state === 'error' || recovery.state === 'stalled'
+              ? <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+              : <Loader2 size={18} className="shrink-0 mt-0.5 animate-spin" />}
+            <div className="flex-1">
+              <p>
+                {recovery.state === 'checking' && <>Checking your payment for order <b>{recovery.reference}</b>…</>}
+                {recovery.state === 'processing' && (
+                  <>Razorpay is still confirming your payment for order <b>{recovery.reference}</b>. If you approved it in your UPI app, please don't pay again — this page keeps checking. If you didn't finish paying, the request expires within about 10 minutes and you can pay again then.</>
+                )}
+                {recovery.state === 'stalled' && (
+                  <>We haven't heard back from Razorpay about order <b>{recovery.reference}</b>. If you approved the payment, please don't pay again — tap Check again or contact us. If you didn't finish paying, you can pay again below.</>
+                )}
+                {recovery.state === 'error' && (
+                  <>{recovery.message || "We couldn't check your payment just now. Please don't pay again."} Your order reference is <b>{recovery.reference}</b>.</>
+                )}
               </p>
-            )}
-          </Section>
-
-          <Section n="2" title="Delivery address">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <Field label="Full name" name="full_name" autoComplete="name" placeholder="Priya Sharma"
-                  value={f.full_name} onChange={on('full_name')} error={errors.full_name} />
-              </div>
-              <div className="sm:col-span-2">
-                <Field label="Phone" name="phone" type="tel" inputMode="tel" autoComplete="tel"
-                  placeholder="98765 43210" value={f.phone} onChange={on('phone')} error={errors.phone} />
-              </div>
-              <div className="sm:col-span-2">
-                <Field label="Address" name="address" autoComplete="street-address"
-                  placeholder="House / flat, street, landmark" value={f.address} onChange={on('address')} error={errors.address} />
-              </div>
-              <Field label="City" name="city" autoComplete="address-level2" placeholder="Mumbai"
-                value={f.city} onChange={on('city')} error={errors.city} />
-              <Field label="PIN code" name="pincode" inputMode="numeric" autoComplete="postal-code" placeholder="400001"
-                value={f.pincode} onChange={on('pincode')} error={errors.pincode} />
-              <div className="sm:col-span-2">
-                <label className="clabel" htmlFor="co-state">State</label>
-                <input
-                  id="co-state" name="state" list="indian-states" autoComplete="address-level1"
-                  placeholder="Start typing or pick from the list"
-                  value={f.state} onChange={on('state')}
-                  aria-invalid={errors.state ? 'true' : undefined}
-                  aria-describedby={errors.state ? 'co-state-err' : undefined}
-                  className="cfield"
-                />
-                <datalist id="indian-states">{INDIAN_STATES.map((s) => <option key={s} value={s} />)}</datalist>
-                {errors.state && <span className="cerror" id="co-state-err">{errors.state}</span>}
-              </div>
-              <div className="sm:col-span-2">
-                <label className="clabel" htmlFor="co-note">Delivery note <span className="text-black/40 font-normal">(optional)</span></label>
-                <textarea id="co-note" name="note" className="cfield" maxLength={500}
-                  placeholder="Ring the bell twice, leave with the security desk…"
-                  value={f.note} onChange={on('note')}
-                  aria-invalid={errors.note ? 'true' : undefined}
-                  aria-describedby={errors.note ? 'co-note-err' : undefined} />
-                {errors.note && <span className="cerror" id="co-note-err">{errors.note}</span>}
-              </div>
-            </div>
-          </Section>
-
-          <Section n="3" title="Payment">
-            <div role="radiogroup" aria-label="Payment method" className="space-y-3">
-              {onlinePaymentReady && (
-                <PayOption
-                  value="razorpay"
-                  checked={pay === 'razorpay'}
-                  onChange={setPay}
-                  title="Online payment"
-                  body="UPI, cards, net banking and wallets — settled in Razorpay's secure window."
-                />
+              {recovery.state !== 'checking' && (
+                <button type="button" onClick={() => recoverPayment()} className="mt-2 font-semibold underline underline-offset-2">
+                  Check again
+                </button>
               )}
             </div>
-            <p className="text-[14px] text-black/55 mt-4 flex items-start gap-2">
-              <ShieldCheck size={16} className="mt-[1px] shrink-0" />
+          </div>
+        )}
+
+        {failure && (
+          <div role="alert" className="mb-4 flex items-start gap-3 border border-red-200 bg-red-50 text-red-800 rounded-xl px-4 py-3.5 text-[15px]">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <span>{failure}</span>
+          </div>
+        )}
+
+        {/* On a phone the order comes first; on a computer it sits beside the
+            form. */}
+        <div className="grid lg:grid-cols-[1.35fr_1fr] gap-4 lg:gap-12 items-start">
+          <div className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-[84px] min-w-0">
+            <Summary
+              lines={lines}
+              subtotal={subtotal}
+              coupon={coupon}
+              couponsLive={couponsLive}
+              couponInput={couponInput}
+              setCouponInput={setCouponInput}
+              couponBusy={couponBusy}
+              couponNote={couponNote}
+              onApply={applyCoupon}
+              onRemoveCoupon={removeCoupon}
+              delivery={deliveryWindowText()}
+            />
+            {/* How the shopper will pay, before they start typing. The method
+                itself is picked inside Razorpay's window. */}
+            <p className="mt-3 flex items-center justify-center gap-1.5 text-[13px] text-black/65">
+              <Lock size={13} aria-hidden="true" className="shrink-0" />
               {onlinePaymentReady
-                ? 'Card and bank details are handled entirely by Razorpay — this site never sees or stores them.'
-                : 'Online payment (UPI, cards, net banking) is not connected yet — we will switch it on as soon as the gateway is live.'}
+                ? 'UPI, cards & net banking · secured by Razorpay'
+                : 'Online payment (UPI, cards, net banking) is not connected yet.'}
             </p>
+          </div>
+
+          <form id="checkout-form" onSubmit={submit} noValidate className="lg:col-start-1 lg:row-start-1 min-w-0">
+            <h2 className="sr-only">Delivery details</h2>
+            <div className="border border-black/10 rounded-xl bg-white/50 p-4 md:p-6 space-y-4">
+              <Field
+                label="Mobile number" name="phone" type="tel" inputMode="tel" autoComplete="tel"
+                placeholder="98765 43210" value={f.phone} onChange={on('phone')} error={errors.phone}
+                valid={ok('phone')} hint="For order updates only. No spam, promise."
+              />
+              <Field
+                label="Full name" name="full_name" autoComplete="name" autoCapitalize="words" placeholder="Priya Sharma"
+                value={f.full_name} onChange={on('full_name')} error={errors.full_name} valid={ok('full_name')}
+              />
+              <Field
+                label={<>Email <span className="font-normal text-black/50">· for your receipt</span></>}
+                name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="off" spellCheck={false}
+                placeholder="you@example.com" value={f.email} onChange={on('email')} error={errors.email}
+                valid={ok('email') && !emailSuggestion}
+                onFocus={() => setEmailLeft(false)} onBlur={() => setEmailLeft(true)}
+              >
+                {emailSuggestion && (
+                  <button type="button" onClick={takeSuggestion} className="block mt-1.5 text-left text-[13px] text-black/70 hover:text-black">
+                    Did you mean <b className="font-semibold underline underline-offset-2 break-all">{emailSuggestion}</b>?
+                  </button>
+                )}
+              </Field>
+              <Field
+                label="PIN code" name="pincode" inputMode="numeric" autoComplete="postal-code" maxLength={6}
+                value={f.pincode} onChange={on('pincode')} error={errors.pincode} valid={ok('pincode')}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Field
+                  label="City" name="city" autoComplete="address-level2"
+                  value={f.city} onChange={on('city')} error={errors.city} valid={ok('city')}
+                />
+                <Field
+                  label="State" name="state" list="indian-states" autoComplete="address-level1"
+                  value={f.state} onChange={on('state')} error={errors.state} valid={ok('state')}
+                />
+              </div>
+              <datalist id="indian-states">{INDIAN_STATES.map((s) => <option key={s} value={s} />)}</datalist>
+              <Field
+                label="House / flat, street, landmark" name="address" autoComplete="street-address"
+                placeholder="Flat 12, 3rd Cross, near the temple" value={f.address} onChange={on('address')}
+                error={errors.address} valid={ok('address')}
+              />
+              {noteOpen || f.note ? (
+                <div>
+                  <label className="clabel" htmlFor="co-note">Delivery note <span className="text-black/40 font-normal">(optional)</span></label>
+                  <textarea id="co-note" name="note" className="cfield" maxLength={500} autoFocus={noteOpen}
+                    placeholder="Ring the bell twice, leave with the security desk…"
+                    value={f.note} onChange={on('note')}
+                    aria-invalid={errors.note ? 'true' : undefined}
+                    aria-describedby={errors.note ? 'co-note-err' : undefined} />
+                  {errors.note && <span className="cerror" id="co-note-err">{errors.note}</span>}
+                </div>
+              ) : (
+                <button type="button" onClick={() => setNoteOpen(true)} className="text-[14px] font-medium text-black/70 hover:text-black">
+                  + Add delivery note
+                </button>
+              )}
+            </div>
+
             {isAdmin && onlinePaymentReady && (
               <label className="mt-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[14px] text-amber-900 cursor-pointer">
                 <input type="checkbox" className="mt-[3px]" checked={testOrder} onChange={(e) => setTestOrder(e.target.checked)} />
@@ -813,37 +907,64 @@ export default function Checkout() {
                 </span>
               </label>
             )}
-          </Section>
 
-          <button
-            type="submit"
-            disabled={submitting || awaitingPayment || !lines.length || !onlinePaymentReady}
-            className="mt-8 w-full h-[56px] rounded-lg bg-brand-cta text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-brand-cta-hover transition disabled:opacity-60"
-          >
-            {submitting && <Loader2 size={18} className="animate-spin" />}
-            {submitting ? 'Opening secure payment…' : `${placingTest ? 'Place test order' : 'Pay now'} · ${inr(totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0))}`}
-          </button>
-          {/* The shop's published rating, beside the last button. */}
-          <ShopRatingNote className="mt-3" />
-          <p className="text-[13px] text-black/50 mt-3 text-center">
-            By placing this order you agree to our <Link to="/policies/terms-of-service" className="underline underline-offset-2">terms</Link> and <Link to="/policies/refund-policy" className="underline underline-offset-2">return &amp; refund policy</Link>.
-          </p>
-        </form>
+            <button
+              ref={payButton}
+              type="submit"
+              disabled={payDisabled}
+              className="mt-5 w-full h-[56px] rounded-lg bg-brand-cta text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-brand-cta-hover transition disabled:opacity-60"
+            >
+              {submitting ? <Loader2 size={18} className="animate-spin" /> : !placingTest && <Lock size={17} aria-hidden="true" />}
+              {submitting ? 'Opening secure payment…' : placingTest ? `Place test order · ${inr(total)}` : `Pay ${inr(total)} securely`}
+            </button>
 
-        <aside className="lg:sticky lg:top-[120px]">
-          <Summary
-            lines={lines}
-            subtotal={subtotal}
-            coupon={coupon}
-            couponInput={couponInput}
-            setCouponInput={setCouponInput}
-            couponBusy={couponBusy}
-            couponNote={couponNote}
-            onApply={applyCoupon}
-            onRemoveCoupon={removeCoupon}
-          />
-        </aside>
-      </div>
-    </section>
+            {/* The reassurance in one place, right under Pay: the shop's
+                published rating, what happens if something arrives damaged or
+                wrong (the return & refund policy), and who is selling. */}
+            <div className="mt-4 rounded-xl border border-black/10 bg-white/50 px-4 py-3 space-y-2 text-[13.5px] text-black/70">
+              <ShopRatingNote align="start" />
+              <p className="flex items-start gap-2">
+                <ShieldCheck size={16} aria-hidden="true" className="mt-[1px] shrink-0 text-black/55" />
+                <span>Damaged or wrong item? We'll replace it or refund you.</span>
+              </p>
+              <p className="flex items-start gap-2">
+                <Store size={16} aria-hidden="true" className="mt-[1px] shrink-0 text-black/55" />
+                <span>Sold by <b className="font-semibold text-black/80">{site.seller.name}</b>, {site.seller.city} · GSTIN {site.seller.gstin}</span>
+              </p>
+            </div>
+            {/* New tabs, so reading a policy never loses what was typed. */}
+            <p className="text-[13px] text-black/55 mt-3 text-center">
+              By paying you agree to our <Link to="/policies/terms-of-service" target="_blank" rel="noopener" className="underline underline-offset-2">terms</Link> and <Link to="/policies/refund-policy" target="_blank" rel="noopener" className="underline underline-offset-2">return &amp; refund policy</Link>.
+            </p>
+          </form>
+        </div>
+      </section>
+
+      {/* Phones: the total and Pay stay in reach while the Pay button itself
+          is off screen, and step aside while a field is being typed in. It
+          submits the same form, so every check and event is the same. */}
+      {showPayBar && (
+        <div
+          className="lg:hidden fixed inset-x-0 bottom-0 z-30 bg-white border-t border-black/10 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <div className="max-w-[640px] mx-auto h-[4.5rem] px-4 flex items-center gap-4">
+            <div className="font-ui leading-tight min-w-0">
+              <p className="font-bold text-[20px] text-black">{inr(total)}</p>
+              <p className={`text-[13px] font-medium ${OK_GREEN}`}>{shippingFor() === 0 ? 'Free delivery' : 'Taxes included'}</p>
+            </div>
+            <button
+              type="submit"
+              form="checkout-form"
+              disabled={payDisabled}
+              className="ml-auto h-12 px-6 rounded-lg bg-brand-cta text-white text-[16px] font-semibold inline-flex items-center gap-2 hover:bg-brand-cta-hover transition disabled:opacity-60"
+            >
+              {submitting ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} aria-hidden="true" />}
+              {placingTest ? 'Place test order' : 'Pay securely'}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
