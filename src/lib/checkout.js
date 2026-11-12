@@ -18,13 +18,34 @@ export const MAX_QTY = 10
 // `qty` is per line, so this counts lines, not units.
 export const MAX_CART_LINES = 20
 
-// Accepts 9876543210, 9046651272, 98765-43210 … but must contain
-// between 10 and 15 digits once formatting is stripped.
-export const phoneDigits = (v) => v.replace(/\D/g, '')
-export const phoneOk = (v) => {
-  const d = phoneDigits(v)
-  return d.length >= 10 && d.length <= 15
+export const phoneDigits = (v) => String(v ?? '').replace(/\D/g, '')
+
+// The mobile number as checkout keeps it: the 10 digits of an Indian mobile.
+// Checkout shows +91 in front of the field (12 Nov 2026), so a number typed,
+// pasted or autofilled with "+91", "91", "0091" or a leading 0 has that
+// stripped, along with spaces and dashes: "+91 98765 43210", "919876543210"
+// and "09876543210" all become 9876543210. A prefix is only stripped once the
+// number runs past 10 digits, so a mobile that itself starts with 91 is left
+// alone. Nothing past 10 digits is kept, so the field takes at most 10.
+const MOBILE_PREFIXES = ['0091', '91', '0']
+export function normalizeMobile(value) {
+  let d = phoneDigits(value)
+  let prefix
+  while (d.length > 10 && (prefix = MOBILE_PREFIXES.find((p) => d.startsWith(p)))) d = d.slice(prefix.length)
+  return d.slice(0, 10)
 }
+
+/** What is wrong with a mobile number as typed, or '' when it is a valid Indian mobile. */
+export function mobileProblem(value) {
+  const d = normalizeMobile(value)
+  if (!d) return 'Enter your mobile number.'
+  if (d.length < 10) return 'Mobile numbers have 10 digits.'
+  if (!/^[6-9]/.test(d)) return 'Indian mobile numbers start with 6, 7, 8 or 9.'
+  return ''
+}
+
+/** An Indian mobile number: 10 digits starting with 6, 7, 8 or 9. */
+export const mobileOk = (v) => mobileProblem(v) === ''
 
 export const pincodeOk = (v) => /^[1-9][0-9]{5}$/.test(v.trim())
 
@@ -48,7 +69,8 @@ export function validateAddress(values) {
   const errors = {}
   if (!emailOk(values.email)) errors.email = 'Enter a valid email address.'
   if (values.full_name.trim().length < 2) errors.full_name = 'Enter your full name.'
-  if (!phoneOk(values.phone)) errors.phone = 'Enter a valid phone number (10–15 digits).'
+  const mobile = mobileProblem(values.phone)
+  if (mobile) errors.phone = mobile
   if (values.address.trim().length < 5) errors.address = 'Enter your street address.'
   if (values.city.trim().length < 2) errors.city = 'Enter your city.'
   if (values.state.trim().length < 2) errors.state = 'Enter your state.'
