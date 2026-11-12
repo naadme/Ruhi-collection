@@ -9,10 +9,11 @@ import NotFound from './pages/NotFound'
 import Product from './pages/Product'
 import Contact from './pages/Contact'
 import Cart from './pages/Cart'
-import Checkout from './pages/Checkout'
 import OrderConfirmation from './pages/OrderConfirmation'
 import Wishlist from './pages/Wishlist'
 import Account from './pages/Account'
+import CheckoutUnavailable from './components/CheckoutUnavailable'
+import { checkoutPage } from './lib/checkoutPage'
 
 // The dashboard and the legal pages are far heavier than the shop itself and
 // most visitors never open them, so they load on demand instead of inflating
@@ -20,6 +21,11 @@ import Account from './pages/Account'
 const AdminRoot = lazy(() => import('./admin/AdminRoot'))
 const Policy = lazy(() => import('./pages/Policy'))
 const SizeGuide = lazy(() => import('./pages/SizeGuide'))
+// Checkout too, so the product pages ads land on download less. Its code is
+// fetched ahead as soon as a shopper shows intent and then opens without a
+// wait; if it cannot be fetched even on a retry, the shopper is offered a
+// reload (src/lib/checkoutPage.js).
+const Checkout = lazy(checkoutPage.lazy(CheckoutUnavailable))
 
 const Loading = () => (
   <main className="min-h-[60vh] grid place-items-center text-black/50 font-ui" role="status">
