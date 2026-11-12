@@ -14,6 +14,22 @@ export const RAZORPAY_KEY_ID = (import.meta.env.VITE_RAZORPAY_KEY_ID || '').trim
 /** Whether this build offers "Online payment" at checkout at all. */
 export const onlinePaymentReady = RAZORPAY_KEY_ID.length > 0
 
+/**
+ * How Razorpay's window introduces the shop: the name the shop is
+ * GST-registered under (also the domain), the site logo padded to a square on
+ * its own cream (public/images/ruhi-logo-square.jpg, 512×512), and the
+ * buy-button colour (`brand.cta` in tailwind.config.js).
+ */
+export const CHECKOUT_NAME = 'Ruhi Collections'
+export const CHECKOUT_LOGO_PATH = '/images/ruhi-logo-square.jpg'
+export const CHECKOUT_COLOR = '#9A5E4F'
+
+/** The logo as an absolute address, which Razorpay's window needs. */
+const checkoutLogo = () =>
+  typeof window !== 'undefined' && window.location?.origin
+    ? `${window.location.origin}${CHECKOUT_LOGO_PATH}`
+    : undefined
+
 /** The shopper closed Checkout before paying. */
 export class PaymentCancelled extends Error {}
 
@@ -140,12 +156,13 @@ export async function openRazorpay({
       amount,
       currency,
       order_id: orderId,
-      name: 'Ruhi Womens Clothing',
+      name: CHECKOUT_NAME,
+      image: checkoutLogo(),
       description,
       prefill,
       notes,
-      // Matches brand-green in tailwind.config.js so Checkout feels native.
-      theme: { color: '#C08576' },
+      // The site's buy-button colour, so the window looks like the shop's own.
+      theme: { color: CHECKOUT_COLOR },
       handler: (response) => settle(resolve, response),
       modal: {
         ondismiss: () =>
@@ -173,4 +190,15 @@ export async function openRazorpay({
 
     checkout.open()
   })
+}
+
+/**
+ * Start fetching checkout.js as soon as the checkout page opens, while the
+ * shopper is still typing, so tapping Pay only waits for the shop's own order
+ * call — not for Razorpay's script as well. Never throws: a preload that fails
+ * or times out clears itself (see loadScript), and Pay loads the script again.
+ */
+export function preloadRazorpay() {
+  if (!onlinePaymentReady) return
+  loadRazorpay().catch(() => { /* Pay will try again */ })
 }
