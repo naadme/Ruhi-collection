@@ -12,7 +12,8 @@ import { site } from '../data/site'
 import { saveOrder } from '../lib/orderStore'
 import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
 import { couponsAvailable, discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
-import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, mobileProblem, normalizeMobile, validateAddress } from '../lib/checkout'
+import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, mobileOk, mobileProblem, normalizeMobile, validateAddress } from '../lib/checkout'
+import { leadItems, leadSource, saveCheckoutLead } from '../lib/checkoutLeads'
 import { loadDetails, saveDetails } from '../lib/checkoutMemory'
 import { lookupPincode, preloadPincode } from '../lib/pincodes'
 import { deliveryWindowText } from '../lib/delivery'
@@ -368,6 +369,30 @@ export default function Checkout() {
     })
     return () => { alive = false }
   }, [pin])
+
+  // Unpaid checkouts (checkoutLeads.js): once the mobile number is a valid
+  // Indian mobile and the cart has something in it, the number and the cart
+  // are recorded in the background, so the owner can offer help on WhatsApp
+  // if the shopper leaves without paying. Sent again only when the number or
+  // the cart changes. An admin's own visits are left out.
+  const leadKey = !isAdmin && lines.length && mobileOk(f.phone)
+    ? `${f.phone}|${lines.map((l) => `${l.id}:${l.size}:${l.qty}`).join(',')}`
+    : ''
+  const leadSent = useRef('')
+  const latestLines = useRef(lines)
+  latestLines.current = lines
+  useEffect(() => {
+    if (!leadKey || leadSent.current === leadKey) return undefined
+    const timer = setTimeout(() => {
+      leadSent.current = leadKey
+      saveCheckoutLead({
+        phone: leadKey.split('|')[0],
+        items: leadItems(latestLines.current),
+        source: leadSource(attributionForOrder()),
+      })
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [leadKey])
 
   // The outcome of a payment never reached this page: it was reloaded while
   // Razorpay's window was open (typically an Instagram or Facebook in-app

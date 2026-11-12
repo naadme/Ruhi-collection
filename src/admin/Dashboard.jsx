@@ -18,6 +18,7 @@ import PageImagesPanel from './PageImagesPanel'
 import CategoriesPanel from './CategoriesPanel'
 import BestsellerPanel from './BestsellerPanel'
 import CouponsPanel from './CouponsPanel'
+import UnpaidCheckoutsPanel from './UnpaidCheckoutsPanel'
 import ReviewsPanel from './ReviewsPanel'
 
 function Toast({ toast, onClose }) {
@@ -111,8 +112,10 @@ const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
 // Categories are ONE section: the manager and the photographs of those same
 // categories live together in CategoriesPanel, so there is no second tab to
 // chase the same rows through.
+// "Unpaid checkouts" (12 Nov 2026) sits beside Orders: shoppers who typed
+// their mobile number at checkout and left without paying.
 const SECTIONS = [
-  ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'],
+  ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'], ['unpaid', 'Unpaid checkouts'],
   ['banners', 'Banners'], ['page-images', 'Page images'],
   ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'], ['reviews', 'Reviews'],
 ]
@@ -401,6 +404,7 @@ export default function Dashboard({ showOrders }) {
         <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'orders' && <OrdersPanel notify={notify} />}
+          {section === 'unpaid' && <UnpaidCheckoutsPanel notify={notify} />}
           {section === 'categories' && <CategoriesPanel notify={notify} />}
           {section === 'banners' && <BannerPanel notify={notify} />}
           {section === 'page-images' && <PageImagesPanel notify={notify} />}
