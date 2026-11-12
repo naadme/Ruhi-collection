@@ -21,14 +21,21 @@ export const site = {
   phoneHref: 'tel:+919046651272',
   whatsappNumber: '919046651272',
   email: 'ruhicollections2026@gmail.com',
-  hours: 'Mon – Sat, 10:00 – 19:00 IST',
+  // When someone answers WhatsApp and the phone (the owner, 12 Nov 2026).
+  // `supportHours` is the short form on checkout's "Chat with us" button.
+  supportHours: '9 AM – 9 PM',
+  hours: '9 AM – 9 PM IST',
+  // Who sells: the trade name on the GST registration, shown under Pay at
+  // checkout and in the footer (the owner's choice, 12 Nov 2026).
+  seller: { name: 'Ruhi Collections', city: 'Bengaluru', gstin: '29CMOPN3041A1Z6' },
   // The single source for every WhatsApp link on the site: the footer, the
   // contact page and the homepage contact strip all render this `href`.
   // +91 90466 51272 → 919046651272 (country code, no spaces or '+').
   social: [{ label: 'Instagram', href: 'https://www.instagram.com/ruhi_fashions_/' }, { label: 'WhatsApp', href: 'https://wa.me/919046651272' }],
   // Top USP strip — the three client-approved messages, shown exactly as
   // written (the marquee repeats them for a seamless loop).
-  announcements: ['Secure Customer Support (10am - 7pm)', 'Fast & Free delivery across India', 'Everything under ₹1000'],
+  // Support hours changed to 9am - 9pm on 12 Nov 2026 (the owner).
+  announcements: ['Secure Customer Support (9am - 9pm)', 'Fast & Free delivery across India', 'Everything under ₹1000'],
   nav: [
     { label: 'Home', to: '/' },
     // The catalogue branch renders as a dropdown in the header (and as a nested
@@ -58,7 +65,7 @@ export const site = {
   // paid online at checkout, so there is no delivery-time payment card.
   // All three now carry a short description line under the heading.
   features: [
-    { icon: 'Headset', title: 'Secure Customer Support', text: '10am - 7pm' },
+    { icon: 'Headset', title: 'Secure Customer Support', text: '9am - 9pm' },
     { icon: 'Truck', title: 'Fast & Free Delivery', text: 'Across India' },
     { icon: 'IndianRupee', title: 'All Products', text: 'under ₹1000' },
   ],
