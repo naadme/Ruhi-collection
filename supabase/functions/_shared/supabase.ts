@@ -149,11 +149,14 @@ export async function fetchOrderByColumn(
   return Array.isArray(rows) ? (rows[0] ?? null) : null
 }
 
-/** The order line snapshot shown on the confirmation page. */
+/** The order line snapshot shown on the confirmation page.
+ * `sku` is the line's Product ID: the page's purchase event builds each item_id
+ * from it (sku_size), and an order whose lines have none sends no purchase to
+ * GA4 or Meta at all. */
 export async function fetchOrderItems(orderId: string): Promise<Json[]> {
   const res = await serviceFetch(
     `/rest/v1/order_items?order_id=eq.${encodeURIComponent(orderId)}` +
-      '&select=product_id,title,image,size,qty,unit_price',
+      '&select=product_id,title,image,size,qty,unit_price,sku',
   )
   if (!res.ok) return []
   return ((await res.json().catch(() => [])) as Json[]) ?? []
