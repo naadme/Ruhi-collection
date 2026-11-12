@@ -168,11 +168,13 @@ export function cartLineItem(line, { category, quantity } = {}) {
 /**
  * An ordered line as an item: the Product ID, title and price the order
  * itself recorded, so the purchase names exactly what was bought. `row` is
- * the product's catalogue row, which names its design.
+ * the product's catalogue row, which names its design — and supplies the
+ * Product ID when a line arrives without one (until 12 Nov 2026 the payment
+ * check returned lines without `sku`, so no real order sent a purchase).
  */
 export function orderLineItem(line, { category, compare, row } = {}) {
   return trackedItem({
-    productId: line?.sku,
+    productId: line?.sku || row?.sku,
     groupId: row ? designGroupId(row) : undefined,
     size: line?.size,
     name: orderLineName(line?.title),

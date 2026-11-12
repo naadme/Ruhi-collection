@@ -232,6 +232,28 @@ test('order lines name what the order itself recorded', () => {
   assert.equal(orderLineItem(orderLines[0], { category: 'Kurtas', compare: 1599 }).item_group_id, '0101BU')
 })
 
+test('a line that arrives without its Product ID takes it from the catalogue row, so the purchase still goes out', () => {
+  // The lines exactly as verify-razorpay-payment returned them until 12 Nov
+  // 2026 (product_id, title, image, size, qty, unit_price — no sku). Every
+  // line came out null, purchaseEvent returned null, and no real order sent a
+  // purchase to GA4 or Meta.
+  const bare = orderLines.map(({ sku: _sku, ...line }) => ({ ...line, image: 'photo.jpg' }))
+  const items = [
+    orderLineItem(bare[0], { category: 'Kurtas', compare: 1599, row: kurtaRow }),
+    orderLineItem(bare[1], { category: 'Dupattas', compare: null, row: dupattaRow }),
+  ]
+  assert.deepEqual(items, orderItems)
+  assert.deepEqual(purchaseEvent(paidOrder, items), purchaseEvent(paidOrder, orderItems))
+
+  // With neither the line's sku nor a catalogue row the line cannot be named,
+  // and an order with no named line sends no purchase at all.
+  assert.equal(orderLineItem(bare[0], { category: 'Kurtas' }), null)
+  assert.equal(purchaseEvent(paidOrder, [orderLineItem(bare[0], {})]), null)
+
+  // The Product ID the order recorded wins over the catalogue's current one.
+  assert.equal(orderLineItem(orderLines[0], { row: { ...kurtaRow, sku: '9999XX' } }).item_id, '0101BU_M')
+})
+
 test('A10 purchase: event_id and transaction_id are the Order ID; details come from the order', () => {
   const event = purchaseEvent(paidOrder, orderItems)
   assert.deepEqual(event, {

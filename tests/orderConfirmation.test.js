@@ -205,6 +205,33 @@ test('fetchItems selects only columns order_items actually has', () => {
   assert.ok(selected.includes('sku'), 'the Product ID of the line is read too');
 });
 
+test('the payment check hands the thank-you page every line field its purchase event needs, sku included', () => {
+  // Regression (12 Nov 2026): fetchOrderItems selected no sku. The thank-you
+  // page builds each item_id from it, so every line was dropped, the purchase
+  // event came out empty, and no real order reached GA4 or Meta — the first
+  // was a Meta-ad sale on 11 Nov that Ads Manager never credited.
+  const SHARED = read('supabase/functions/_shared/supabase.ts');
+  const m = SHARED.match(/export async function fetchOrderItems[\s\S]*?&select=([a-z_,]+)'/);
+  assert.ok(m, 'fetchOrderItems issues a select against order_items');
+  const selected = m[1].split(',');
+  const cols = allOrderItemsColumns();
+  for (const col of selected) {
+    assert.ok(cols.includes(col), `"${col}" is not a column of public.order_items — PostgREST would answer 400`);
+  }
+  for (const col of ['product_id', 'title', 'size', 'qty', 'unit_price', 'sku']) {
+    assert.ok(selected.includes(col), `the thank-you page's purchase event needs ${col}`);
+  }
+  // Both ways a paid order reaches the browser hand back these lines.
+  assert.equal((VERIFY.match(/order: \{ \.\.\.(settled|order), items \}/g) || []).length, 2,
+    'the normal and the recovered payment both return the order with its lines');
+});
+
+test('the thank-you page gives each line its catalogue row, which a missing sku falls back to', () => {
+  const PAGE = read('src/pages/OrderConfirmation.jsx');
+  assert.match(PAGE, /const row = getRow\(it\.product_id\)/);
+  assert.match(PAGE, /orderLineItem\(it, \{[^}]*\brow \}\)/);
+});
+
 test('the item query names its operator, so PostgREST reads it at all', () => {
   // Regression, and the reason every confirmation email went out with an
   // empty "Items" block: the filter was `order_id=<uuid>` with no operator.
