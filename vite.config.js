@@ -24,8 +24,35 @@ const spa404 = () => {
   }
 }
 
+// Checkout's code is its own file (src/lib/checkoutPage.js). Opened from the
+// shop it has already been fetched ahead, but /checkout opened directly (a
+// reload, a return from the payment app) would only ask for it once the main
+// script had run. On that one address, a few bytes in the page ask for it
+// straight away, alongside the main script. Every other page skips it.
+// A plain `preload` only warms the browser's cache (the file is cached for a
+// year). Not `modulepreload`: when that request failed, Chrome made the
+// page's own import of the file wait about 13 s before trying again.
+const preloadCheckoutOnCheckout = () => {
+  let base = '/'
+  return {
+    name: 'preload-checkout-on-checkout',
+    apply: 'build',
+    configResolved(config) { base = config.base },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const chunk = Object.values(ctx.bundle || {}).find((c) => c.type === 'chunk' && c.isDynamicEntry && c.name === 'Checkout')
+        if (!chunk) throw new Error('preload-checkout-on-checkout: no Checkout chunk in the build')
+        const href = JSON.stringify(base + chunk.fileName)
+        const script = `<script>if(location.pathname.replace(/\\/+$/,'')==='/checkout'){var l=document.createElement('link');l.rel='preload';l.as='script';l.crossOrigin='';l.href=${href};document.head.appendChild(l)}</script>`
+        return html.replace('</head>', `  ${script}\n  </head>`)
+      },
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), spa404()],
+  plugins: [react(), spa404(), preloadCheckoutOnCheckout()],
   build: {
     // The build always starts from an empty output directory. A file left
     // behind by an earlier build must never be published again — a stale

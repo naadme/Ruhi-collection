@@ -5,6 +5,7 @@ import { totalFor } from '../lib/pricing'
 import { MAX_QTY } from '../lib/checkout'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent, cartLineItem } from '../lib/trackingItems'
+import { prefetchCheckoutWhenIdle } from '../lib/checkoutPage'
 
 /**
  * Restore a persisted array, never anything else.
@@ -56,6 +57,13 @@ export function CartProvider({ children }) {
   const [items, setItems] = useState(() => readStoredArray('cart', true))
   const [open, setOpen] = useState(false)
   useEffect(() => localStorage.setItem('cart', JSON.stringify(items)), [items])
+
+  // Once the basket holds something, fetch the checkout page's code in the
+  // background, so "Check out" opens at once: right after an add, and for a
+  // basket kept from an earlier visit only once the page has loaded and the
+  // browser is idle, so it never competes with the page being looked at.
+  const filled = items.length > 0
+  useEffect(() => (filled ? prefetchCheckoutWhenIdle() : undefined), [filled])
 
   // The basket as of the last change, read synchronously. GTM's add_to_cart
   // and remove_from_cart describe only the units that actually moved, and a

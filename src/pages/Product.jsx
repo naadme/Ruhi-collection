@@ -28,6 +28,7 @@ import { cleanProductUrl, productWhatsAppLink } from '../lib/whatsapp'
 import WhatsAppButton from '../components/WhatsAppButton'
 import StickyBuyBar from '../components/StickyBuyBar'
 import { SizeChartLink } from '../components/SizeChart'
+import { prefetchCheckout } from '../lib/checkoutPage'
 
 // How long a colour and size must stay on screen before view_item goes out.
 // Opening another colour briefly renders it with the previous colour's size
@@ -273,6 +274,9 @@ export default function Product() {
   // The colour on screen, as the cart and the order name it.
   const shownColour = (colors.length ? chosen?.color : '') || p.colour
   const choose = (s) => {
+    // A chosen size is the clearest sign of buying: fetch the checkout's code
+    // now, so "Buy it now" opens it without a wait (src/lib/checkoutPage.js).
+    prefetchCheckout()
     // GA4's select_size: the size a shopper picks, also when it is the first
     // size the page already assumed — which sizes people weigh up, per design.
     if (s !== size) {
@@ -464,7 +468,9 @@ export default function Product() {
             >
               Add to cart
             </button>
-            <button onClick={() => place(true, 'buy_now')} className="block w-full mt-3 h-14 bg-brand-cta text-white text-lg font-medium rounded-lg hover:bg-brand-cta-hover transition">
+            {/* The press starts the checkout's code on its way before the
+                tap completes, for designs with no size to choose. */}
+            <button onPointerDown={() => prefetchCheckout()} onClick={() => place(true, 'buy_now')} className="block w-full mt-3 h-14 bg-brand-cta text-white text-lg font-medium rounded-lg hover:bg-brand-cta-hover transition">
               Buy it now
             </button>
           </div>
