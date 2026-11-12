@@ -11,7 +11,7 @@ import { saveOrder } from '../lib/orderStore'
 import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
 import { discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
 import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, validateAddress } from '../lib/checkout'
-import { PaymentCancelled, PaymentFailed, onlinePaymentReady, openRazorpay } from '../lib/razorpay'
+import { PaymentCancelled, PaymentFailed, onlinePaymentReady, openRazorpay, preloadRazorpay } from '../lib/razorpay'
 import { checkPendingPayment, createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
 import { clearPendingPayment, loadPendingPayment, savePendingPayment } from '../lib/pendingPayment'
 import { newEventId, trackEcommerce, trackSafely } from '../lib/tracking'
@@ -224,6 +224,10 @@ export default function Checkout() {
   useEffect(() => { reload() }, [reload])
   // Products the owner hid or deleted cannot be ordered.
   useEffect(() => { prune() }, [prune])
+  // Fetch Razorpay's script while the shopper fills in the form, so tapping
+  // Pay opens the payment window without waiting for it (preloadRazorpay).
+  const hasLines = lines.length > 0
+  useEffect(() => { if (hasLines) preloadRazorpay() }, [hasLines])
 
   // GTM's begin_checkout (tracking brief, Annexure A7): once per visit to this
   // page, with everything in the basket, once the real catalogue has priced

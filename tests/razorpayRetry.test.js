@@ -14,6 +14,12 @@ const start = SRC.indexOf(START);
 assert.ok(start !== -1, 'razorpay.js must define openRazorpay');
 const openSource = SRC.slice(start).replace(/\bexport /g, '');
 assert.ok(!openSource.includes('import.meta'), 'no Vite-only syntax reached openRazorpay');
+// The window's name, logo and colour (12 Nov 2026) are constants above
+// openRazorpay: take those exact lines too.
+const brandSource = SRC.slice(SRC.indexOf('export const CHECKOUT_NAME ='), SRC.indexOf('/** The shopper closed Checkout'))
+  .replace(/\bexport /g, '');
+assert.ok(brandSource.includes('const checkoutLogo ='), 'the window branding was extracted');
+assert.ok(!brandSource.includes('import.meta'), 'no Vite-only syntax reached the branding');
 
 /** A fake `window.Razorpay` that lets a test play the shopper. */
 function makeWindow() {
@@ -41,6 +47,7 @@ function load(window) {
      class PaymentFailed extends Error {}
      class CheckoutUnavailable extends Error {}
      const loadRazorpay = () => Promise.resolve()
+     ${brandSource}
      ${openSource}
      return { openRazorpay, PaymentCancelled, PaymentFailed }`,
   )(window);
@@ -147,4 +154,18 @@ test('a closed window after a failure reports the failure with its reason, even 
   w.checkout.fail('instrument_declined');
   w.checkout.close();
   await assert.rejects(result, (err) => err instanceof PaymentFailed && err.reason === 'instrument_declined')
+});
+
+test('the window opens with the shop name, its logo on this site and the buy-button colour', async () => {
+  const window = makeWindow();
+  window.location = { origin: 'https://www.ruhi-collections.com' };
+  const { openRazorpay } = load(window);
+  const paying = openRazorpay(ARGS);
+  await new Promise((r) => setTimeout(r, 0));
+  const { options } = window.checkout;
+  assert.equal(options.name, 'Ruhi Collections');
+  assert.equal(options.image, 'https://www.ruhi-collections.com/images/ruhi-logo-square.jpg');
+  assert.deepEqual(options.theme, { color: '#9A5E4F' });
+  window.checkout.pay(PAID);
+  assert.deepEqual(await paying, PAID);
 });
