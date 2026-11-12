@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlertTriangle, Check, Loader2, Lock, ShieldCheck, Store, Tag, Truck, X } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Lock, MapPin, ShieldCheck, Store, Tag, Truck, X } from 'lucide-react'
 import usePageTitle from '../hooks/usePageTitle'
 import { useCart } from '../context/CartContext'
 import { useProducts } from '../context/ProductsContext'
@@ -12,7 +12,9 @@ import { site } from '../data/site'
 import { saveOrder } from '../lib/orderStore'
 import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
 import { couponsAvailable, discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
-import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, validateAddress } from '../lib/checkout'
+import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, mobileProblem, normalizeMobile, validateAddress } from '../lib/checkout'
+import { loadDetails, saveDetails } from '../lib/checkoutMemory'
+import { lookupPincode, preloadPincode } from '../lib/pincodes'
 import { deliveryWindowText } from '../lib/delivery'
 import { suggestEmail } from '../lib/emailTypos'
 import { checkoutWhatsAppLink } from '../lib/whatsapp'
@@ -38,13 +40,21 @@ const FIELD_ORDER = ['phone', 'full_name', 'email', 'pincode', 'city', 'state', 
 const OK_GREEN = 'text-[#1F7A34]'
 
 // One labelled input. The tick shows once the value passes the same check Pay
-// runs (validateAddress); `hint` is a short line under the field.
-function Field({ label, name, value, onChange, error, valid, hint, children, ...rest }) {
+// runs (validateAddress); `hint` is a short line under the field; `prefix` is
+// a fixed box in front of it (the +91 of the mobile number). `!pr-10` keeps
+// text clear of the tick: `.cfield` (index.css, outside Tailwind's layers)
+// would otherwise win with its own padding.
+function Field({ label, name, value, onChange, error, valid, hint, prefix, children, ...rest }) {
   const describedBy = [error && `co-${name}-err`, hint && `co-${name}-hint`].filter(Boolean).join(' ') || undefined
   return (
     <div>
       <label className="clabel" htmlFor={`co-${name}`}>{label}</label>
-      <div className="relative">
+      <div className="relative flex">
+        {prefix && (
+          <span aria-hidden="true" className="shrink-0 grid place-items-center px-3.5 rounded-l-lg border border-r-0 border-black/30 bg-black/[0.04] font-ui text-[16px] text-black/70">
+            {prefix}
+          </span>
+        )}
         <input
           id={`co-${name}`}
           name={name}
@@ -52,7 +62,7 @@ function Field({ label, name, value, onChange, error, valid, hint, children, ...
           onChange={onChange}
           aria-invalid={error ? 'true' : undefined}
           aria-describedby={describedBy}
-          className="cfield pr-10"
+          className={`cfield !pr-10 min-w-0${prefix ? ' !rounded-l-none' : ''}`}
           {...rest}
         />
         {valid && !error && (
@@ -200,7 +210,8 @@ export default function Checkout() {
   const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
 
-  const [f, setF] = useState(EMPTY_ADDRESS)
+  // What was typed here before (on this phone) comes back: checkoutMemory.js.
+  const [f, setF] = useState(() => ({ ...EMPTY_ADDRESS, ...loadDetails() }))
   const [errors, setErrors] = useState({})
   const [failure, setFailure] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -238,6 +249,18 @@ export default function Checkout() {
   const [payInView, setPayInView] = useState(true)
   const [typing, setTyping] = useState(false)
   const payWatch = useRef(null)
+  // City and state from the PIN code (pincodes.js). 'auto' shows them as one
+  // line with Change; 'manual' shows the City and State boxes, which is also
+  // where things land when a PIN isn't in India Post's list or the list can't
+  // be reached. `place` is the latest lookup: { pin, status, city, state }.
+  const [placeMode, setPlaceMode] = useState('auto')
+  const [place, setPlace] = useState(null)
+  // The PIN whose city and state are on the form, and the PIN that came back
+  // from this phone's memory (a city it holds was perhaps typed by hand).
+  const placeFor = useRef('')
+  const restoredPin = useRef(f.pincode.trim())
+  const latest = useRef(f)
+  latest.current = f
 
   // Price against the live catalogue — never against a stale cache — before
   // any money changes hands.
@@ -307,6 +330,44 @@ export default function Checkout() {
     prefilled.current = true
     setF((v) => ({ ...v, email: v.email || user.email }))
   }, [user])
+
+  // Keep what is typed on this phone, a moment after typing stops.
+  useEffect(() => {
+    const timer = setTimeout(() => saveDetails(f), 400)
+    return () => clearTimeout(timer)
+  }, [f])
+
+  // PIN code → city and state. The file for the first two digits is fetched
+  // while the PIN is being typed, so the answer is ready at the sixth digit.
+  const pin = f.pincode.trim()
+  useEffect(() => {
+    preloadPincode(pin)
+    if (!/^[1-9][0-9]{5}$/.test(pin)) { setPlace(null); return undefined }
+    let alive = true
+    setPlace({ pin, status: 'looking' })
+    lookupPincode(pin).then((found) => {
+      if (!alive) return
+      if (!found) {
+        setPlace({ pin, status: 'missing' })
+        setPlaceMode('manual')
+        return
+      }
+      setPlace({ pin, status: 'found', ...found })
+      if (placeFor.current === pin) return
+      placeFor.current = pin
+      // A city and state remembered for this same PIN that differ from the
+      // list were typed by the shopper: keep them, in the boxes.
+      const v = latest.current
+      if (pin === restoredPin.current && v.city.trim() && v.state.trim() && (v.city !== found.city || v.state !== found.state)) {
+        setPlaceMode('manual')
+        return
+      }
+      setF((cur) => ({ ...cur, city: found.city, state: found.state }))
+      setErrors((prev) => (prev.city || prev.state ? { ...prev, city: undefined, state: undefined } : prev))
+      setPlaceMode('auto')
+    })
+    return () => { alive = false }
+  }, [pin])
 
   // The outcome of a payment never reached this page: it was reloaded while
   // Razorpay's window was open (typically an Instagram or Facebook in-app
@@ -425,6 +486,17 @@ export default function Checkout() {
     const { value } = e.target
     setF((v) => ({ ...v, [k]: value }))
     setErrors((prev) => (prev[k] ? { ...prev, [k]: undefined } : prev))
+  }
+  // The mobile number keeps only its 10 digits as it is typed or pasted
+  // (normalizeMobile); leaving it unfinished says what is missing.
+  const onPhone = (e) => {
+    const phone = normalizeMobile(e.target.value)
+    setF((v) => ({ ...v, phone }))
+    setErrors((prev) => (prev.phone ? { ...prev, phone: undefined } : prev))
+  }
+  const phoneLeft = () => {
+    const problem = f.phone ? mobileProblem(f.phone) : ''
+    if (problem) setErrors((prev) => ({ ...prev, phone: problem }))
   }
 
   // A coupon is only valid for the subtotal it was checked against. When the
@@ -638,7 +710,9 @@ export default function Checkout() {
     const firstBad = FIELD_ORDER.find((k) => found[k])
     if (firstBad) {
       checkoutError('invalid_details', { fields: Object.keys(found) })
-      document.getElementById(`co-${firstBad}`)?.focus()
+      if (found.city || found.state) setPlaceMode('manual')
+      // After the re-render, so a City or State box that has just appeared can take the cursor.
+      setTimeout(() => document.getElementById(`co-${firstBad}`)?.focus(), 0)
       return
     }
     if (!lines.length) { setFailure('Your cart is empty.'); return }
@@ -760,6 +834,10 @@ export default function Checkout() {
   // Every field Pay would refuse right now; a field not listed gets its tick.
   const problems = validateAddress(f)
   const ok = (k) => !problems[k]
+  // City and state: one line once India Post's list knows the PIN, the two
+  // boxes when it doesn't (or the shopper taps Change, or they need fixing).
+  const showPlaceLine = placeMode === 'auto' && place?.status === 'found' && place.pin === pin && !!f.city && !!f.state
+  const showPlaceBoxes = !showPlaceLine && (placeMode === 'manual' || place?.status === 'missing' || !!errors.city || !!errors.state)
   const emailSuggestion = emailLeft ? suggestEmail(f.email) : null
   const takeSuggestion = () => {
     setF((v) => ({ ...v, email: emailSuggestion }))
@@ -841,8 +919,9 @@ export default function Checkout() {
             <h2 className="sr-only">Delivery details</h2>
             <div className="border border-black/10 rounded-xl bg-white/50 p-4 md:p-6 space-y-4">
               <Field
-                label="Mobile number" name="phone" type="tel" inputMode="tel" autoComplete="tel"
-                placeholder="98765 43210" value={f.phone} onChange={on('phone')} error={errors.phone}
+                label={<>Mobile number<span className="sr-only"> (India, +91)</span></>}
+                name="phone" type="tel" inputMode="numeric" autoComplete="tel-national" prefix="+91"
+                placeholder="98765 43210" value={f.phone} onChange={onPhone} onBlur={phoneLeft} error={errors.phone}
                 valid={ok('phone')} hint="For order updates only. No spam, promise."
               />
               <Field
@@ -865,17 +944,34 @@ export default function Checkout() {
               <Field
                 label="PIN code" name="pincode" inputMode="numeric" autoComplete="postal-code" maxLength={6}
                 value={f.pincode} onChange={on('pincode')} error={errors.pincode} valid={ok('pincode')}
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="City" name="city" autoComplete="address-level2"
-                  value={f.city} onChange={on('city')} error={errors.city} valid={ok('city')}
-                />
-                <Field
-                  label="State" name="state" list="indian-states" autoComplete="address-level1"
-                  value={f.state} onChange={on('state')} error={errors.state} valid={ok('state')}
-                />
-              </div>
+              >
+                {showPlaceLine && (
+                  <p className="mt-2 flex items-center gap-1.5 text-[14px] text-black/75" aria-live="polite">
+                    <MapPin size={15} aria-hidden="true" className={`shrink-0 ${OK_GREEN}`} />
+                    <span className="min-w-0">{f.city}, {f.state}</span>
+                    <span aria-hidden="true" className="text-black/35">·</span>
+                    <button
+                      type="button"
+                      onClick={() => { setPlaceMode('manual'); setTimeout(() => document.getElementById('co-city')?.focus(), 0) }}
+                      className="font-medium underline underline-offset-2 hover:text-black shrink-0"
+                    >
+                      Change
+                    </button>
+                  </p>
+                )}
+              </Field>
+              {showPlaceBoxes && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label="City" name="city" autoComplete="address-level2"
+                    value={f.city} onChange={on('city')} error={errors.city} valid={ok('city')}
+                  />
+                  <Field
+                    label="State" name="state" list="indian-states" autoComplete="address-level1"
+                    value={f.state} onChange={on('state')} error={errors.state} valid={ok('state')}
+                  />
+                </div>
+              )}
               <datalist id="indian-states">{INDIAN_STATES.map((s) => <option key={s} value={s} />)}</datalist>
               <Field
                 label="House / flat, street, landmark" name="address" autoComplete="street-address"
