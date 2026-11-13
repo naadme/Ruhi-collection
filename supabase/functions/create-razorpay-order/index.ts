@@ -15,11 +15,16 @@
 //     (Section 4, step 4). Saving it never stands between a shopper and paying.
 //   * `test: true` — an admin's test order (rule 10): paid with Razorpay's test
 //     keys, so no money moves, and marked `is_test` so reports can leave it out.
+//
+// And one for the shop's A/B tests: `experiments`, the tests the shopper was
+// counted in ({ test: version }), saved as orders.experiments so paid orders
+// per version come from the database (src/lib/experiments.js).
 
 import { serve } from '../_shared/deno.ts'
 import { MissingConfigError } from '../_shared/env.ts'
 import { asString, fail, json, preflight, readJson, type Json } from '../_shared/http.ts'
 import { attributionColumns } from '../_shared/attribution.mjs'
+import { experimentsColumn } from '../_shared/experiments.mjs'
 import {
   createRazorpayOrder,
   credentials,
@@ -210,14 +215,22 @@ export async function handle(req: Request): Promise<Response> {
     })
     if (!recorded && mode === 'test') return fail(500, GENERIC)
 
-    const razorpayOrderId = await resolveRazorpayOrder(
-      orderId,
-      reference,
-      email,
-      amountPaise,
-      asString(order.razorpay_order_id),
-      mode,
-    )
+    // The A/B tests go in a write of their own, so a problem with them can
+    // never cost the order its ad details, and alongside the Razorpay call, so
+    // the shopper waits no longer. Like the ad details, never a reason to
+    // stop a payment.
+    const experiments = experimentsColumn(body.experiments)
+    const [razorpayOrderId] = await Promise.all([
+      resolveRazorpayOrder(
+        orderId,
+        reference,
+        email,
+        amountPaise,
+        asString(order.razorpay_order_id),
+        mode,
+      ),
+      experiments ? recordOrderContext(orderId, { experiments }) : null,
+    ])
 
     return json(200, {
       key_id: keyId,

@@ -11,10 +11,14 @@ import { RatingsProvider } from './context/RatingsContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import PageTracker from './components/PageTracker'
 import { captureLanding } from './lib/adClicks'
+import { startExperiments } from './lib/experiments'
 import './index.css'
 // Read the ad click IDs and campaign tags off the address the visitor landed
 // on, before the router can redirect it away (tracking brief, Section 4).
 captureLanding()
+// This visitor's version of each A/B test, worked out locally before anything
+// is drawn, so a page never switches version on screen.
+startExperiments()
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>

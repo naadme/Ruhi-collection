@@ -29,6 +29,7 @@ import WhatsAppButton from '../components/WhatsAppButton'
 import StickyBuyBar from '../components/StickyBuyBar'
 import { SizeChartLink } from '../components/SizeChart'
 import { prefetchCheckout } from '../lib/checkoutPage'
+import useExperiment from '../hooks/useExperiment'
 
 // How long a colour and size must stay on screen before view_item goes out.
 // Opening another colour briefly renders it with the previous colour's size
@@ -178,6 +179,10 @@ export default function Product() {
   // page and learns about the size from select_size instead.
   const viewed = viewedItem(p, id, size, { category: p ? typeLabel(p.type) : '' })
   const viewedId = viewed?.item_id || ''
+  // The A/A check (src/lib/experimentList.js): both versions are this page as
+  // it is. A visitor counts once the real product is on screen — the moment
+  // view_item goes out. Remove when the check is over.
+  useExperiment('aa_check', { active: Boolean(viewedId) })
   const viewedPage = useRef(null)
   useEffect(() => {
     if (!viewedId) return undefined
