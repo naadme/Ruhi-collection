@@ -37,8 +37,8 @@ export const EXPERIMENTS = [
     area: 'none',
     variants: ['a', 'b'],
     split: [50, 50],
-    status: 'draft',
-    started: null,
+    status: 'running',
+    started: '2026-11-13',
     plan: { metric: 'add_to_cart', perVersion: 250, minDays: 7 },
   },
 ]
