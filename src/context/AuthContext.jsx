@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { supabase } from '../lib/supabase'
 import { clearPendingPayment } from '../lib/pendingPayment'
 import { authEvent, newEventId, returningSignIn, trackAuth } from '../lib/tracking'
+import { markStaff } from '../lib/experiments'
 
 // Sign-ins already sent to GTM from a provider return, so a refresh of the
 // page that received it cannot send the same one again.
@@ -173,6 +174,8 @@ export function AuthProvider({ children }) {
         const productManagerRow = !productManager.error && !!productManager.data
         setIsAdmin(adminRow)
         setCanManageProducts(adminRow || productManagerRow)
+        // Staff browsing their own shop must not count in an A/B test.
+        if (adminRow || productManagerRow) markStaff()
       })
       .catch(() => {
         // A failed lookup must not leave the previous account's rights in

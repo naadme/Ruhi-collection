@@ -200,11 +200,27 @@ export function pushToDataLayer(message) {
  * attach them to everything the next person does. `reset` is the data layer's
  * own method for a page that stays open; user_id is then set to null, which is
  * what Google's user-ID guide asks for on sign-out.
+ *
+ * What belongs to the browser rather than the account survives: ab_tests, the
+ * A/B tests this browser is in (src/lib/experiments.js), is put back after the
+ * reset so the rest of the visit is still counted in them.
  */
+const BROWSER_KEYS = ['ab_tests']
+
 export function clearVisitor() {
   const layer = dataLayer()
+  const kept = {}
+  for (const key of BROWSER_KEYS) {
+    for (let i = layer.length - 1; i >= 0; i -= 1) {
+      const message = layer[i]
+      if (message && typeof message === 'object' && Object.prototype.hasOwnProperty.call(message, key)) {
+        if (message[key]) kept[key] = message[key]
+        break
+      }
+    }
+  }
   layer.push(function () { this.reset() })
-  layer.push({ user_logged_in: false, user_id: null })
+  layer.push({ user_logged_in: false, user_id: null, ...kept })
 }
 
 // ---- events (Section 3) -----------------------------------------------------

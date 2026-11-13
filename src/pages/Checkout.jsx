@@ -25,6 +25,7 @@ import { clearPendingPayment, loadPendingPayment, savePendingPayment } from '../
 import { newEventId, trackEcommerce, trackSafely } from '../lib/tracking'
 import { cartEvent, checkoutErrorEvent, contactEvent, couponEvent, paymentEvent, sameStep, shippingEvent } from '../lib/trackingItems'
 import { attributionForOrder } from '../lib/adClicks'
+import { experimentsForOrder } from '../lib/experiments'
 
 // GA4 (event schema of 8 Nov 2026): the coupons shoppers try, and what stops
 // a checkout — by kind, never with anything the shopper typed.
@@ -586,8 +587,12 @@ export default function Checkout() {
   const payOnline = async (customer, items, couponCode) => {
     // The ad click IDs and campaign tags travel with the order as it is
     // created, before the shopper leaves for the payment window (tracking
-    // brief, Section 4, step 4).
-    const started = await createRazorpayOrder(customer, items, couponCode, attributionForOrder(), { test: placingTest })
+    // brief, Section 4, step 4). So do the A/B tests this shopper is counted
+    // in, so paid orders per version come from the database.
+    const started = await createRazorpayOrder(customer, items, couponCode, attributionForOrder(), {
+      test: placingTest,
+      experiments: experimentsForOrder(),
+    })
     if (!started?.razorpay_order_id || !started?.key_id) {
       throw new Error('We could not start your payment. You have not been charged — please try again.')
     }
