@@ -1,7 +1,8 @@
 // Checkout layout, 12 Nov 2026 (change 2 of the checkout plan): a focused page
 // with its own header and "Chat with us", the order on top with the delivery
 // dates, a coupon link only while a coupon is live, ticks and an email typo
-// check, reassurance under Pay and a Pay bar on phones.
+// check, reassurance under Pay and a Pay bar on phones. 14 Nov: the old
+// "Online payment" card is back, shown already picked.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -144,7 +145,32 @@ test('the total says nothing is added later, and the delivery dates sit under it
   assert.match(CHECKOUT, /· taxes included, no extra charges/)
   assert.match(CHECKOUT, /delivery=\{deliveryWindowText\(\)\}/)
   assert.match(CHECKOUT, /arrives <b[^>]*>\{delivery\}<\/b>/)
-  assert.match(CHECKOUT, /'UPI, cards & net banking · secured by Razorpay'/)
+})
+
+// ---- online payment (14 Nov 2026) ---------------------------------------------
+// After the 12 Nov redesign the page no longer showed how the shopper pays,
+// and shoppers met Razorpay's window as a surprise. The old checkout's one
+// choice, "Online payment", is back, shown already picked.
+
+test('the page shows the shopper pays online: before the form, above Pay and on Pay', () => {
+  const card = CHECKOUT.indexOf('<span className="block font-semibold text-[16px]">Online payment</span>')
+  assert.ok(card > 0, 'the "Online payment" card is on the page')
+  assert.ok(card < CHECKOUT.indexOf('<form id="checkout-form"'), 'it comes before the form, so it is read before typing')
+  assert.match(CHECKOUT, /UPI, cards and wallets — settled in Razorpay's secure window\./)
+  assert.match(CHECKOUT, /Next: pay by UPI or card in Razorpay's window/)
+  assert.match(CHECKOUT, /`Pay \$\{inr\(total\)\} online`/)
+  assert.match(CHECKOUT, /\{placingTest \? 'Place test order' : 'Pay online'\}/)
+})
+
+test('the page promises only what every browser gets: no net banking', () => {
+  // Inside Instagram's own browser on Android, Razorpay's window offers UPI
+  // and cards but no net banking (seen 14 Nov 2026). Comments and the
+  // "not connected yet" line (no payment at all) don't count.
+  const shown = CHECKOUT
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace('Online payment (UPI, cards, net banking) is not connected yet.', '')
+  assert.doesNotMatch(shown, /net banking/i)
 })
 
 test('"Have a coupon?" shows only while a coupon is live, behind a link', () => {
@@ -195,8 +221,8 @@ test('the delivery note is folded away until asked for', () => {
 
 // ---- Pay ----------------------------------------------------------------------
 
-test('Pay says the amount and that it is secure; reassurance and the seller sit under it', () => {
-  assert.match(CHECKOUT, /`Pay \$\{inr\(total\)\} securely`/)
+test('Pay says the amount and that it is online; reassurance and the seller sit under it', () => {
+  assert.match(CHECKOUT, /`Pay \$\{inr\(total\)\} online`/)
   assert.match(CHECKOUT, /<ShopRatingNote align="start" \/>/)
   assert.match(CHECKOUT, /Damaged or wrong item\? We'll replace it or refund you\./)
   assert.match(CHECKOUT, /Sold by <b[^>]*>\{site\.seller\.name\}<\/b>, \{site\.seller\.city\} · GSTIN \{site\.seller\.gstin\}/)
@@ -218,6 +244,8 @@ test('policy links open in a new tab, so nothing typed is lost', () => {
   assert.match(CHECKOUT, /to="\/policies\/refund-policy" target="_blank" rel="noopener"/)
 })
 
-test('the one-choice "Payment" section and the sign-in detour are gone', () => {
+test('the sign-in detour is gone, and how the shopper pays is shown, not asked', () => {
+  // The "Online payment" card (14 Nov) is a picture of the one choice, not
+  // a radio group: there is nothing else to pick.
   assert.doesNotMatch(CHECKOUT, /PayOption|role="radiogroup"|Already have an account/)
 })

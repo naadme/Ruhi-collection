@@ -935,14 +935,32 @@ export default function Checkout() {
               onRemoveCoupon={removeCoupon}
               delivery={deliveryWindowText()}
             />
-            {/* How the shopper will pay, before they start typing. The method
-                itself is picked inside Razorpay's window. */}
-            <p className="mt-3 flex items-center justify-center gap-1.5 text-[13px] text-black/65">
-              <Lock size={13} aria-hidden="true" className="shrink-0" />
-              {onlinePaymentReady
-                ? 'UPI, cards & net banking · secured by Razorpay'
-                : 'Online payment (UPI, cards, net banking) is not connected yet.'}
-            </p>
+            {/* How the shopper will pay, shown before they start typing (14 Nov
+                2026): the old checkout's one choice, "Online payment", already
+                picked, so nobody fills in the form without knowing the order
+                is paid online. It sits up here rather than above Pay because
+                the phone's Pay bar lets shoppers pay without scrolling down.
+                It names only what every browser gets: inside Instagram's own
+                browser on Android, Razorpay's window has UPI, cards and a
+                wallet but no net banking. The dot is drawn, not a control:
+                there is nothing else to pick. Its rose (brand.green, #C08576)
+                is set inline: new Tailwind classes would grow the stylesheet
+                every page downloads. */}
+            {onlinePaymentReady ? (
+              <div className="mt-3 flex gap-3 rounded-xl p-4 border bg-white" style={{ borderColor: 'rgb(192 133 118 / 0.4)' }}>
+                <span aria-hidden="true" className="mt-0.5 w-5 h-5 rounded-full bg-white shrink-0" style={{ border: '6px solid #C08576' }} />
+                <p className="min-w-0">
+                  <span className="sr-only">How you pay: </span>
+                  <span className="block font-semibold text-[16px]">Online payment</span>
+                  <span className="block text-[14px] text-black/65 mt-1">UPI, cards and wallets — settled in Razorpay's secure window.</span>
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-[13px] text-black/65">
+                <Lock size={13} aria-hidden="true" className="shrink-0" />
+                Online payment (UPI, cards, net banking) is not connected yet.
+              </p>
+            )}
           </div>
 
           <form id="checkout-form" onSubmit={submit} noValidate className="lg:col-start-1 lg:row-start-1 min-w-0">
@@ -1034,14 +1052,22 @@ export default function Checkout() {
               </label>
             )}
 
+            {/* What tapping Pay does, where the shopper decides: Razorpay's
+                window opens next, so it is expected rather than a surprise. */}
+            {onlinePaymentReady && (
+              <p className="mt-5 flex items-center justify-center gap-1.5 text-[13.5px] text-black/70">
+                <Lock size={13} aria-hidden="true" className="shrink-0" />
+                Next: pay by UPI or card in Razorpay's window
+              </p>
+            )}
             <button
               ref={payButton}
               type="submit"
               disabled={payDisabled}
-              className="mt-5 w-full h-[56px] rounded-lg bg-brand-cta text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-brand-cta-hover transition disabled:opacity-60"
+              className={`${onlinePaymentReady ? 'mt-2' : 'mt-5'} w-full h-[56px] rounded-lg bg-brand-cta text-white text-[17px] font-semibold inline-flex items-center justify-center gap-2 hover:bg-brand-cta-hover transition disabled:opacity-60`}
             >
               {submitting ? <Loader2 size={18} className="animate-spin" /> : !placingTest && <Lock size={17} aria-hidden="true" />}
-              {submitting ? 'Opening secure payment…' : placingTest ? `Place test order · ${inr(total)}` : `Pay ${inr(total)} securely`}
+              {submitting ? 'Opening secure payment…' : placingTest ? `Place test order · ${inr(total)}` : `Pay ${inr(total)} online`}
             </button>
 
             {/* The reassurance in one place, right under Pay: the shop's
@@ -1086,7 +1112,7 @@ export default function Checkout() {
               className="ml-auto h-12 px-6 rounded-lg bg-brand-cta text-white text-[16px] font-semibold inline-flex items-center gap-2 hover:bg-brand-cta-hover transition disabled:opacity-60"
             >
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} aria-hidden="true" />}
-              {placingTest ? 'Place test order' : 'Pay securely'}
+              {placingTest ? 'Place test order' : 'Pay online'}
             </button>
           </div>
         </div>
