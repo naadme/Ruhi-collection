@@ -11,7 +11,7 @@ import { site } from '../data/site'
 import { useAuth } from '../context/AuthContext'
 import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
-import { claimPurchase, isPurchase, newEventId, trackEcommerce, trackSafely } from '../lib/tracking'
+import { claimPurchase, isPurchase, newEventId, startTrackingNow, trackEcommerce, trackSafely } from '../lib/tracking'
 import { contactEvent, orderLineItem, purchaseEvent } from '../lib/trackingItems'
 import ReviewForm from '../components/ReviewForm'
 
@@ -65,7 +65,11 @@ export default function OrderConfirmation() {
         return orderLineItem(it, { category: row ? typeLabel(row.type) : '', compare: row?.compare, row })
       })
       const message = purchaseEvent(order, items)
-      if (message && claimPurchase(placed)) trackEcommerce(message)
+      if (message && claimPurchase(placed)) {
+        // The purchase must not wait for the page's delayed GTM start.
+        startTrackingNow()
+        trackEcommerce(message)
+      }
     }, 0)
     return () => clearTimeout(timer)
   }, [placed, loading])

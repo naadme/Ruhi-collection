@@ -1,10 +1,16 @@
 <!doctype html><html lang="en"><head><meta charset="UTF-8" />
-<!-- Google Tag Manager -->
-<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-})(window,document,'script','dataLayer','GTM-K6SNCLPC');</script>
+<!-- Google Tag Manager, started once the page's own files have loaded so the
+main photo comes first. Events pushed before then wait in the data layer and go
+out in order. A confirmed order (window.ruhiStartTracking) or the page being
+hidden starts it at once; it always starts within 8 s. -->
+<script>(function(w,d,i){w.dataLayer=w.dataLayer||[];w.dataLayer.push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var started=false;function start(){if(started)return;
+started=true;var j=d.createElement('script');j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i;d.head.appendChild(j)}w.ruhiStartTracking=start;
+function soon(){(w.requestIdleCallback||function(f){setTimeout(f,1)})(start,{timeout:1500})}
+if(d.readyState==='complete')soon();else w.addEventListener('load',soon);
+d.addEventListener('visibilitychange',function(){if(d.visibilityState==='hidden')start()});
+setTimeout(start,8000)})(window,document,'GTM-K6SNCLPC');</script>
 <!-- End Google Tag Manager -->
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Ruhi Womens Clothing — Co-ord Sets, Dresses &amp; Tops</title>
