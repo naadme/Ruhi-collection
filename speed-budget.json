@@ -37,5 +37,12 @@
     "max": { "lcpMs": 7000, "fcpMs": 2000, "tbtMs": 200, "cls": 0.1 },
     "goal": { "lcpMs": 2500, "fcpMs": 1800, "tbtMs": 200, "cls": 0.1 },
     "regressionToleranceMs": 300
+  },
+
+  "live": {
+    "_about": "The live site (npm run speed:live): run it before promoting a deployment and again after. It also runs the Meta pixel, which local builds never load. On 14 Nov 2026 GA4 and the Meta pixel caused about 95% of the live product page's blocking time, and the same code swung from about 140 to 280 ms between runs. The main-photo time (LCP) swung by up to 2.6 s between 5-run rounds. So the live check takes the median of 5 runs and compares with the live baseline, never the lab one. It has its own lines (the owner's OK, 14 Nov 2026): TBT 300 ms; LCP 9 s, because the product page was 9.1 s before the 14 Nov release; and an LCP tolerance of 1.5 s against the live baseline. Pages and goal are the lab's.",
+    "runs": 5,
+    "max": { "lcpMs": 9000, "fcpMs": 2000, "tbtMs": 300, "cls": 0.1 },
+    "regressionToleranceMs": 1500
   }
 }

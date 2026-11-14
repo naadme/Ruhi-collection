@@ -38,5 +38,33 @@
       "cls": 0.003,
       "kb": 1638.3
     }
+  },
+  "live": {
+    "measuredAt": "2026-11-14T08:17:00.204Z",
+    "_about": "Average of two 5-run rounds on 14 Nov 2026 (about 13:47 and 14:05 IST): single rounds of the same code swung by up to 2.6 s in LCP.",
+    "product": {
+      "score": 73,
+      "lcpMs": 7858,
+      "fcpMs": 886,
+      "tbtMs": 170,
+      "cls": 0.026,
+      "kb": 1123.1
+    },
+    "home": {
+      "score": 77,
+      "lcpMs": 6769,
+      "fcpMs": 893,
+      "tbtMs": 127,
+      "cls": 0.003,
+      "kb": 1469.7
+    },
+    "shop": {
+      "score": 78,
+      "lcpMs": 5710,
+      "fcpMs": 870,
+      "tbtMs": 173,
+      "cls": 0.003,
+      "kb": 1594.7
+    }
   }
 }
