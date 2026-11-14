@@ -194,6 +194,17 @@ export function pushToDataLayer(message) {
 }
 
 /**
+ * Start GTM now, if index.html has not started it yet. The page holds GTM back
+ * until its own files have loaded, so the main photo comes first; this is for
+ * a moment that must not wait behind that, such as a confirmed order on a page
+ * that has only just opened. Safe to call any number of times, or without the
+ * page's GTM loader (tests, the dashboard's previews).
+ */
+export function startTrackingNow(win = globalThis.window) {
+  if (typeof win?.ruhiStartTracking === 'function') win.ruhiStartTracking()
+}
+
+/**
  * Forget the previous visitor after a sign-out (or a switch of account).
  *
  * Without a reload GTM would keep the last account's email, phone and name and
