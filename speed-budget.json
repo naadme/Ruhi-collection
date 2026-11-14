@@ -37,5 +37,11 @@
     "max": { "lcpMs": 7000, "fcpMs": 2000, "tbtMs": 200, "cls": 0.1 },
     "goal": { "lcpMs": 2500, "fcpMs": 1800, "tbtMs": 200, "cls": 0.1 },
     "regressionToleranceMs": 300
+  },
+
+  "live": {
+    "_about": "The live site (npm run speed:live): run it before promoting a deployment and again after. It also runs the Meta pixel, which local builds never load. On 14 Nov 2026 GA4 and the Meta pixel caused about 95% of the live product page's blocking time, and the same code swung from about 140 to 280 ms between runs. So the live check takes the median of 5 runs and compares with the live baseline, never the lab one. Its TBT line is 300 ms (the owner's OK, 14 Nov 2026). Pages, goal and the 300 ms regression tolerance are the lab's.",
+    "runs": 5,
+    "max": { "lcpMs": 7000, "fcpMs": 2000, "tbtMs": 300, "cls": 0.1 }
   }
 }

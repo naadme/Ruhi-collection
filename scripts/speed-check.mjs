@@ -4,10 +4,13 @@
 //                                 against speed-budget.json (no network, ~5 s)
 //   npm run speed:lab             …and load the product page, homepage and shop
 //                                 in Lighthouse on a slow phone (~3 min)
-//   npm run speed:live            Lighthouse on the live site (after a deploy)
-//   node scripts/speed-check.mjs --save-baseline [--lab]
+//   npm run speed:live            Lighthouse on the live site, 5 runs per page,
+//                                 compared with the live baseline: run it before
+//                                 promoting a deployment and again after
+//   node scripts/speed-check.mjs --save-baseline [--lab | --live]
 //                                 record today's numbers in speed-baseline.json,
-//                                 which later runs compare against
+//                                 which later runs compare against (a live save
+//                                 changes only the live numbers)
 //
 // Why: ads land shoppers on the product page, mostly on Android phones in
 // Instagram's in-app browser, with an empty cache. Every kilobyte and every
@@ -26,6 +29,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, w
 import { tmpdir } from 'node:os'
 import { extname, join, normalize, relative } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { checkSettings, mergeBaseline } from './speedSettings.mjs'
 
 const ROOT = new URL('..', import.meta.url).pathname
 const args = new Set(process.argv.slice(2))
@@ -35,6 +39,9 @@ const SAVE = args.has('--save-baseline')
 const budget = JSON.parse(readFileSync(join(ROOT, 'speed-budget.json'), 'utf8'))
 const baselinePath = join(ROOT, 'speed-baseline.json')
 const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, 'utf8')) : null
+// The live site runs the Meta pixel and local builds don't, so the live check has
+// its own runs, limits and baseline (see speedSettings.mjs).
+const check = checkSettings(budget, baseline, LIVE)
 const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const SITE = 'https://www.ruhi-collections.com'
 // Google's tag also sends a copy of every GA4 hit to www.google.com/g/collect,
@@ -63,7 +70,8 @@ const row = (label, value, limit, unit = 'KB', before) => {
 }
 
 // ------------------------------------------------------------------ build
-const results = { measuredAt: new Date().toISOString(), files: {}, chunks: {}, lab: {} }
+const measuredAt = new Date().toISOString()
+const results = LIVE ? { measuredAt, live: {} } : { measuredAt, files: {}, chunks: {}, lab: {} }
 let outDir = null
 if (!LIVE) {
   outDir = mkdtempSync(join(tmpdir(), 'ruhi-speed-'))
@@ -160,7 +168,7 @@ const run = (cmd, argv, env) => new Promise((resolve) => {
 
 async function lighthouseOnce(url) {
   const out = join(mkdtempSync(join(tmpdir(), 'ruhi-lh-')), 'report.json')
-  const argv = ['-y', `lighthouse@${budget.lab.lighthouse}`, url, '--quiet', '--only-categories=performance',
+  const argv = ['-y', `lighthouse@${check.lighthouse}`, url, '--quiet', '--only-categories=performance',
     '--chrome-flags=--headless=new --no-first-run --no-default-browser-check --disable-extensions',
     ...BLOCK.map((p) => `--blocked-url-patterns=${p}`), '--output=json', `--output-path=${out}`]
   const done = await run('npx', argv, { ...process.env, CHROME_PATH: CHROME })
@@ -184,21 +192,22 @@ async function lighthouseOnce(url) {
 
 if (LAB) {
   const { server, base } = LIVE ? { server: null, base: SITE } : await serve(outDir)
-  console.log(`\nLighthouse, slow phone, ${budget.lab.runs} runs each (median) — ${LIVE ? 'LIVE site' : 'this build'}:`)
+  const priorDate = (LIVE ? check.prior?.measuredAt : baseline?.measuredAt)?.slice(0, 10)
+  console.log(`\nLighthouse, slow phone, ${check.runs} runs each (median) — ${LIVE ? 'LIVE site' : 'this build'}${check.prior ? `, compared with the ${check.mode} baseline${priorDate ? ` of ${priorDate}` : ''}` : ''}:`)
   try {
-    for (const [name, path] of Object.entries(budget.lab.pages)) {
+    for (const [name, path] of Object.entries(check.pages)) {
       const runs = []
-      for (let i = 0; i < budget.lab.runs; i++) runs.push(await lighthouse(base + path))
+      for (let i = 0; i < check.runs; i++) runs.push(await lighthouse(base + path))
       const m = Object.fromEntries(Object.keys(runs[0]).map((k) => [k, median(runs.map((r) => r[k]))]))
-      results.lab[name] = m
-      const before = baseline?.lab?.[name]
+      results[check.mode][name] = m
+      const before = check.prior?.[name]
       console.log(`  ${name} (${path}): score ${m.score}, ${m.kb} KB`)
-      row(`  ${name} LCP`, m.lcpMs, budget.lab.max.lcpMs, 'ms', before?.lcpMs)
-      row(`  ${name} FCP`, m.fcpMs, budget.lab.max.fcpMs, 'ms', before?.fcpMs)
-      row(`  ${name} TBT`, m.tbtMs, budget.lab.max.tbtMs, 'ms', before?.tbtMs)
-      row(`  ${name} CLS`, m.cls, budget.lab.max.cls, '', before?.cls)
-      if (before && m.lcpMs > before.lcpMs + budget.lab.regressionToleranceMs) fail(`${name}: LCP ${m.lcpMs} ms is slower than the baseline ${before.lcpMs} ms`)
-      if (m.lcpMs > budget.lab.goal.lcpMs) notes.push(`${name}: LCP ${m.lcpMs} ms — the goal is ${budget.lab.goal.lcpMs} ms`)
+      row(`  ${name} LCP`, m.lcpMs, check.max.lcpMs, 'ms', before?.lcpMs)
+      row(`  ${name} FCP`, m.fcpMs, check.max.fcpMs, 'ms', before?.fcpMs)
+      row(`  ${name} TBT`, m.tbtMs, check.max.tbtMs, 'ms', before?.tbtMs)
+      row(`  ${name} CLS`, m.cls, check.max.cls, '', before?.cls)
+      if (before && m.lcpMs > before.lcpMs + check.toleranceMs) fail(`${name}: LCP ${m.lcpMs} ms is slower than the ${check.mode} baseline ${before.lcpMs} ms`)
+      if (m.lcpMs > check.goal.lcpMs) notes.push(`${name}: LCP ${m.lcpMs} ms — the goal is ${check.goal.lcpMs} ms`)
     }
   } finally {
     server?.close()
@@ -209,8 +218,7 @@ if (outDir) rmSync(outDir, { recursive: true, force: true })
 
 // --------------------------------------------------------------- verdict
 if (SAVE) {
-  const merged = { ...(baseline || {}), ...results, lab: { ...(baseline?.lab || {}), ...results.lab } }
-  writeFileSync(baselinePath, `${JSON.stringify(merged, null, 2)}\n`)
+  writeFileSync(baselinePath, `${JSON.stringify(mergeBaseline(baseline, results, LIVE), null, 2)}\n`)
   console.log(`\nSaved as the new baseline: ${relative(ROOT, baselinePath)}`)
 }
 for (const n of notes) console.log(`  · ${n}`)
