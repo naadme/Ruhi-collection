@@ -241,7 +241,9 @@ test('the build puts the script right after GTM, before any stylesheet, with a p
   const script = html.indexOf('<script>', gtmEnd)
   const firstStylesheet = html.indexOf('rel="stylesheet"')
   assert.ok(gtmEnd > 0 && script > gtmEnd, 'GTM stays first in <head>, as the tracking brief asks')
-  assert.ok(script < firstStylesheet, 'a script after a stylesheet would wait for it')
+  // index.html itself has no stylesheet since the fonts moved into the CSS bundle
+  // (D2); Vite adds its own CSS link at the end of <head>, after this script.
+  assert.ok(firstStylesheet === -1 || script < firstStylesheet, 'a script after a stylesheet would wait for it')
   assert.match(html.slice(script, html.indexOf('</script>', script)), /__ruhiEarly/)
   assert.match(html, new RegExp(`<link rel="preconnect" href="${SUPA}" />`))
   // Small enough to cost nothing: a few hundred bytes compressed.
