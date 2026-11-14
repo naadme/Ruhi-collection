@@ -7,6 +7,8 @@ export const calls = []
 export const state = {
   failUpdate: false,
   failUpload: false,
+  // When set, `.single()` answers with this row (a products write read back).
+  singleRow: null,
   uploadUrl: 'https://example.supabase.co/storage/v1/object/public/product-images/category-1.jpg',
 }
 
@@ -19,6 +21,7 @@ export const reset = () => {
   calls.length = 0
   state.failUpdate = false
   state.failUpload = false
+  state.singleRow = null
 }
 
 const chain = (name, args) => {
@@ -28,9 +31,11 @@ const chain = (name, args) => {
     eq: (...a) => { record(`${name}.eq`, a); return self },
     single: async () => {
       if (state.failUpdate) return { data: null, error: { message: 'permission denied for table categories' } }
+      if (state.singleRow) return { data: state.singleRow, error: null }
       return { data: { key: 'coord', label: 'Co-ord Sets', image: 'x' }, error: null }
     },
     update: (payload) => { record(`${name}.update`, payload); return self },
+    insert: (payload) => { record(`${name}.insert`, payload); return self },
     upload: async (path, file, opts) => {
       record(`${name}.upload`, [path, file?.name, opts])
       if (state.failUpload) return { error: { message: 'the file could not be stored' } }

@@ -70,10 +70,24 @@ export const trimOrNull = (v) => clean(v) || null
  *  catalogue; accept a Set too, since that is what the helpers build. */
 const idList = (takenIds) => (Array.isArray(takenIds) ? takenIds : takenIds ? [...takenIds] : [])
 
-/** Same comparator the write path uses to prove a row came back as sent. */
+/** A value with every object's keys in one fixed order, so two values that
+ *  agree entry for entry write out as the same JSON. */
+const canonical = (v) => {
+  if (Array.isArray(v)) return v.map(canonical)
+  if (v && typeof v === 'object') {
+    return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]))
+  }
+  return v
+}
+
+/** Same comparator the write path uses to prove a row came back as sent.
+ *  Lists and jsonb maps (`image_framing`) are compared by what they hold:
+ *  the row Supabase sends back is always a new object, with jsonb's own key
+ *  order, so comparing them by identity would call every saved framing
+ *  "different" — and did, for every product saved with a framed photo. */
 export const same = (a, b) => {
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+  if ((a !== null && typeof a === 'object') || (b !== null && typeof b === 'object')) {
+    return JSON.stringify(canonical(a ?? null)) === JSON.stringify(canonical(b ?? null))
   }
   if (typeof a === 'number' || typeof b === 'number') {
     return Number(a ?? 0) === Number(b ?? 0)
