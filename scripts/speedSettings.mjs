@@ -5,8 +5,9 @@
 // trigger needs the shop's own address). The live check measures the live site, which
 // also runs the pixel. On 14 Nov 2026 GA4 and the Meta pixel caused about 95% of the
 // live product page's blocking time, and the same code swung from about 140 to 280 ms
-// between runs. So the live check has its own runs, its own limits and its own
-// baseline, and is never compared with the lab numbers.
+// between runs; its main-photo time (LCP) swung by up to 2.6 s between 5-run rounds.
+// So the live check has its own runs, its own limits, its own LCP tolerance and its
+// own baseline, and is never compared with the lab numbers.
 
 /** Settings for one check: `live` for npm run speed:live, otherwise the lab. */
 export function checkSettings(budget, baseline, live) {
@@ -18,11 +19,12 @@ export function checkSettings(budget, baseline, live) {
     runs: own.runs,
     max: own.max,
     prior: baseline?.[mode] ?? null,
+    // How much slower than its baseline LCP may get before the check fails.
+    toleranceMs: own.regressionToleranceMs ?? budget.lab.regressionToleranceMs,
     // Shared by both checks.
     pages: budget.lab.pages,
     goal: budget.lab.goal,
     lighthouse: budget.lab.lighthouse,
-    toleranceMs: budget.lab.regressionToleranceMs,
   }
 }
 

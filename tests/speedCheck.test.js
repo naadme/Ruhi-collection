@@ -51,6 +51,8 @@ test('a hit that gets through anyway is recognised, and the run stops', () => {
 test('the live check has its own runs and limits, and compares live with live', () => {
   assert.ok(budget.live.runs >= 5, 'live TBT swings from run to run; take the median of at least 5')
   assert.equal(budget.live.max.tbtMs, 300)
+  assert.equal(budget.live.max.lcpMs, 9000, 'the product page was 9.1 s live before the 14 Nov release')
+  assert.equal(budget.live.regressionToleranceMs, 1500, 'live LCP swung by up to 2.6 s between 5-run rounds')
   for (const key of ['lcpMs', 'fcpMs', 'tbtMs', 'cls']) assert.equal(typeof budget.live.max[key], 'number', key)
 
   const saved = { lab: { product: { lcpMs: 6087 } }, live: { measuredAt: '2026-11-14', product: { lcpMs: 5928 } } }
@@ -60,12 +62,15 @@ test('the live check has its own runs and limits, and compares live with live', 
   assert.equal(live.max.tbtMs, 300)
   assert.equal(live.prior.product.lcpMs, 5928, 'compared with the live baseline, never the lab one')
   assert.deepEqual(live.pages, budget.lab.pages)
-  assert.equal(live.toleranceMs, budget.lab.regressionToleranceMs)
+  assert.equal(live.max.lcpMs, 9000)
+  assert.equal(live.toleranceMs, 1500)
 
   const lab = checkSettings(budget, saved, false)
   assert.equal(lab.mode, 'lab')
   assert.equal(lab.runs, budget.lab.runs)
   assert.equal(lab.max.tbtMs, budget.lab.max.tbtMs)
+  assert.equal(lab.max.lcpMs, budget.lab.max.lcpMs, 'the lab keeps its own, tighter lines')
+  assert.equal(lab.toleranceMs, budget.lab.regressionToleranceMs)
   assert.equal(lab.prior.product.lcpMs, 6087)
 
   assert.equal(checkSettings(budget, null, true).prior, null, 'no live baseline yet: nothing to compare with')
