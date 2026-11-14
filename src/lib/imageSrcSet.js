@@ -24,8 +24,14 @@ export const IMAGE_SIZES = { small: 640, logo: 320 }
 // a 640-wide request came back 640×4032 (checked 8 Nov 2026). `contain` keeps
 // the proportions (640×1138) and never makes a photo larger than it is.
 // Browsers that accept WebP are sent WebP, which is most of the saving.
-export const UPLOAD_WIDTHS = [320, 480, 640, 960, 1280]
-export const UPLOAD_QUALITY = 80
+//
+// 768 and quality 70 (speed decision D3, 13 Nov 2026): the ad's product photo
+// is 900 px wide, so 960 and 1280 both came back as the full 900 px at 245 KB.
+// A phone 412 px wide at 1.75× needs 721 px and now gets the 768 copy (151 KB);
+// a sharper phone (about 2.75×) still asks for 1280 and gets the full 900 px,
+// at 193 KB instead of 245. Every other uploaded photo shrinks the same way.
+export const UPLOAD_WIDTHS = [320, 480, 640, 768, 960, 1280]
+export const UPLOAD_QUALITY = 70
 
 // How wide the two "first photos" are shown — the product page's main photo
 // and the homepage hero — in the `sizes` syntax. They are shared with the

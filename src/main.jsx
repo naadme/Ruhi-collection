@@ -12,6 +12,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import PageTracker from './components/PageTracker'
 import { captureLanding } from './lib/adClicks'
 import { startExperiments } from './lib/experiments'
+import './fonts.css'
 import './index.css'
 // Read the ad click IDs and campaign tags off the address the visitor landed
 // on, before the router can redirect it away (tracking brief, Section 4).

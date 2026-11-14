@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { IMAGE_SIZES, UPLOAD_WIDTHS, imageCopy, imageSrcSet, resizedUpload } from '../src/lib/imageSrcSet.js'
+import { IMAGE_SIZES, UPLOAD_QUALITY, UPLOAD_WIDTHS, imageCopy, imageSrcSet, resizedUpload } from '../src/lib/imageSrcSet.js'
 import derivatives from '../src/lib/imageDerivatives.js'
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
@@ -35,7 +35,7 @@ test('an uploaded photo is offered as Supabase-resized copies', () => {
   for (const [i, w] of UPLOAD_WIDTHS.entries()) {
     assert.equal(
       candidates[i],
-      `https://xhsjwhzutalckeektluj.supabase.co/storage/v1/render/image/public/product-images/a-photo1-1793956711552.jpg?width=${w}&resize=contain&quality=80 ${w}w`,
+      `https://xhsjwhzutalckeektluj.supabase.co/storage/v1/render/image/public/product-images/a-photo1-1793956711552.jpg?width=${w}&resize=contain&quality=70 ${w}w`,
     )
   }
   // The picture's own src is the 640 copy; the original is kept for the
@@ -43,6 +43,19 @@ test('an uploaded photo is offered as Supabase-resized copies', () => {
   const copy = imageCopy(upload)
   assert.equal(copy.small, resizedUpload(upload, 640))
   assert.equal(copy.original, upload)
+})
+
+// Speed decision D3 (13 Nov 2026): quality 70, and a 768 copy between 640 and
+// 960. The browser takes the smallest copy at least as wide as the photo's
+// on-screen width times the screen's sharpness, so the lab's test phone (412 px
+// wide at 1.75x: 721 px) now gets 768 (151 KB for the ad's photo, was 245 KB).
+test('photos are offered at quality 70, with a 768 copy for ordinary phone screens', () => {
+  assert.equal(UPLOAD_QUALITY, 70)
+  assert.deepEqual(UPLOAD_WIDTHS, [320, 480, 640, 768, 960, 1280])
+  const pick = (needed) => UPLOAD_WIDTHS.find((w) => w >= needed) ?? UPLOAD_WIDTHS.at(-1)
+  assert.equal(pick(412 * 1.75), 768, 'the lab test phone')
+  assert.equal(pick(393 * 2.75), 1280, 'a sharp phone screen still gets the full photo (served at its own 900 px)')
+  assert.equal(pick(360 * 2), 768, 'a 360 px phone at 2x')
 })
 
 test('a resized upload always keeps the photo\'s proportions', () => {
