@@ -74,7 +74,8 @@ test('every storefront photo says how wide it is shown', () => {
       if (!file.endsWith('.jsx')) continue
       const source = read(`${dir}/${file}`)
       for (const tag of source.match(/<Img\b[^>]*\/>/g) ?? []) {
-        if (!/\bsizes="/.test(tag)) missing.push(`${dir}/${file}: ${tag.slice(0, 60)}`)
+        // A literal, or one of the shared constants (PRODUCT_PHOTO_SIZES…).
+        if (!/\bsizes=(?:"|\{[A-Z_]+_SIZES\})/.test(tag)) missing.push(`${dir}/${file}: ${tag.slice(0, 60)}`)
       }
     }
   }

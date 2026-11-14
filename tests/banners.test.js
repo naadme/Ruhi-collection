@@ -71,8 +71,10 @@ test('the migration is safe to run twice', () => {
 test('a visitor with no banners gets the original category slider, never an error', () => {
   // The homepage asks non-strictly: a missing table, a network failure and an
   // empty table are all just "no banners saved" — the hero renders as always.
-  assert.match(BANNERS, /fetchHomeBanners\(\{ strict = false \} = \{\}\)/);
-  assert.match(BANNERS, /export const HOME_HERO_SLOT = 'home_hero'/);
+  // (`rows` is the homepage's own early read of the same rows, 13 Nov 2026.)
+  assert.match(BANNERS, /fetchHomeBanners\(\{ strict = false, rows \} = \{\}\)/);
+  assert.match(read('src/lib/bannerSlot.js'), /export const HOME_HERO_SLOT = 'home_hero'/);
+  assert.match(BANNERS, /export \{ HOME_HERO_SLOT \}/);
   // ...and the hero falls back to the stocked category list when empty
   assert.match(HERO, /heroSlides\(banners/, 'the slide list comes from the shared rule');
   assert.match(HERO, /stockedCategoryTiles\(categories, products\)/, 'the fallback is still the stocked categories');

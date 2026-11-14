@@ -57,17 +57,22 @@ export async function fetchPublishedReviews(productIds, { strict = false } = {})
  * the API hands out in one answer. A rating that cannot be read is not worth
  * failing a page over: any failure answers with what was read so far.
  */
-export async function fetchRatingRows({ pageSize = 1000, maxRows = 20000 } = {}) {
+export async function fetchRatingRows({ pageSize = 1000, maxRows = 20000, firstPage } = {}) {
   const rows = []
   try {
     for (let from = 0; from < maxRows; from += pageSize) {
-      const { data, error } = await supabase
-        .from('product_reviews')
-        .select('product_id, rating')
-        .eq('status', 'approved')
-        .order('id', { ascending: true })
-        .range(from, from + pageSize - 1)
-        .retry(false)
+      // `firstPage`: the answer to the first of these reads when the page
+      // already made it (src/boot/earlyStart.js asks for exactly rows 0–999).
+      const early = from === 0 && Array.isArray(firstPage) ? firstPage : null
+      const { data, error } = early
+        ? { data: early, error: null }
+        : await supabase
+          .from('product_reviews')
+          .select('product_id, rating')
+          .eq('status', 'approved')
+          .order('id', { ascending: true })
+          .range(from, from + pageSize - 1)
+          .retry(false)
       if (error) break
       const page = Array.isArray(data) ? data : []
       rows.push(...page)

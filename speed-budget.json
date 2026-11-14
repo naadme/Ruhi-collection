@@ -1,0 +1,42 @@
+{
+  "_about": "Speed budget for the shop (13 Nov 2026). Read by scripts/speed-check.mjs (npm run speed / speed:lab / speed:live). Sizes are compressed (gzip -9) KB, as phones download them. A change that goes over a limit needs a written reason and the owner's OK before it ships; raise a limit only in the same pull request, with the reason in its description. The rules behind these numbers: Ruhi_Speed_Framework.md in the Ruhi Collections folder.",
+
+  "files": {
+    "html": 3.0,
+    "mainScript": 70,
+    "vendorScript": 120,
+    "css": 12,
+    "firstLoadTotal": 205
+  },
+
+  "chunks": {
+    "Checkout": 14,
+    "AdminRoot": 70,
+    "Policy": 5,
+    "SizeGuide": 2,
+    "_default": 15
+  },
+
+  "pageOrigins": [
+    "https://www.googletagmanager.com",
+    "https://fonts.googleapis.com",
+    "https://fonts.gstatic.com",
+    "https://*.supabase.co"
+  ],
+
+  "publicImageMaxKB": 400,
+
+  "lab": {
+    "_about": "Lighthouse 13 mobile defaults (Moto G Power, slow 4G: 150 ms, 1.6 Mbps, 4x CPU), a fresh browser each run like a shopper arriving from an ad, the median of 3 runs, GA4/Meta hits blocked. 'max' is the never-worse-than line for today's site; 'goal' is where the plan is heading (Google's 'good' line for LCP is 2.5 s, measured on real phones).",
+    "lighthouse": "13.6.0",
+    "runs": 3,
+    "pages": {
+      "product": "/product/solid-shirt-and-pant-combo-dark-navy-blue",
+      "home": "/",
+      "shop": "/shop"
+    },
+    "max": { "lcpMs": 7000, "fcpMs": 2000, "tbtMs": 200, "cls": 0.1 },
+    "goal": { "lcpMs": 2500, "fcpMs": 1800, "tbtMs": 200, "cls": 0.1 },
+    "regressionToleranceMs": 300
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "measuredAt": "2026-11-14T05:52:26.546Z",
+  "files": {
+    "html": 2.4,
+    "mainScript": 66.5,
+    "vendorScript": 114.6,
+    "css": 9.8,
+    "firstLoadTotal": 193.3
+  },
+  "chunks": {
+    "AdminRoot": 60.6,
+    "Checkout": 11.5,
+    "Policy": 3.7,
+    "SizeGuide": 0.5
+  },
+  "lab": {
+    "product": {
+      "score": 75,
+      "lcpMs": 6087,
+      "fcpMs": 2304,
+      "tbtMs": 83,
+      "cls": 0.026,
+      "kb": 1086.1
+    },
+    "home": {
+      "score": 77,
+      "lcpMs": 5785,
+      "fcpMs": 1929,
+      "tbtMs": 60,
+      "cls": 0.001,
+      "kb": 1450.6
+    },
+    "shop": {
+      "score": 78,
+      "lcpMs": 5587,
+      "fcpMs": 1543,
+      "tbtMs": 54,
+      "cls": 0.003,
+      "kb": 1638.3
+    }
+  }
+}

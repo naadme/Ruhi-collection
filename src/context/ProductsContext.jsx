@@ -4,6 +4,7 @@ import { products as seedProducts } from '../data/products'
 import { groupedCards } from '../lib/productGrouping'
 import { indexProducts } from '../lib/productLookup'
 import { isClientProduct } from '../lib/clientProducts'
+import { earlyRows } from '../lib/earlyData'
 
 const Ctx = createContext(null)
 export const useProducts = () => useContext(Ctx)
@@ -108,11 +109,18 @@ export function ProductsProvider({ children }) {
       // and stays there after a refresh, because that is the order Supabase
       // answers in. `created_at` is `not null default now()`, so no row can
       // sink out of the ordering.
-      const { data, error } = await supabase
-        .from('products').select('*')
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: true })
-        .retry(false)
+      //
+      // The first read of a visit usually has its answer on the way already:
+      // the page asked for these same rows while this code was downloading
+      // (src/boot/earlyStart.js). If that read failed, ask again here.
+      const early = await earlyRows('products')
+      const { data, error } = early
+        ? { data: early, error: null }
+        : await supabase
+          .from('products').select('*')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
+          .retry(false)
       if (mine !== seq.current) return true // a newer read or a verified row already won
       if (error) {
         // Keep whatever is already on screen. Falling back to the bundled
@@ -226,19 +234,41 @@ export function ProductsProvider({ children }) {
   // never the bundled seed. A delete drops the row; anything the payload
   // doesn't describe (or a subscription that can't carry payloads) simply
   // refetches, which is still Supabase. Silently a no-op if realtime is off.
+  //
+  // Only for a SIGNED-IN visitor (13 Nov 2026). Live updates are for the
+  // owner checking her edits in another tab, and she is signed in. A shopper
+  // arriving from an ad gains nothing from them, while each live link is an
+  // extra connection to the database in Seoul, kept open with a heartbeat for
+  // the whole visit, and one of the project's limited concurrent connections.
   useEffect(() => {
-    let channel
-    try {
-      channel = supabase
-        .channel('products-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (payload) => {
-          if (payload?.eventType === 'DELETE') removeRow(payload.old?.id)
-          else if (payload?.new?.id) applyRow(payload.new)
-          else reload()
-        })
-        .subscribe()
-    } catch { /* realtime optional */ }
-    return () => { if (channel) { try { supabase.removeChannel(channel) } catch { /* noop */ } } }
+    let channel = null
+    let alive = true
+    const open = () => {
+      if (channel || !alive) return
+      try {
+        channel = supabase
+          .channel('products-changes')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (payload) => {
+            if (payload?.eventType === 'DELETE') removeRow(payload.old?.id)
+            else if (payload?.new?.id) applyRow(payload.new)
+            else reload()
+          })
+          .subscribe()
+      } catch { /* realtime optional */ }
+    }
+    const close = () => {
+      if (!channel) return
+      try { supabase.removeChannel(channel) } catch { /* noop */ }
+      channel = null
+    }
+    supabase.auth.getSession()
+      .then(({ data }) => { if (data?.session) open() })
+      .catch(() => { /* signed out as far as we know: no live link */ })
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) open()
+      else if (event === 'SIGNED_OUT') close()
+    })
+    return () => { alive = false; sub.subscription.unsubscribe(); close() }
   }, [applyRow, removeRow, reload])
 
   // One card per design: colour rows collapse into their product here, once,

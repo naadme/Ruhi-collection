@@ -46,8 +46,8 @@ test('the fallback that offers a reload is in the main bundle, not in the chunk 
 
 test('a direct load of /checkout asks for its code alongside the main script, and no other page does', () => {
   const config = read('vite.config.js')
-  assert.match(config, /plugins: \[react\(\), spa404\(\), preloadCheckoutOnCheckout\(\)\]/)
-  const plugin = config.slice(config.indexOf('const preloadCheckoutOnCheckout'), config.indexOf('export default defineConfig'))
+  assert.match(config, /plugins: \[react\(\), spa404\(\), preloadCheckoutOnCheckout\(\)(?:, \w+\(\))*\]/)
+  const plugin = config.slice(config.indexOf('const preloadCheckoutOnCheckout'), config.indexOf('const earlyStartScript'))
   assert.match(plugin, /c\.isDynamicEntry && c\.name === 'Checkout'/)
   assert.match(plugin, /throw new Error/, 'a renamed chunk must fail the build, not silently drop the hint')
   assert.match(plugin, /location\.pathname\.replace\(\/\\\\\/\+\$\/,''\)==='\/checkout'/)

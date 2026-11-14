@@ -11,7 +11,10 @@ function Skeleton() {
   )
 }
 
-export default function ProductGrid({ items, loading, empty }) {
+// `priority`: how many leading cards are on the first screen (the shop's first
+// row on a phone) — their photos load at once instead of lazily
+// (Lighthouse, 13 Nov 2026: the shop's main photo was waiting as "lazy").
+export default function ProductGrid({ items, loading, empty, priority = 0 }) {
   if (loading) {
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-1 gap-y-6" aria-hidden="true">
@@ -30,7 +33,7 @@ export default function ProductGrid({ items, loading, empty }) {
   }
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-1 gap-y-6">
-      {items.map((p) => <ProductCard key={p.id} product={p} />)}
+      {items.map((p, i) => <ProductCard key={p.id} product={p} priority={i < priority} />)}
     </div>
   )
 }
