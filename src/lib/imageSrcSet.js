@@ -25,7 +25,15 @@ export const IMAGE_SIZES = { small: 640, logo: 320 }
 // the proportions (640×1138) and never makes a photo larger than it is.
 // Browsers that accept WebP are sent WebP, which is most of the saving.
 export const UPLOAD_WIDTHS = [320, 480, 640, 960, 1280]
-const UPLOAD_QUALITY = 80
+export const UPLOAD_QUALITY = 80
+
+// How wide the two "first photos" are shown — the product page's main photo
+// and the homepage hero — in the `sizes` syntax. They are shared with the
+// page's own early preload (src/boot/earlyStart.js, wired in vite.config.js):
+// the browser keeps a single download only when the preload and the <img>
+// describe the photo identically, so both read these two constants.
+export const PRODUCT_PHOTO_SIZES = '(max-width: 768px) 100vw, 620px'
+export const HERO_PHOTO_SIZES = '(max-width: 768px) 100vw, 50vw'
 const STORAGE_OBJECT = /^(https:\/\/[a-z0-9]+\.supabase\.co\/storage\/v1)\/object\/public\/([^?#]+)$/
 
 /** The address of a smaller copy of an uploaded photo, or `null` if `src` is not one. */

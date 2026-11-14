@@ -23,7 +23,9 @@ const canHover = typeof window !== 'undefined' &&
 // Grids rebuild their `items` array on every render, so without this each card
 // would re-render whenever any sibling's parent re-rendered. Wishlist changes
 // still reach every card — a context update is never blocked by memo().
-function ProductCard({ product: p }) {
+// `priority`: this card opens the first screen of a listing (the shop's first
+// row), so its photo is the one the page waits for: fetched at once and first.
+function ProductCard({ product: p, priority = false }) {
   const { has, toggle } = useWishlist(); const fav = has(p.id)
   const { typeLabel } = useCategories()
   // GA4 (src/components/ItemList.jsx): the list this card sits in learns when
@@ -60,7 +62,7 @@ function ProductCard({ product: p }) {
   const card = (
     <>
       <div className="relative aspect-[3/4] overflow-hidden bg-neutral-100">
-        <Img src={p.image} style={imageFramingStyle(p.image_framing, p.image)} alt={p.title} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className={`absolute inset-0 w-full h-full object-cover${swap ? ' transition-opacity duration-500 group-hover:opacity-0' : ''}`} />
+        <Img src={p.image} style={imageFramingStyle(p.image_framing, p.image)} alt={p.title} {...(priority ? { loading: 'eager', fetchpriority: 'high' } : {})} sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className={`absolute inset-0 w-full h-full object-cover${swap ? ' transition-opacity duration-500 group-hover:opacity-0' : ''}`} />
         {swap && <Img src={p.hover} style={imageFramingStyle(p.image_framing, p.hover)} alt="" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />}
         {p.badge && <span className="absolute top-2 left-1 bg-brand-badge text-white text-[10px] font-bold px-1.5 py-[3px] rounded-sm font-ui">{p.badge}</span>}
         {rating && <RatingPill rating={rating} className="absolute bottom-2 left-2" />}

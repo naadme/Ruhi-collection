@@ -13,6 +13,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { fetchCategories, SEED_CATEGORIES, typeLabelOf, withTypeOption } from '../lib/categories'
+import { earlyRows } from '../lib/earlyData'
 
 const Ctx = createContext(null)
 
@@ -41,11 +42,14 @@ export function CategoriesProvider({ children }) {
 
   useEffect(() => {
     let alive = true
-    fetchCategories().then((rows) => {
-      if (!alive) return
-      setCategories(rows)
-      setLoading(false)
-    })
+    // The page usually started this read already (src/lib/earlyData.js).
+    earlyRows('categories')
+      .then((rows) => fetchCategories({ rows }))
+      .then((rows) => {
+        if (!alive) return
+        setCategories(rows)
+        setLoading(false)
+      })
     return () => { alive = false }
   }, [])
 

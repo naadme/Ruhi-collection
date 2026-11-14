@@ -43,15 +43,21 @@ export {
  *  this feature existed. The admin panel asks for the strict form
  *  (`{ strict: true }`) so a real error is reported there instead of looking
  *  like a database that simply holds nothing. */
-export async function fetchCategories({ strict = false } = {}) {
+export async function fetchCategories({ strict = false, rows } = {}) {
   try {
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .order('position', { ascending: true })
-      .order('key', { ascending: true })
-      .retry(false)
-    if (error) throw new Error(error.message || 'Could not load the categories.')
+    // `rows`: the answer to this same read when the page already made it
+    // (src/boot/earlyStart.js via src/lib/earlyData.js); otherwise ask.
+    let data = Array.isArray(rows) ? rows : null
+    if (!data) {
+      const answer = await supabase
+        .from('categories')
+        .select('*')
+        .order('position', { ascending: true })
+        .order('key', { ascending: true })
+        .retry(false)
+      if (answer.error) throw new Error(answer.error.message || 'Could not load the categories.')
+      data = answer.data
+    }
     // The database answered, so the database is the truth: a category the
     // owner has deleted is not offered by the storefront any more, and one
     // they have added is offered at once. The seed is only for a database

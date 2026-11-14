@@ -1,7 +1,10 @@
 import { copyFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, transformWithEsbuild } from 'vite'
 import react from '@vitejs/plugin-react'
+import { earlyStart } from './src/boot/earlyStart.js'
+import { HERO_PHOTO_SIZES, IMAGE_SIZES, PRODUCT_PHOTO_SIZES, UPLOAD_QUALITY, UPLOAD_WIDTHS } from './src/lib/imageSrcSet.js'
+import { HOME_HERO_SLOT } from './src/lib/bannerSlot.js'
 
 // Static hosts (GitHub Pages, S3, plain file servers) answer deep links such as
 // /contact, /shop or /product/:id with their own 404 page, because there is no
@@ -51,8 +54,57 @@ const preloadCheckoutOnCheckout = () => {
   }
 }
 
+// The page starts its own slowest work in its first milliseconds, before the
+// app's code has arrived (src/boot/earlyStart.js explains what and why):
+// - an inline script, placed right after the GTM snippet and before any
+//   stylesheet (a script after a stylesheet waits for it), that starts the
+//   app's first database reads and preloads the photo the page opens on;
+// - a `preconnect` to the photo server, so that photo does not also wait for
+//   a new connection (photos and data reads use separate connections).
+// The script is the function's own source with its settings: the database's
+// public address and publishable key (already public in the app's bundle) and
+// the photo sizes the app itself uses, so the two cannot drift apart.
+const earlyStartScript = () => {
+  let settings = null
+  return {
+    name: 'early-start',
+    apply: 'build',
+    configResolved(config) {
+      const env = loadEnv(config.mode, config.envDir || config.root, 'VITE_')
+      settings = {
+        url: env.VITE_SUPABASE_URL,
+        key: env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        widths: UPLOAD_WIDTHS,
+        smallWidth: IMAGE_SIZES.small,
+        quality: UPLOAD_QUALITY,
+        sizes: { product: PRODUCT_PHOTO_SIZES, hero: HERO_PHOTO_SIZES },
+        heroSlot: HOME_HERO_SLOT,
+        ratingsPage: 1000,
+      }
+    },
+    transformIndexHtml: {
+      order: 'post',
+      async handler(html) {
+        // No database settings, no early start: the app reads as it always did.
+        if (!settings?.url || !settings?.key) return html
+        const marker = '<!-- End Google Tag Manager -->'
+        const call = `(${earlyStart.toString()})(window,${JSON.stringify(settings).replace(/</g, '\\u003c')});`
+        // Minified to a few hundred bytes; es2017 runs on every phone the shop supports.
+        const { code } = await transformWithEsbuild(call, 'early-start.js', { minify: true, target: 'es2017' })
+        const script = `<script>${code.trim()}</script>`
+        const origin = new URL(settings.url).origin
+        const preconnect = `<link rel="preconnect" href="${origin}" />`
+        const withScript = html.includes(marker)
+          ? html.replace(marker, `${marker}\n${script}`)
+          : html.replace('<head>', `<head>${script}`)
+        return withScript.replace('<link rel="preconnect"', `${preconnect}<link rel="preconnect"`)
+      },
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), spa404(), preloadCheckoutOnCheckout()],
+  plugins: [react(), spa404(), preloadCheckoutOnCheckout(), earlyStartScript()],
   build: {
     // The build always starts from an empty output directory. A file left
     // behind by an earlier build must never be published again — a stale

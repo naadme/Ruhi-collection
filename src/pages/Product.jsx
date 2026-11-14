@@ -7,6 +7,7 @@ import { useCategories } from '../context/CategoriesContext'
 import { useCart } from '../context/CartContext'
 import { useWishlist } from '../context/WishlistContext'
 import Img from '../components/Img'
+import { PRODUCT_PHOTO_SIZES } from '../lib/imageSrcSet'
 import QtyControl from '../components/QtyControl'
 import { imageFramingStyle } from '../lib/imageFraming'
 import ProductCard from '../components/ProductCard'
@@ -36,7 +37,13 @@ import useExperiment from '../hooks/useExperiment'
 // before that choice resets; the wait keeps the in-between state out of GTM.
 const VIEW_SETTLE_MS = 300
 
-function Gallery({ product, rating, onRating }) {
+// "You may also like" is four more photos (~150 kB on a phone), far below the
+// first screen. On a slow connection they were downloading at the same time
+// as the main photo (Lighthouse, 13 Nov 2026), so the section now waits until
+// the main photo has loaded — or this long after the product appears.
+const RELATED_WAIT_MS = 3000
+
+function Gallery({ product, rating, onRating, onPhotoLoad }) {
   const shots = [...new Set(
     (product.gallery?.length ? product.gallery : [product.image, product.hover]).filter(Boolean)
   )]
@@ -48,7 +55,10 @@ function Gallery({ product, rating, onRating }) {
   return (
     <div>
       <div className="relative w-full aspect-[3/4] bg-neutral-100 overflow-hidden">
-        <Img src={src} style={imageFramingStyle(product.image_framing, src)} alt={`${product.title} — view ${active + 1}`} loading="eager" sizes="(max-width: 768px) 100vw, 620px" className="w-full h-full object-cover" />
+        {/* The photo a shopper from an ad waits for: first in the browser's queue.
+            Its sizes are the ones the page's early preload uses
+            (src/boot/earlyStart.js), so the two share one download. */}
+        <Img src={src} style={imageFramingStyle(product.image_framing, src)} alt={`${product.title} — view ${active + 1}`} loading="eager" fetchpriority={active === 0 ? 'high' : undefined} onLoad={onPhotoLoad} sizes={PRODUCT_PHOTO_SIZES} className="w-full h-full object-cover" />
         {product.badge && (
           <span className="absolute top-3 left-3 bg-brand-badge text-white text-[11px] font-bold px-2 py-1 rounded-sm font-ui">{product.badge}</span>
         )}
@@ -103,6 +113,14 @@ export default function Product() {
     watch.observe(ctaEl)
     return () => watch.disconnect()
   }, [ctaEl])
+
+  // The main photo first (RELATED_WAIT_MS). Once shown, the section stays.
+  const [relatedReady, setRelatedReady] = useState(false)
+  useEffect(() => {
+    if (relatedReady || !answered) return undefined
+    const timer = setTimeout(() => setRelatedReady(true), RELATED_WAIT_MS)
+    return () => clearTimeout(timer)
+  }, [relatedReady, answered])
 
   // On a phone the colours are one swipeable row: bring the chosen colour into
   // it (a link can open on the twelfth colour), without moving the page.
@@ -349,7 +367,7 @@ export default function Product() {
       </nav>
 
       <div className="grid md:grid-cols-2 gap-10 lg:gap-16">
-        <Gallery key={shown.id} product={shown} rating={rating} onRating={toReviews} />
+        <Gallery key={shown.id} product={shown} rating={rating} onRating={toReviews} onPhotoLoad={() => setRelatedReady(true)} />
 
         {/* `min-w-0`: a grid item is never narrower than its content by
             default, and the colour row is wider than a phone on purpose. */}
@@ -522,7 +540,7 @@ export default function Product() {
         </div>
       </div>
 
-      {related.length > 0 && (
+      {relatedReady && related.length > 0 && (
         <>
           <h2 className="text-[30px] mt-20 mb-6">You may also like</h2>
           <ItemList list={LISTS.related} products={related}>

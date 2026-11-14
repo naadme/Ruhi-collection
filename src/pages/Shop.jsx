@@ -152,6 +152,7 @@ export default function Shop() {
       <ItemList list={shopList({ q, type: t, label: t ? typeLabel(t) : '' })} products={items}>
       <ProductGrid
         items={items}
+        priority={2}
         loading={loading && source !== 'database'}
         empty={{
           title: searching ? `Nothing matches “${q.trim()}”` : 'No products in this view',

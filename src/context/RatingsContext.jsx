@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { fetchRatingRows } from '../lib/reviewStore'
+import { earlyRows } from '../lib/earlyData'
 import { designRating, ratingTotals, shopRating } from '../lib/ratingSummary'
 
 // The shop's published ratings, read once per visit and shared by every card,
@@ -20,7 +21,9 @@ export function RatingsProvider({ children }) {
 
   useEffect(() => {
     let alive = true
-    fetchRatingRows()
+    // The page usually started the first read already (src/lib/earlyData.js).
+    earlyRows('ratings')
+      .then((firstPage) => fetchRatingRows({ firstPage }))
       .then((rows) => { if (alive) setTotals(ratingTotals(rows)) })
       .finally(() => { if (alive) setReady(true) })
     return () => { alive = false }
