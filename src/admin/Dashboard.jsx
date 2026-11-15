@@ -258,14 +258,20 @@ export default function Dashboard({ showOrders }) {
       created.forEach(applyRow)
       updated.forEach(applyRow)
       deleted.forEach((row) => removeRow(row.id))
-      if (!created.length && !updated.length && !deleted.length) throw e
+      // A write that landed but read back different is still in the store:
+      // keeping the editor open would let "Add product" create it again.
+      if (e?.saved) applyRow(e.saved)
+      const landed = created.length + updated.length + deleted.length + (e?.saved ? 1 : 0)
+      if (!landed) throw e
       setEditing(null)
       await reload()
       notify(
         'error',
-        `Saved ${created.length + updated.length + deleted.length} of ${total} changes — the rest failed: ${
-          e?.message || 'unknown error'
-        }. The list now shows what the store really holds.`,
+        e?.saved
+          ? `${e.message} (${landed} of ${total} changes reached the store.)`
+          : `Saved ${landed} of ${total} changes — the rest failed: ${
+              e?.message || 'unknown error'
+            }. The list now shows what the store really holds.`,
       )
       return
     }

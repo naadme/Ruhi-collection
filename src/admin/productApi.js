@@ -47,9 +47,14 @@ export function assertSaved(saved, payload) {
   if (!saved || !saved.id) throw new Error(NOT_SAVED)
   const wrong = Object.keys(payload).filter((k) => !same(saved[k], payload[k]))
   if (wrong.length) {
-    throw new Error(
-      `Supabase stored different values for ${wrong.join(', ')} — this change was not saved. Nothing in the store was updated.`,
+    // The write itself went through: `saved` IS the row now in the store. Say
+    // so, and hand the row back, so the dashboard shows it and never offers
+    // to create the same product a second time.
+    const err = new Error(
+      `Supabase saved this product, but ${wrong.join(', ')} came back different from what was sent. Check this product in the list before saving it again.`,
     )
+    err.saved = saved
+    throw err
   }
   return saved
 }
