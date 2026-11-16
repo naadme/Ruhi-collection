@@ -294,7 +294,7 @@ export function parseSpreadsheetId(input) {
 }
 
 /** A spreadsheet title that is safe to hand to Google. */
-export function safeSheetTitle(input, fallback = 'Ruhi Collection — Orders') {
+export function safeSheetTitle(input, fallback = 'Ruhi Collections – Orders') {
   const text = String(input || '').trim()
   if (!text) return fallback
   return text.slice(0, 120)
@@ -358,20 +358,27 @@ export function missingConfigMessage(missing, context = {}) {
   const lines = []
 
   if (reason === 'invalid_secret') {
-    lines.push('Google does not accept the Client secret this project is using, so it would refuse the sign-in.')
-    lines.push('1. Google Cloud \u2192 Credentials \u2192 open the "Web application" client \u2192 copy its CURRENT Client secret.')
-    lines.push('2. Supabase \u2192 Authentication \u2192 Sign In \u2192 Google \u2192 paste it as the Client Secret and save.')
-    lines.push('   (The Edge Function picks it up from there \u2014 it never has to be typed anywhere else.)')
+    lines.push('Google does not accept this project\u2019s Google Sheets Client ID + Client secret pair, so it would refuse the sign-in.')
+    lines.push('1. Google Cloud \u2192 Credentials \u2192 open the DEDICATED "Web application" client for Sheets (not the website sign-in client) \u2192 copy its CURRENT Client secret.')
+    lines.push('2. Run: node scripts/google-sheets-setup.mjs')
+    lines.push('   Type both values at the hidden prompts. It has Google verify them, then stores GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET as Edge Function secrets.')
+    lines.push('3. Leave the website\u2019s own \u201cContinue with Google\u201d sign-in alone \u2014 it uses a separate OAuth client.')
   } else if (reason === 'redirect_not_registered') {
-    lines.push('This callback URL is not registered for the OAuth client, so Google would refuse the sign-in.')
-    lines.push('1. Google Cloud \u2192 Credentials \u2192 open the "Web application" client.')
+    lines.push('This callback URL is not registered for the Google Sheets OAuth client, so Google would refuse the sign-in.')
+    lines.push('1. Google Cloud \u2192 Credentials \u2192 open the DEDICATED "Web application" client for Sheets.')
     lines.push('2. Under "Authorised redirect URIs" \u2192 Add \u2192 paste exactly:')
     lines.push(`      ${redirectUri}`)
+    lines.push('3. Run: node scripts/google-sheets-setup.mjs \u2014 it verifies the URL before storing anything.')
   } else {
     lines.push('Google Sheets is not connected to this project yet.')
     if (names.length) lines.push(`Still missing: ${names.join(', ')}.`)
-    lines.push('1. Google Cloud \u2192 create a project and enable the Google Sheets API and the Google Drive API.')
-    lines.push('2. Configure the OAuth consent screen (Branding + Audience) and create a Web application OAuth client.')
+    lines.push('1. Google Cloud \u2192 Credentials \u2192 create a DEDICATED Web application OAuth client for Sheets. Leave the website sign-in client unchanged.')
+    lines.push('2. Enable the Google Sheets API and the Google Drive API, then configure the OAuth consent screen (Branding + Audience).')
+    if (redirectUri) {
+      lines.push('3. Register this exact callback URL on that dedicated client:')
+      lines.push(`      ${redirectUri}`)
+    }
+    lines.push(`${redirectUri ? '4' : '3'}. Run: node scripts/google-sheets-setup.mjs \u2014 it asks for the Client ID and Client secret at hidden prompts, verifies them with Google, then stores them as Edge Function secrets.`)
   }
 
   lines.push('The consent screen must allow these scopes:')
@@ -489,9 +496,9 @@ export function setupLinks(clientId = '') {
       hint: 'Branding → the app name and your email; Audience → External, and add yourself as a test user; Data Access → the scopes below.',
     },
     {
-      label: 'Copy the Client ID and Client secret',
+      label: 'Copy the dedicated Sheets Client ID and Client secret',
       url: 'https://console.cloud.google.com/apis/credentials',
-      hint: 'The secret is needed to finish the setup: paste it into Supabase → Authentication → Sign In → Google → Client Secret, and it is copied into the Edge Function automatically.',
+      hint: 'Run node scripts/google-sheets-setup.mjs and paste both values at its hidden prompts. It verifies them with Google and stores them as GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET — never in the website sign-in settings or in the repository.',
     },
   ]
 }

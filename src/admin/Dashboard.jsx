@@ -20,6 +20,7 @@ import BestsellerPanel from './BestsellerPanel'
 import CouponsPanel from './CouponsPanel'
 import UnpaidCheckoutsPanel from './UnpaidCheckoutsPanel'
 import ReviewsPanel from './ReviewsPanel'
+import GoogleSheetsButton from './GoogleSheetsButton'
 
 function Toast({ toast, onClose }) {
   useEffect(() => {
@@ -407,7 +408,10 @@ export default function Dashboard({ showOrders }) {
   if (showOrders && section !== 'products') {
     return (
       <div className="font-ui">
-        <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
+          <GoogleSheetsButton />
+        </div>
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'orders' && <OrdersPanel notify={notify} />}
           {section === 'unpaid' && <UnpaidCheckoutsPanel notify={notify} />}
@@ -427,6 +431,7 @@ export default function Dashboard({ showOrders }) {
     <div className="font-ui">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
+        <GoogleSheetsButton />
       </div>
 
       <div id="panel-products" role="tabpanel">

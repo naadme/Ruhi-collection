@@ -15,10 +15,46 @@
 // which is a convenience: if the Drive API is not enabled on the project, the
 // list is simply empty and everything else still works.
 
-import { buildSheetValues, duplicatesAmong, SHEET_COLUMNS } from './sheetRows.mjs'
+import {
+  buildSheetValues,
+  DEFAULT_SHEET_TITLE,
+  detectSheetLayout,
+  duplicatesAmong,
+  LEGACY_LAYOUT,
+  legacyOrderRows,
+  ORDER_LAYOUT,
+  orderRows,
+  sheetColumnsFor,
+} from './sheetRows.mjs'
 
 export const SPREADSHEET_MIME = 'application/vnd.google-apps.spreadsheet'
 export const DEFAULT_TAB = 'Orders'
+
+/**
+ * Every key an Order ID may have in a sheet, so a row written before leading
+ * zeros were preserved is still found and updated in place.
+ *
+ * `03112601`, `'03112601` and the number `3112601` all name the same order;
+ * `Zero` is never used because the reference is never an empty string here.
+ */
+export function orderIdKeys(value) {
+  let text = String(value ?? '').trim()
+  if (!text) return []
+  if (text.startsWith("'")) text = text.slice(1).trim()
+  if (!text) return []
+  const digits = text.replace(/[^\d]/g, '')
+  const keys = new Set([text])
+  if (digits) {
+    keys.add(digits)
+    // A leading zero lost by Sheets, whatever the ID's length: 8-digit DDMMYYNN.
+    const trimmed = digits.replace(/^0+/, '')
+    if (trimmed) {
+      keys.add(trimmed)
+      keys.add(trimmed.padStart(8, '0'))
+    }
+  }
+  return [...keys]
+}
 
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets'
 const DRIVE_API = 'https://www.googleapis.com/drive/v3/files'
@@ -235,7 +271,7 @@ export async function listSpreadsheets(accessToken) {
  * This is the SHEETS API, so it needs nothing beyond the `spreadsheets`
  * scope the connection already carries.
  */
-export async function createSpreadsheet(accessToken, title) {
+export async function createSpreadsheet(accessToken, title = DEFAULT_SHEET_TITLE) {
   const res = await googleJson(SHEETS_API, accessToken, {
     method: 'POST',
     body: JSON.stringify({ properties: { title } }),
@@ -276,7 +312,7 @@ export async function renameFirstTab(accessToken, sheetId, title = DEFAULT_TAB, 
 }
 
 /** Create a spreadsheet and give it the tab the export writes to. */
-export async function createSheetWithTab(accessToken, title) {
+export async function createSheetWithTab(accessToken, title = DEFAULT_SHEET_TITLE) {
   const created = await createSpreadsheet(accessToken, title)
   if (created.error) return { error: created.error }
   // Aim the rename at the tab Google really created, and if the rename is
@@ -333,11 +369,94 @@ export async function getSpreadsheet(accessToken, sheetId) {
   return { id: String(res.body?.spreadsheetId ?? sheetId), title: String(res.body?.title ?? '') }
 }
 
-/** Append rows to a spreadsheet. */
+/**
+ * Share a spreadsheet with the client's Google account.
+ *
+ * The file lives in the OWNER'S Drive; this adds the client as a writer so
+ * she can open the same spreadsheet from her own account. The `drive.file`
+ * scope is enough for a file this app created (which is the case for this
+ * integration's own sheet), and no broader Drive access is asked for.
+ *
+ * `sendNotificationEmail=false` keeps Google from sending mail the owner did
+ * not write. A refusal is returned, never thrown: a sheet that could not be
+ * shared is still a working sheet for the owner.
+ */
+export async function shareSpreadsheet(accessToken, sheetId, email, role = 'writer') {
+  const address = String(email || '').trim()
+  if (!address) return { ok: false, error: 'No Google account was given to share with.' }
+  const res = await googleJson(
+    `${DRIVE_API}/${encodeURIComponent(sheetId)}/permissions`
+    + '?sendNotificationEmail=false&supportsAllDrives=true'
+    + '&fields=' + encodeURIComponent('id,emailAddress,role,type'),
+    accessToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({ role, type: 'user', emailAddress: address }),
+    },
+  )
+  if (!res.ok) {
+    const problem = describeApiProblem(res.status, res.body)
+    return {
+      ok: false,
+      status: res.status,
+      reason: problem.reason,
+      error: problem.message,
+      email: address,
+    }
+  }
+  return {
+    ok: true,
+    email: address,
+    role,
+    permissionId: String(res.body?.id ?? ''),
+    at: new Date().toISOString(),
+  }
+}
+
+/**
+ * Is this spreadsheet already shared with that account?
+ *
+ * Read-only; used by the panel to tell the truth instead of claiming a share
+ * that Google does not have. A failure returns `null`, which the caller shows
+ * as "could not check" rather than "not shared".
+ */
+export async function findSharingPermission(accessToken, sheetId, email) {
+  const res = await googleJson(
+    `${DRIVE_API}/${encodeURIComponent(sheetId)}/permissions`
+    + '?fields=' + encodeURIComponent('permissions(id,emailAddress,role,type)'),
+    accessToken,
+  )
+  if (!res.ok) return null
+  const wanted = String(email || '').trim().toLowerCase()
+  const list = Array.isArray(res.body?.permissions) ? res.body.permissions : []
+  return list.find((p) => String(p?.emailAddress || '').toLowerCase() === wanted) || null
+}
+
+/** The first row of a tab, or null when Google would not read it. */
+export async function readSheetHeader(accessToken, sheetId, tab) {
+  const values = await readRange(accessToken, sheetId, tab, 'A1:ZZ1')
+  if (values === null) return null
+  return Array.isArray(values[0]) ? values[0] : []
+}
+
+/** The layout of a sheet — new, legacy, empty or somebody else's data. */
+export async function sheetLayoutOf(accessToken, sheetId, tab) {
+  const header = await readSheetHeader(accessToken, sheetId, tab)
+  if (header === null) return null
+  return { header, layout: detectSheetLayout(header) }
+}
+
+/**
+ * Append rows to a spreadsheet.
+ *
+ * RAW on purpose: an Order ID such as `03112601` must keep its leading zero,
+ * and a customer note that begins with "=" must stay text instead of becoming
+ * a formula. `USER_ENTERED` parses the value first and loses both.
+ */
 export async function appendRows(accessToken, sheetId, tab, values) {
   const range = `${encodeURIComponent(tab)}!A1`
   const url = `${SHEETS_API}/${encodeURIComponent(sheetId)}/values/${range}:append`
-    + '?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS'
+    + '?valueInputOption=RAW&insertDataOption=INSERT_ROWS'
   return googleJson(url, accessToken, { method: 'POST', body: JSON.stringify({ values }) })
 }
 
@@ -377,27 +496,43 @@ export function columnName(index) {
 }
 
 /**
- * Name the columns a sheet does not have yet.
+ * Put the column names in the first row of a sheet.
  *
- * The export appends, so a sheet that already has rows keeps the first row it
- * was given. If a column has been added since that sheet was created — the
- * Product ID and the colour — its heading would be missing, and a sheet with
- * a blank heading over real data is worse than no sheet at all. This writes
- * ONLY the missing headings, into the cells after the ones already there, and
- * changes nothing else.
- *
- * The first row is only treated as a heading when it really is one — the
- * export's own first column. A sheet whose first row is data is left exactly
- * as it is.
+ * Three cases, all safe:
+ *   * an empty sheet gets its full header — the layout that header describes
+ *     is the one the export then writes;
+ *   * a sheet made by this version keeps its header, and only headings added
+ *     later are appended to the right of the existing ones;
+ *   * a sheet whose first cell is somebody else's data is left untouched. The
+ *     export refuses it before calling this, so nothing is overwritten.
  */
 export async function ensureSheetHeader(accessToken, sheetId, tab, columns) {
   const names = Array.isArray(columns) ? columns : []
   if (!names.length) return { ok: true, written: 0 }
   const header = await readRange(accessToken, sheetId, tab, 'A1:ZZ1')
-  const first = header && header.length ? (header[0] || []) : []
-  // Only a real heading row is extended.
-  if (!first.length || String(first[0] || '').trim() !== String(names[0] || '').trim()) {
-    return { ok: true, written: 0 }
+  if (header === null) return { ok: false, written: 0, status: 0 }
+  const first = header.length ? (header[0] || []) : []
+  const firstCell = String(first[0] || '').trim()
+
+  if (!firstCell) {
+    // Empty sheet: write the whole header in one go. A blank first row with
+    // data underneath would be unusual; refusing to touch anything but a
+    // truly blank row keeps that from being overwritten.
+    const second = await readRange(accessToken, sheetId, tab, 'A1:A2')
+    const secondCell = second && second[1] ? String(second[1][0] || '').trim() : ''
+    if (secondCell) return { ok: true, written: 0, layoutMismatch: true }
+    const res = await updateRange(accessToken, sheetId, tab, 'A1', [names])
+    if (!res.ok) {
+      console.warn('[google-sheets] could not write the header:', res.status,
+        JSON.stringify(res.body || {}).slice(0, 300))
+    }
+    return { ok: !!res.ok, written: res.ok ? names.length : 0, status: res.status, headerWritten: !!res.ok }
+  }
+
+  // A header of a different layout is not extended: that would mix the two
+  // schemas in one row. The caller has already chosen the matching columns.
+  if (firstCell !== String(names[0] || '').trim()) {
+    return { ok: true, written: 0, layoutMismatch: true }
   }
   const missing = names.slice(first.length).filter(Boolean)
   if (!missing.length) return { ok: true, written: 0 }
@@ -439,9 +574,10 @@ export async function loadOrdersForExport(baseUrl, serviceKey, ids) {
 /**
  * Write the orders to a spreadsheet.
  *
- * One row per line item, the order's money repeated on every item row, the
- * header row only with the first export, and the orders that are already in
- * the sheet left out unless the owner asks for them again.
+ * A new sheet gets one row per order. A legacy sheet keeps its old shape. The
+ * orders already in the ledger are left out unless the owner explicitly asks
+ * for a refresh; even then they are NEVER appended a second time — they are
+ * updated in the rows they already occupy.
  *
  * Nothing is reported as done unless Google accepted the rows: the answer
  * carries the range and the row count Google itself confirmed.
@@ -455,39 +591,117 @@ export async function exportOrdersToSheet({
   includeExported = false,
   filters = {},
 }) {
-  const { fresh, repeated } = duplicatesAmong(orders, alreadyExported)
-  const sending = includeExported ? orders : fresh
+  const detected = await sheetLayoutOf(accessToken, sheetId, tab)
+  if (!detected) {
+    return {
+      ok: false,
+      status: 502,
+      body: { error: 'sheet_unreadable' },
+      message: 'Google would not open that spreadsheet just now. Please try again.',
+    }
+  }
+  if (detected.layout === 'unknown') {
+    return {
+      ok: false,
+      status: 409,
+      body: { error: 'unsupported_layout' },
+      message: 'That spreadsheet already has different columns in its first row. '
+        + 'Choose an empty spreadsheet, or press “Create Ruhi Collections – Orders”.',
+    }
+  }
+  const layout = detected.layout === 'empty' ? ORDER_LAYOUT : detected.layout
+  const columns = sheetColumnsFor(layout)
 
-  if (!sending.length) {
+  const { fresh, repeated } = duplicatesAmong(orders, alreadyExported)
+  // A fresh order is appended; an order the sheet already holds is NEVER
+  // appended again. When the owner asks for a refresh, those repeated orders
+  // have the rows they already occupy brought up to date instead.
+  const sending = fresh
+  const refreshing = includeExported ? repeated : []
+
+  if (!sending.length && !refreshing.length) {
     return {
       ok: true,
       orders: 0,
       rows: 0,
       skipped: repeated.length,
+      layout,
       message: 'Every order in this view is already in that spreadsheet.',
     }
   }
 
-  // A sheet that already has rows keeps its first row, so the headings of any
-  // column added since are written into it before the new rows go in.
-  const heading = await ensureSheetHeader(accessToken, sheetId, tab, SHEET_COLUMNS)
-
-  const values = buildSheetValues(sending, filters, {
-    includeHeaders: alreadyExported.length === 0,
-  })
-  const written = await appendRows(accessToken, sheetId, tab, values)
-  if (!written.ok) {
-    return { ok: false, status: written.status, body: written.body }
+  const heading = await ensureSheetHeader(accessToken, sheetId, tab, columns)
+  if (heading && heading.layoutMismatch) {
+    return {
+      ok: false,
+      status: 409,
+      body: { error: 'unsupported_layout' },
+      message: 'That spreadsheet has different columns in its first row. '
+        + 'Choose an empty spreadsheet, or press “Create Ruhi Collections – Orders”.',
+    }
   }
 
-  const updates = written.body && written.body.updates
+  // The header is written by ensureSheetHeader; the append carries data only.
+  let written = null
+  if (sending.length) {
+    const values = buildSheetValues(sending, filters, { includeHeaders: false, layout })
+    written = await appendRows(accessToken, sheetId, tab, values)
+    if (!written.ok) {
+      return { ok: false, status: written.status, body: written.body, layout }
+    }
+  }
+
+  let refreshed = 0
+  if (refreshing.length) {
+    const references = await readRange(accessToken, sheetId, tab, 'A1:A5000')
+    const rowMap = new Map()
+    const put = (key, row) => {
+      if (!key) return
+      const list = rowMap.get(key) || []
+      list.push(row)
+      rowMap.set(key, list)
+    }
+    // Sheets can hand an Order ID back as a number, which loses a leading zero
+    // (03112601 → 3112601). The same order is still matched under both forms
+    // so an old row is updated in place instead of being appended again.
+    for (let i = 0; i < (references || []).length; i += 1) {
+      const cell = references[i]?.[0]
+      for (const key of orderIdKeys(cell)) put(key, i + 1)
+    }
+    for (const order of refreshing) {
+      const wanted = new Set()
+      for (const value of [order.reference, order.previous_reference]) {
+        for (const key of orderIdKeys(value)) {
+          for (const row of rowMap.get(key) || []) wanted.add(row)
+        }
+      }
+      const rows = [...wanted]
+      const lineValues = layout === LEGACY_LAYOUT ? legacyOrderRows(order) : orderRows(order)
+      if (!rows.length || !lineValues.length) continue
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i]
+        const line = lineValues[Math.min(i, lineValues.length - 1)]
+        const last = columnName(line.length - 1)
+        await updateRange(accessToken, sheetId, tab, `A${row}:${last}${row}`, [line])
+      }
+      refreshed += 1
+    }
+  }
+
+  const updates = written?.body && written.body.updates
   return {
     ok: true,
     orders: sending.length,
-    rows: values.length,
+    rows: sending.length ? buildSheetValues(sending, filters, { includeHeaders: false, layout }).length : 0,
     skipped: repeated.length,
+    refreshed,
+    layout,
     headingsWritten: heading?.written || 0,
+    headerWritten: !!heading?.headerWritten,
     range: updates && typeof updates.updatedRange === 'string' ? updates.updatedRange : null,
     orderIds: sending.map((o) => String(o.id)),
+    message: sending.length
+      ? undefined
+      : `Refreshed ${refreshed} ${refreshed === 1 ? 'order' : 'orders'} already in that spreadsheet — no duplicate rows were added.`,
   }
 }

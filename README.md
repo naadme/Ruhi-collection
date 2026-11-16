@@ -54,6 +54,7 @@ as long as you never add a `VITE_` prefix to it.
 | `GOOGLE_CLIENT_SECRET` | Supabase secret | The matching OAuth client secret |
 | `GOOGLE_TOKEN_KEY` | Supabase secret | A long random string of this project's own: the owner's Google tokens are stored AES-256-GCM encrypted with it, in `google_sheets_connections` (RLS on, no policy — only the service role reads it) |
 | `GOOGLE_ADMIN_URL` | Supabase secret (optional) | The storefront URL Google sends the owner back to. Unset ⇒ `https://www.ruhi-collections.com` |
+| `GOOGLE_SHEET_CLIENT_EMAIL` | Supabase secret (optional) | The public Google account the orders spreadsheet is shared with. Unset ⇒ `ruhicollections2026@gmail.com`. Not a credential |
 | `GOOGLE_SHEETS_SYNC_SECRET` | Supabase secret + Vercel env | Shared secret between Vercel's daily job and the `google-sheets-sync` Edge Function |
 | `SUPABASE_FUNCTIONS_URL` | Vercel env | `https://<ref>.supabase.co` — where the daily job posts to |
 
@@ -225,44 +226,152 @@ Without the secret it answers `401` — the function is not a mail relay and can
 at an address of someone else's choosing. An order that has already been announced answers
 `already-sent` and sends nothing, however many times you ask.
 
-### Google Sheets — the daily order sheet
+### Google Sheets — the orders sheet
+
+The dashboard has a green **Google Sheets – Orders** button. Once the one-time
+setup is done it opens the real spreadsheet; before that it starts the same
+one-time Google sign-in instead of being a dead link.
 
 The owner connects their own Google account in **Admin → Orders → Google
-Sheets**. Once connected, the sheet is kept up to date **without anyone
-pressing "Export"**:
+Sheets**. The spreadsheet is created with the exact name
+**`Ruhi Collections – Orders`** (an en dash) and lives in the owner's own
+Drive. It is shared as a **writer** with **`ruhicollections2026@gmail.com`**,
+so the client opens it from her own account without the owner's password.
+`GOOGLE_SHEET_CLIENT_EMAIL` may override that address; it is a public
+identifier, never a credential.
+
+Once connected, the sheet is kept up to date **without anyone pressing
+"Export"**:
 
 - **When a payment is verified** — the moment an order is paid, the order is
   sent to the sheet (the payment functions call the sync directly). The sheet
   is a record of the order, not a part of the payment: a sheet that cannot be
   reached is logged and the payment still stands.
-- **Once a day** — a scheduled job (`vercel.json` → `crons` → `/api/google-sheets-sync`,
-  06:00 UTC) asks the `google-sheets-sync` Edge Function to send anything the
-  event-driven path missed, and to update the rows whose status has changed.
+- **When the owner changes an order's status** — the admin panel asks the sync
+  to update that row immediately.
+- **Once a day** — a scheduled job (`vercel.json` → `crons` →
+  `/api/google-sheets-sync`, 06:00 UTC) asks the `google-sheets-sync` Edge
+  Function to send anything the event-driven path missed, and to update the
+  rows whose status has changed.
 
 A Google call that is refused with a `429` or a `503` is asked again two more
 times, a beat apart — those two answers are given *before* Google carries out
 the request, so retrying them cannot put the same orders in the sheet twice.
 Anything else (a typo'd range, a revoked token, a dropped connection on a
 write) is reported instead of retried, and the next day's run — or the
-**Export** button — is the reliable retry for it.
+**Sync now** / **Export** button — is the reliable retry for it.
 
-**No order is ever sent twice.** The ledger `public.order_sheet_exports` has
-one row per (sheet, order) and its primary key is the guard; the ledger row is
+**One order is one row, and no order is ever sent twice.** The sheet's columns
+are, in order:
+
+| # | Column |
+| --- | --- |
+| A | Order ID |
+| B | Date |
+| C | Customer Name |
+| D | Phone |
+| E | Email |
+| F | Products (every line, joined) |
+| G | Quantity (pieces in the whole order) |
+| H | Total Amount |
+| I | Payment Status |
+| J | Order Status |
+
+Useful context follows after column J: payment method, address, city, state,
+pincode, subtotal, discount, coupon, shipping, Razorpay order and payment ids,
+note, Product ID and colour. The ledger `public.order_sheet_exports` has one
+row per (sheet, order) and its primary key is the guard; the ledger row is
 written only after Google has accepted the rows, so a crash in between sends
-the order again rather than losing it.
+the order again rather than losing it. A retry, a status change or **Sync now**
+finds the row by its Order ID and updates it in place — it never appends a
+second row. Ticking **Refresh the rows of orders already in the spreadsheet**
+does exactly that, and still adds no duplicate.
 
-**The sheet keeps every row it already has.** The export only appends, and a
-column that is added later is written into the sheet's first row — the
-existing data never moves.
+Sheets made by the previous version of this feature keep their original
+line-by-line layout: the header row is detected and the old shape is preserved,
+so existing data never moves. A spreadsheet with somebody else's columns is
+refused rather than overwritten.
 
-**What the sheet holds:** Order ID, order date and time (the shop's own clock),
-status, payment status and method, the customer's name, email, phone and
-address, and then one row per line item with the product name, the Product ID,
-the colour, the size, the quantity, the item price and the line total — with
-the order's money repeated on every item row.
+**The admin panel shows the truth:** the real layout, whether Google confirms
+the client's access, when the last automatic sync ran, how many orders it sent,
+and the reason if it could not finish.
 
-**The admin panel shows the truth:** when the last automatic sync ran, how many
-orders it sent, and the reason if it could not finish.
+#### One-time setup
+
+The Sheets integration uses its **own, dedicated** Google OAuth client. It is
+not the client the website uses for **Continue with Google**, and the setup
+never reads or changes **Supabase → Authentication → Sign In → Google**. The
+storefront sign-in therefore keeps working exactly as it did.
+
+1. In Google Cloud → **APIs & Services → Credentials**, create a **new Web
+   application** OAuth client just for Sheets (for example “Ruhi Collections –
+   Sheets”). Register the callback URL:
+
+   ```
+   https://<ref>.supabase.co/functions/v1/google-sheets-callback
+   ```
+
+2. Enable the **Google Sheets API** and the **Google Drive API** for that
+   project.
+
+3. Apply the migrations (`supabase db push` or the SQL in
+   `supabase/migrations/`).
+
+4. Run the setup script from the repository root:
+
+   ```bash
+   node scripts/google-sheets-setup.mjs
+   ```
+
+   It asks for the dedicated **Sheets Client ID** and **Client secret** at
+   hidden prompts, has Google verify the pair and the callback URL, and only
+   then stores them as the Edge Function secrets `GOOGLE_CLIENT_ID` and
+   `GOOGLE_CLIENT_SECRET`. The secret is never printed, logged or written to
+   disk. Use `node scripts/google-sheets-setup.mjs --check` to see which
+   secret names exist without entering anything (Supabase returns the values
+   masked, so only a full run can verify the pair).
+
+   `GOOGLE_TOKEN_KEY` must already exist and must never change, or existing
+   encrypted Google connections cannot be read. If it is missing, create one
+   and set it once:
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+   npx -y supabase@latest secrets set --project-ref <ref> GOOGLE_TOKEN_KEY=<that value>
+   ```
+
+   The optional client address is still a public identifier, never a
+   credential:
+
+   ```bash
+   npx -y supabase@latest secrets set --project-ref <ref> \
+     GOOGLE_SHEET_CLIENT_EMAIL=ruhicollections2026@gmail.com
+   ```
+
+5. Deploy the functions that carry this code:
+
+   ```bash
+   npx supabase functions deploy google-sheets \
+     --project-ref <ref>                      # admin actions: needs the owner's session
+   npx supabase functions deploy google-sheets-callback \
+     --project-ref <ref> --no-verify-jwt      # Google's redirect: proves its `state` instead
+   npx supabase functions deploy google-sheets-sync \
+     --project-ref <ref> --no-verify-jwt      # the daily job: proves GOOGLE_SHEETS_SYNC_SECRET
+   npx supabase functions deploy verify-razorpay-payment \
+     --project-ref <ref> --no-verify-jwt      # send the order when a payment is verified
+   npx supabase functions deploy razorpay-webhook \
+     --project-ref <ref> --no-verify-jwt      # and on a webhook delivery
+   ```
+
+6. Sign in at **Admin → Orders**, press **Connect Google Sheets**, approve the
+   access once, and wait for the page that says the sheet was created and
+   shared. If the page says the share failed, press **Share with client** in
+   the panel; the owner can also share the file as an Editor from Google Drive.
+
+The panel never claims a step is done that Google did not confirm. If the
+connection later expires, it says so and offers **Connect Google Sheets**
+again; existing orders already in the sheet are found by their Order ID and
+are not duplicated when the new sheet is populated.
 
 To set the scheduled job up, two environment variables are needed — the
 project's own secret, never in the repository:
@@ -278,20 +387,6 @@ vercel env add SUPABASE_FUNCTIONS_URL production --value "https://<ref>.supabase
 
 The function refuses every caller that cannot present either that secret or a
 signed-in store owner's session.
-
-The three Google functions are deployed with the same flags the config file
-records (`supabase/config.toml`) — the sync and the callback take no JWT,
-because a cron and a Google redirect both arrive without one, and each
-proves itself another way:
-
-```bash
-npx supabase functions deploy google-sheets \
-  --project-ref <ref>                      # admin actions: needs the owner's session
-npx supabase functions deploy google-sheets-callback \
-  --project-ref <ref> --no-verify-jwt      # Google's redirect: proves its `state` instead
-npx supabase functions deploy google-sheets-sync \
-  --project-ref <ref> --no-verify-jwt      # the daily job: proves GOOGLE_SHEETS_SYNC_SECRET
-```
 
 ### Google sign-in and restricted product access
 

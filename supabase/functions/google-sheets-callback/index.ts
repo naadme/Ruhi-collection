@@ -38,10 +38,13 @@ import {
   describeApiProblem,
   exportOrdersToSheet,
   getSheetStructure,
+  listSpreadsheets,
   loadOrdersForExport,
   pickTab,
   probeGoogleApis,
+  shareSpreadsheet,
 } from '../_shared/googleSheets.mjs'
+import { DEFAULT_SHEET_TITLE } from '../_shared/sheetRows.mjs'
 
 const GOOGLE_USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo'
 
@@ -58,48 +61,23 @@ function adminUrl(): string {
   return env('GOOGLE_ADMIN_URL') || 'https://www.ruhi-collections.com/admin?section=orders'
 }
 
-/** Everything that goes into the page is escaped — no exceptions. */
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+/** The client's Google account; a public identifier, never a credential. */
+function clientSheetEmail(): string {
+  return String(env('GOOGLE_SHEET_CLIENT_EMAIL') || 'ruhicollections2026@gmail.com').trim()
 }
 
-/** A small, self-contained page. It never contains a token, a code or a state. */
-function page({ title, message, ok, admin }) {
+/** A small, self-contained text page. It never contains a token, a code or a state. */
+function page({ message, ok, admin }) {
   const heading = ok ? 'Google Sheets is connected' : 'Google Sheets was not connected'
-  const colour = ok ? '#0f7b3f' : '#b42318'
-  const button = admin
-    ? `<p style="margin:26px 0 0"><a href="${escapeHtml(admin)}"`
-      + ' style="display:inline-block;background:#000;color:#fff;text-decoration:none;'
-      + 'padding:12px 22px;border-radius:8px;font-size:15px">Back to the admin panel</a></p>'
-    : ''
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow">
-<title>${escapeHtml(heading)}</title>
-<style>
-  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#F8EDE6;
-       font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#2b2b2b}
-  .card{background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:16px;padding:32px;
-        max-width:520px;margin:24px;box-shadow:0 12px 40px rgba(74,44,35,.08)}
-  h1{font-size:22px;margin:0 0 10px}
-  p{margin:0;font-size:15px;line-height:1.6;color:#555}
-  .dot{width:12px;height:12px;border-radius:999px;background:${colour};display:inline-block;margin-right:8px}
-</style></head>
-<body><div class="card">
-  <h1><span class="dot"></span>${escapeHtml(heading)}</h1>
-  <p>${escapeHtml(message)}</p>
-  ${button}
-</div></body></html>`
+  return `${heading}\n\n${message}\n`
+    + (admin ? `\nBack to the admin panel: ${admin}\n` : '')
 }
 
-const html = (status, body) =>
-  new Response(body, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+// Supabase rewrites `text/html` responses from Edge Functions to `text/plain`.
+// Returning plain text on purpose means the owner reads a clear message
+// instead of a page of raw markup.
+const text = (status, body) =>
+  new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
 
 /** The one-time state, matched against the hash that was stored. */
 async function findState(state) {
@@ -140,7 +118,7 @@ export async function handle(req: Request): Promise<Response> {
     const authorizationError = describeAuthorizationError(params)
     if (authorizationError) {
       console.warn('[google-sheets-callback] authorization refused:', params.get('error'))
-      return html(200, page({
+      return text(200, page({
         title: 'Not connected',
         message: authorizationError,
         ok: false,
@@ -154,7 +132,7 @@ export async function handle(req: Request): Promise<Response> {
     // ---- the one-time state ---------------------------------------------
     const row = await findState(state)
     if (!row) {
-      return html(400, page({
+      return text(400, page({
         title: 'Not connected',
         message: 'This sign-in link has expired or has already been used. Please press Connect Google Sheets again.',
         ok: false,
@@ -162,7 +140,7 @@ export async function handle(req: Request): Promise<Response> {
       }))
     }
     if (row.used_at) {
-      return html(400, page({
+      return text(400, page({
         title: 'Not connected',
         message: 'This sign-in link has already been used. Please press Connect Google Sheets again.',
         ok: false,
@@ -170,7 +148,7 @@ export async function handle(req: Request): Promise<Response> {
       }))
     }
     if (new Date(String(row.expires_at)).getTime() < Date.now()) {
-      return html(400, page({
+      return text(400, page({
         title: 'Not connected',
         message: 'This sign-in link has expired. Please press Connect Google Sheets again.',
         ok: false,
@@ -197,7 +175,7 @@ export async function handle(req: Request): Promise<Response> {
       const conns = (await connRes.json().catch(() => [])) as Array<Record<string, unknown>>
       const conn = conns[0]
       if (!conn) {
-        return html(400, page({
+        return text(400, page({
           title: 'Not connected',
           message: 'There is no Google Sheets connection to check yet.',
           ok: false,
@@ -207,7 +185,7 @@ export async function handle(req: Request): Promise<Response> {
       const key = env('GOOGLE_TOKEN_KEY') ?? ''
       const accessToken = await decryptText(String(conn.access_token ?? ''), key)
       if (!accessToken) {
-        return html(400, page({
+        return text(400, page({
           title: 'Not connected',
           message: 'The stored access token could not be read.',
           ok: false,
@@ -264,7 +242,7 @@ export async function handle(req: Request): Promise<Response> {
       const line = (api: Record<string, unknown>) => (api.ok
         ? `available (HTTP ${api.status})`
         : `NOT AVAILABLE — ${String(api.message)}`)
-      return html(200, page({
+      return text(200, page({
         title: 'The Google API check',
         message: `Google Sheets API: ${line(check.sheets as Record<string, unknown>)}. `
           + `Google Drive API: ${line(check.drive as Record<string, unknown>)}. `
@@ -289,7 +267,7 @@ export async function handle(req: Request): Promise<Response> {
       const conns = (await connRes.json().catch(() => [])) as Array<Record<string, unknown>>
       const conn = conns[0]
       if (!conn) {
-        return html(400, page({
+        return text(400, page({
           title: 'Not connected',
           message: 'There is no Google Sheets connection to export with yet.',
           ok: false,
@@ -300,7 +278,7 @@ export async function handle(req: Request): Promise<Response> {
       const accessToken = await decryptText(String(conn.access_token ?? ''), key)
       const sheetId = String(conn.spreadsheet_id ?? '')
       if (!accessToken || !sheetId) {
-        return html(400, page({
+        return text(400, page({
           title: 'Not ready',
           message: 'There is no spreadsheet to export to yet.',
           ok: false,
@@ -308,7 +286,7 @@ export async function handle(req: Request): Promise<Response> {
         }))
       }
 
-      const idsRes = await serviceFetch('/rest/v1/orders?select=id&order=created_at.desc&limit=5000')
+      const idsRes = await serviceFetch('/rest/v1/orders?select=id&is_test=eq.false&order=created_at.desc&limit=5000')
       const idRows = (await idsRes.json().catch(() => [])) as Array<{ id: string }>
       const orders = await loadOrdersForExport(
         env('SUPABASE_URL') ?? '',
@@ -323,7 +301,7 @@ export async function handle(req: Request): Promise<Response> {
       const structure = await getSheetStructure(accessToken, sheetId)
       const tab = pickTab(structure, String(conn.sheet_tab ?? 'Orders'))
       if (!tab) {
-        return html(400, page({
+        return text(400, page({
           title: 'Not ready',
           message: 'That spreadsheet has no tabs to write to.',
           ok: false,
@@ -343,7 +321,7 @@ export async function handle(req: Request): Promise<Response> {
       if (!result.ok) {
         const problem = describeApiProblem(result.status, result.body, env('GOOGLE_CLIENT_ID') ?? '')
         console.warn('[google-sheets-callback] the export was refused:', result.status, problem.reason)
-        return html(502, page({
+        return text(502, page({
           title: 'The export failed',
           message: problem.message,
           ok: false,
@@ -373,7 +351,7 @@ export async function handle(req: Request): Promise<Response> {
         })
       }
 
-      return html(200, page({
+      return text(200, page({
         title: 'The export',
         message: result.orders
           ? `Google confirmed ${result.rows} row(s) written to ${result.range} — ${result.orders} order(s) sent`
@@ -386,7 +364,7 @@ export async function handle(req: Request): Promise<Response> {
 
     // ---- a sign-in that never happened ----------------------------------
     if (!code) {
-      return html(400, page({
+      return text(400, page({
         title: 'Not connected',
         message: 'Google did not send an authorisation code back. Please press Connect Google Sheets again.',
         ok: false,
@@ -400,7 +378,7 @@ export async function handle(req: Request): Promise<Response> {
     const key = env('GOOGLE_TOKEN_KEY') ?? ''
     if (!clientId || !clientSecret || !key) {
       console.warn('[google-sheets-callback] the Google side is not configured')
-      return html(501, page({
+      return text(501, page({
         title: 'Not connected',
         message: 'This project is not set up for Google Sheets yet. Please ask the developer to finish the setup.',
         ok: false,
@@ -428,7 +406,7 @@ export async function handle(req: Request): Promise<Response> {
         : reason === 'redirect_uri_mismatch'
           ? 'Google does not accept this callback URL for the OAuth client, so the sign-in was refused. The callback URL has to be registered first.'
           : 'Google did not accept the sign-in. Please press Connect Google Sheets and try again.'
-      return html(400, page({
+      return text(400, page({
         title: 'Not connected',
         message,
         ok: false,
@@ -438,7 +416,7 @@ export async function handle(req: Request): Promise<Response> {
 
     const tokens = readTokenResponse(body)
     if (!tokens) {
-      return html(400, page({
+      return text(400, page({
         title: 'Not connected',
         message: 'Google did not return an access token. Please try again.',
         ok: false,
@@ -481,48 +459,80 @@ export async function handle(req: Request): Promise<Response> {
     })
 
     // ---- and a destination, so there is nothing left to set up -----------
-    // A spreadsheet of the owner's own, with the tab the export writes to.
+    // The client's sheet has a fixed name. Reconnecting an old connection
+    // therefore switches to that sheet (reusing it if it already exists)
+    // instead of silently carrying on with a differently-shaped spreadsheet.
     // If this fails the owner can still create one from the panel; the
     // connection itself is already saved either way.
     let sheetTitle = ''
+    let sheetUrl = ''
+    let shareNote = ''
     try {
-      const created = hadDestination
+      const existingList = await listSpreadsheets(tokens.accessToken)
+      const matching = existingList.find((s) => s.title === DEFAULT_SHEET_TITLE)
+      const destination = hadDestination && String(beforeRows[0]?.spreadsheet_title || '') === DEFAULT_SHEET_TITLE
         ? null
-        : await createSheetWithTab(tokens.accessToken, 'Ruhi Collection — Orders')
-      if (created?.error) {
+        : matching || await createSheetWithTab(tokens.accessToken, DEFAULT_SHEET_TITLE)
+
+      if (destination && destination.error) {
         // The spreadsheet could not be made (usually: the Google Sheets API is
         // not enabled on the project). The connection is saved either way, and
         // the panel can create the sheet once the API is on.
-        const problem = describeApiProblem(created.error.status, created.error.body, env('GOOGLE_CLIENT_ID') ?? '')
-        console.warn('[google-sheets-callback] the destination could not be created:', created.error.status, problem.reason)
-      } else if (created) {
-        sheetTitle = created.title
+        const problem = describeApiProblem(destination.error.status, destination.error.body, env('GOOGLE_CLIENT_ID') ?? '')
+        console.warn('[google-sheets-callback] the destination could not be created:', destination.error.status, problem.reason)
+      } else if (destination) {
+        sheetTitle = destination.title
+        sheetUrl = `https://docs.google.com/spreadsheets/d/${destination.id}`
         await serviceFetch('/rest/v1/google_sheets_connections?on_conflict=owner_id', {
           method: 'POST',
           headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
           body: JSON.stringify({
             owner_id: String(row.owner_id),
-            spreadsheet_id: created.id,
-            spreadsheet_title: created.title,
-            sheet_tab: created.tab,
+            spreadsheet_id: destination.id,
+            spreadsheet_title: destination.title,
+            sheet_tab: destination.tab,
           }),
         })
+
+        // The client opens this sheet from her own Google account. A failure
+        // is reported on the page, never hidden and never a reason to lose
+        // the connection.
+        const clientEmail = clientSheetEmail()
+        const shared = await shareSpreadsheet(tokens.accessToken, destination.id, clientEmail)
+        await serviceFetch('/rest/v1/google_sheets_connections?owner_id=eq.'
+          + encodeURIComponent(String(row.owner_id)), {
+          method: 'PATCH',
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify(shared.ok
+            ? {
+              shared_with_email: clientEmail,
+              shared_at: new Date().toISOString(),
+              share_error: null,
+            }
+            : {
+              shared_with_email: clientEmail,
+              share_error: String(shared.error || 'Google refused the share.'),
+            }),
+        })
+        shareNote = shared.ok
+          ? ` It has been shared with ${clientEmail}.`
+          : ` It could not be shared with ${clientEmail} yet — open the sheet and share it as an Editor, or press “Share with client” in the panel.`
       }
     } catch {
       console.warn('[google-sheets-callback] the destination spreadsheet could not be created')
     }
 
-    return html(200, page({
+    return text(200, page({
       title: 'Connected',
       message: `Google Sheets is now connected${profile.email ? ` to ${profile.email}` : ''}. `
         + (sheetTitle
-          ? `A spreadsheet called “${sheetTitle}” has been created in your Drive and set as the destination.`
+          ? `The spreadsheet “${sheetTitle}” is in your Drive and set as the destination.${shareNote}`
           : hadDestination
             ? 'Your spreadsheet is still the destination, so nothing was changed.'
             : 'Go back to the admin panel and choose the spreadsheet the orders should go to.')
-        + ' Press “Export to Google Sheets” to send the orders on screen.',
+        + ' New orders will be added automatically, and “Google Sheets – Orders” opens it from the admin dashboard.',
       ok: true,
-      admin: adminUrl(),
+      admin: sheetUrl ? `${adminUrl()}` : adminUrl(),
     }))
   } catch (error) {
     console.warn('[google-sheets-callback] failed:', String(error))

@@ -53,13 +53,17 @@ import {
   createSheetWithTab,
   describeApiProblem,
   exportOrdersToSheet,
+  findSharingPermission,
   getSheetStructure,
   getSpreadsheet,
   listSpreadsheets,
   pickTab,
   probeGoogleApis,
   readRange,
+  shareSpreadsheet,
+  sheetLayoutOf,
 } from '../_shared/googleSheets.mjs'
+import { DEFAULT_SHEET_TITLE } from '../_shared/sheetRows.mjs'
 
 const GOOGLE_REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke'
 const STATE_TTL_MS = 10 * 60 * 1000
@@ -79,6 +83,45 @@ export function callbackUrl(): string {
 /** Where the owner is sent once the sign-in is done. */
 function adminUrl(): string {
   return env('GOOGLE_ADMIN_URL') || 'https://www.ruhi-collections.com/admin?section=orders'
+}
+
+/**
+ * The client's Google account. The owner's own Drive holds the file; this is
+ * the account it is shared with so the client can open it without asking for
+ * the owner's password. It is a public identifier, not a credential.
+ */
+function clientSheetEmail(): string {
+  return String(env('GOOGLE_SHEET_CLIENT_EMAIL') || 'ruhicollections2026@gmail.com').trim()
+}
+
+/** A conservative check, so a typo is refused before Google sees it. */
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)
+}
+
+/** Share the destination with the client, and remember what Google said. */
+async function shareWithClient(
+  conn: Json,
+  token: string,
+  sheetId: string,
+  email = clientSheetEmail(),
+): Promise<Json> {
+  const address = String(email || '').trim()
+  if (!looksLikeEmail(address)) {
+    return { ok: false, email: address, error: 'That is not a valid Google account email address.' }
+  }
+  const result = await shareSpreadsheet(token, sheetId, address)
+  await patchConnection(String(conn.id), result.ok
+    ? {
+      shared_with_email: address,
+      shared_at: new Date().toISOString(),
+      share_error: null,
+    }
+    : {
+      shared_with_email: address,
+      share_error: String(result.error || 'Google refused the share.'),
+    })
+  return result
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +369,29 @@ async function actionStatus(userId: string): Promise<Response> {
     /* the check is a convenience; never let it break the panel */
   }
 
+  // What the destination really looks like: its current layout and whether
+  // the client's account can open it. Both are read from Google, so the panel
+  // can never claim something the sheet does not have.
+  let layout = ''
+  let sharing = null
+  if (conn.spreadsheet_id) {
+    try {
+      const destination = await sheetLayoutOf(token, String(conn.spreadsheet_id), String(conn.sheet_tab ?? DEFAULT_TAB))
+      layout = destination?.layout ?? ''
+    } catch {
+      /* the status is still useful without it */
+    }
+    try {
+      sharing = await findSharingPermission(
+        token,
+        String(conn.spreadsheet_id),
+        String(conn.shared_with_email || clientSheetEmail()),
+      )
+    } catch {
+      sharing = null
+    }
+  }
+
   return json(200, {
     ok: true,
     connected: true,
@@ -335,6 +401,15 @@ async function actionStatus(userId: string): Promise<Response> {
     spreadsheet: conn.spreadsheet_id
       ? { id: conn.spreadsheet_id, title: conn.spreadsheet_title ?? '', tab: conn.sheet_tab ?? DEFAULT_TAB }
       : null,
+    sheetLayout: layout,
+    share: {
+      email: String(conn.shared_with_email || clientSheetEmail()),
+      at: conn.shared_at ?? null,
+      error: conn.share_error ?? null,
+      // `null` means Google could not be asked; `false` means it said no.
+      shared: sharing ? true : (conn.share_error ? false : null),
+      role: sharing?.role ?? null,
+    },
     // What the last export actually did, as Google confirmed it.
     lastExport: {
       at: conn.last_export_at ?? null,
@@ -385,7 +460,7 @@ async function actionCreateSheet(userId: string, body: Json): Promise<Response> 
   const token = await ensureToken(conn)
   if (!token) return fail(401, 'Your Google connection has expired. Please connect Google Sheets again.')
 
-  const title = safeSheetTitle(asString(body.name), 'Ruhi Collection — Orders')
+  const title = safeSheetTitle(asString(body.name), DEFAULT_SHEET_TITLE)
 
   // Idempotent: if this app already made a spreadsheet with that name, that
   // one is used again. Pressing the button twice — or pressing it again
@@ -395,15 +470,18 @@ async function actionCreateSheet(userId: string, body: Json): Promise<Response> 
   if (existing) {
     const structure = await getSheetStructure(token, existing.id)
     const tab = pickTab(structure, String(conn.sheet_tab ?? DEFAULT_TAB))
+    const tabTitle = tab ? tab.title : DEFAULT_TAB
     await patchConnection(String(conn.id), {
       spreadsheet_id: existing.id,
       spreadsheet_title: existing.title,
-      sheet_tab: tab ? tab.title : DEFAULT_TAB,
+      sheet_tab: tabTitle,
     })
+    const share = await shareWithClient(conn, token, existing.id, clientSheetEmail())
     return json(200, {
       ok: true,
       reused: true,
-      spreadsheet: { id: existing.id, title: existing.title, tab: tab ? tab.title : DEFAULT_TAB },
+      spreadsheet: { id: existing.id, title: existing.title, tab: tabTitle },
+      share,
       url: `https://docs.google.com/spreadsheets/d/${existing.id}`,
     })
   }
@@ -436,10 +514,17 @@ async function actionCreateSheet(userId: string, body: Json): Promise<Response> 
     spreadsheet_title: created.title,
     sheet_tab: created.tab,
   })
+  const share = await shareWithClient(
+    { ...conn, spreadsheet_id: created.id },
+    token,
+    created.id,
+    clientSheetEmail(),
+  )
   return json(200, {
     ok: true,
     reused: false,
     spreadsheet: { id: created.id, title: created.title, tab: created.tab },
+    share,
     url: `https://docs.google.com/spreadsheets/d/${created.id}`,
   })
 }
@@ -472,15 +557,66 @@ async function actionSelectSheet(userId: string, body: Json): Promise<Response> 
   const tab = pickTab(structure, DEFAULT_TAB)
   const tabTitle = tab ? tab.title : DEFAULT_TAB
 
+  // Refuse somebody else's data before it is remembered as the destination:
+  // the export must never append this app's columns underneath a different
+  // header. An empty sheet is fine — the header is written on first use.
+  const layout = await sheetLayoutOf(token, sheetId, tabTitle)
+  if (!layout) {
+    return fail(502, 'Google would not read that spreadsheet just now. Please try again.')
+  }
+  if (layout.layout === 'unknown') {
+    return fail(400, 'That spreadsheet already has different columns in its first row. '
+      + 'Choose an empty spreadsheet, or press “Create Ruhi Collections – Orders”.')
+  }
+
   await patchConnection(String(conn.id), {
     spreadsheet_id: sheetId,
     spreadsheet_title: title,
     sheet_tab: tabTitle,
   })
+  const share = await shareWithClient(conn, token, sheetId, clientSheetEmail())
   return json(200, {
     ok: true,
     spreadsheet: { id: sheetId, title, tab: tabTitle },
+    layout: layout.layout,
+    share,
     url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
+  })
+}
+
+/**
+ * Share the destination with the client's Google account.
+ *
+ * The default is the client's address; an explicit one may be passed by the
+ * owner. The file still belongs to the owner's Drive — this only adds the
+ * client as a writer, which is what lets her open the button's link.
+ */
+async function actionShare(userId: string, body: Json): Promise<Response> {
+  const conn = await loadConnection(userId)
+  if (!conn) return fail(400, 'Connect Google Sheets first.')
+  const sheetId = String(conn.spreadsheet_id ?? '')
+  if (!sheetId) return fail(400, 'Choose a spreadsheet to share first.')
+  const token = await ensureToken(conn)
+  if (!token) {
+    return json(401, {
+      error: 'Your Google connection has expired. Please connect Google Sheets again.',
+      needsReconnect: true,
+    })
+  }
+  const email = asString(body.email) || clientSheetEmail()
+  const result = await shareWithClient(conn, token, sheetId, email)
+  if (!result.ok) {
+    return json(result.reason === 'not_permitted' ? 403 : 502, {
+      error: String(result.error || 'Google refused to share the spreadsheet.'),
+      email: result.email ?? email,
+      needsReconnect: false,
+    })
+  }
+  return json(200, {
+    ok: true,
+    email: result.email ?? email,
+    role: result.role ?? 'writer',
+    at: result.at ?? new Date().toISOString(),
   })
 }
 
@@ -595,7 +731,7 @@ async function actionExport(userId: string, body: Json): Promise<Response> {
         needsReconnect: described.needsReconnect,
       })
     }
-    if (!written.orders) {
+    if (!written.orders && !written.refreshed) {
       return json(200, {
         ok: true,
         orders: 0,
@@ -606,32 +742,37 @@ async function actionExport(userId: string, body: Json): Promise<Response> {
       })
     }
 
-    // What Google itself said it wrote — the range and the number of rows.
-    // The panel shows it, and it is the receipt that the export really
-    // happened rather than merely being attempted.
-    await patchConnection(String(conn.id), {
-      last_export_at: new Date().toISOString(),
-      last_export_orders: written.orders,
-      last_export_rows: written.rows,
-      last_export_range: written.range ?? null,
-    })
+    if (written.orders) {
+      // What Google itself said it wrote — the range and the number of rows.
+      // The panel shows it, and it is the receipt that the export really
+      // happened rather than merely being attempted.
+      await patchConnection(String(conn.id), {
+        last_export_at: new Date().toISOString(),
+        last_export_orders: written.orders,
+        last_export_rows: written.rows,
+        last_export_range: written.range ?? null,
+      })
 
-    // Only now is the order marked as exported: if Google refused the rows,
-    // they must still be exportable next time.
-    const batchId = crypto.randomUUID()
-    await serviceFetch('/rest/v1/order_sheet_exports', {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(
-        (written.orderIds || []).map((id) => ({ sheet_id: sheetId, order_id: id, batch_id: batchId })),
-      ),
-    })
+      // Only now is the order marked as exported: if Google refused the rows,
+      // they must still be exportable next time.
+      const batchId = crypto.randomUUID()
+      await serviceFetch('/rest/v1/order_sheet_exports', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(
+          (written.orderIds || []).map((id) => ({ sheet_id: sheetId, order_id: id, batch_id: batchId })),
+        ),
+      })
+    }
 
     return json(200, {
       ok: true,
       orders: written.orders,
       rows: written.rows,
       skipped: written.skipped,
+      refreshed: written.refreshed || 0,
+      layout: written.layout || '',
+      message: written.message,
       url: `https://docs.google.com/spreadsheets/d/${sheetId}`,
     })
   } finally {
@@ -667,6 +808,7 @@ export async function handle(req: Request): Promise<Response> {
       case 'list-sheets': return actionListSheets(who.id)
       case 'create-sheet': return actionCreateSheet(who.id, body)
       case 'select-sheet': return actionSelectSheet(who.id, body)
+      case 'share': return actionShare(who.id, body)
       case 'export': return actionExport(who.id, body)
       case 'preview': return actionPreview(who.id)
       default:

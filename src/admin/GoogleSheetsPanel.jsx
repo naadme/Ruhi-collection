@@ -9,8 +9,10 @@
 // Function. This component only ever shows what the server tells it.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ExternalLink, Loader2, Link2, Plus, RefreshCw, Sheet, Unlink } from 'lucide-react'
-import { sheetsAction } from '../lib/googleSheets'
+import { ExternalLink, Loader2, Link2, Plus, RefreshCw, Share2, Sheet, Unlink } from 'lucide-react'
+import { CLIENT_SHEET_EMAIL, sheetsAction, shareSheet, syncSheetsNow } from '../lib/googleSheets'
+
+const REQUIRED_SHEET_NAME = 'Ruhi Collections – Orders'
 
 const inputCls =
   'h-[42px] rounded-lg border border-black/30 px-3 text-[14px] bg-white outline-none focus:border-black focus:ring-2 focus:ring-black/10 placeholder:text-black/35'
@@ -22,7 +24,10 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
   const [state, setState] = useState({
     status: null, busy: '', error: '', setup: null, setupLinks: null, url: '', preview: null,
   })
-  const [sheetName, setSheetName] = useState('')
+  // The client's sheet has one exact name, so the field starts with it: the
+  // owner presses "Create spreadsheet" and gets the spreadsheet the client was
+  // told about, without having to type an en dash.
+  const [sheetName, setSheetName] = useState(REQUIRED_SHEET_NAME)
   const [sheetLink, setSheetLink] = useState('')
   const [includeExported, setIncludeExported] = useState(false)
 
@@ -31,6 +36,11 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
   const sheets = Array.isArray(status?.sheets) ? status.sheets : []
   const destination = status?.spreadsheet || null
   const busy = state.busy
+  const share = status?.share || null
+  const layout = status?.sheetLayout || ''
+  const openUrl = destination?.id
+    ? `https://docs.google.com/spreadsheets/d/${destination.id}`
+    : (state.url || '')
 
   /**
    * Every action goes through here, so the spinner ALWAYS goes away —
@@ -142,6 +152,25 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
     return selectSheet(link)
   }
 
+  // ---- sharing it with the client -----------------------------------------
+  // The file stays in the owner's Drive; this gives the client's own Google
+  // account access, so the client can open it without the owner's password.
+  const shareWithClient = () => run('share', async () => {
+    const result = await shareSheet()
+    await load()
+    notify(
+      'success',
+      `“${destination?.title || 'The spreadsheet'}” is shared with ${result.email || CLIENT_SHEET_EMAIL}.`,
+    )
+  })
+
+  // ---- bringing the sheet up to date now ----------------------------------
+  const syncNow = () => run('sync', async () => {
+    const result = await syncSheetsNow()
+    await load()
+    notify('success', result.message || 'The sheet is up to date.')
+  })
+
   // ---- the export ---------------------------------------------------------
   const exportToSheets = () => run('export', async () => {
     const result = await sheetsAction('export', {
@@ -150,12 +179,15 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
       includeExported,
     })
     setState((s) => ({ ...s, url: result.url || '' }))
+    await load()
     const skipped = Number(result.skipped || 0)
+    const refreshed = Number(result.refreshed || 0)
     notify(
       'success',
       result.orders
         ? `Sent ${result.orders} ${result.orders === 1 ? 'order' : 'orders'} to Google Sheets`
-          + `${skipped ? ` (${skipped} already there, skipped)` : ''}.`
+          + `${refreshed ? `, refreshed ${refreshed} existing ${refreshed === 1 ? 'row' : 'rows'}` : ''}`
+          + `${skipped && !result.orders ? '' : skipped ? ` (${skipped} already there)` : ''}.`
         : (result.message || 'There was nothing new to send.'),
     )
   })
@@ -185,6 +217,28 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
 
         {connected ? (
           <div className="flex flex-wrap items-center gap-2">
+            {destination && (
+              <a
+                href={openUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 h-[42px] px-4 rounded-lg bg-brand-green text-white text-[14px] font-semibold hover:bg-[#A86B5C] transition"
+              >
+                <ExternalLink size={15} /> Open spreadsheet
+              </a>
+            )}
+            {destination && (
+              <button onClick={shareWithClient} disabled={!!busy} className={btnCls}>
+                {busy === 'share' ? <Loader2 size={15} className="animate-spin" /> : <Share2 size={15} />}
+                {busy === 'share' ? 'Sharing…' : 'Share with client'}
+              </button>
+            )}
+            {destination && (
+              <button onClick={syncNow} disabled={!!busy} className={btnCls}>
+                {busy === 'sync' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                {busy === 'sync' ? 'Syncing…' : 'Sync now'}
+              </button>
+            )}
             <button onClick={load} disabled={!!busy} className={btnCls} title="Refresh the connection">
               <RefreshCw size={15} className={busy === 'refresh' ? 'animate-spin' : ''} /> Refresh
             </button>
@@ -285,13 +339,12 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
               {busy === 'export' ? 'Sending…' : 'Export to Google Sheets'}
             </button>
           </div>
-
           {/* ---- create one, or use a link ---- */}
           <div className="flex flex-wrap items-center gap-2">
             <input
               value={sheetName}
               onChange={(e) => setSheetName(e.target.value)}
-              placeholder="New spreadsheet name (optional)"
+              placeholder={REQUIRED_SHEET_NAME}
               aria-label="Name for a new spreadsheet"
               disabled={!!busy}
               className={`${inputCls} flex-1 min-w-[220px]`}
@@ -322,22 +375,39 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
               disabled={!!busy}
               className="h-4 w-4"
             />
-            Send orders that are already in this spreadsheet again
+            Refresh the rows of orders that are already in the spreadsheet (never adds a duplicate row)
           </label>
 
           {destination && (
-            <p className="text-[12px] text-black/50">
-              Orders will be appended to{' '}
-              <a
-                href={`https://docs.google.com/spreadsheets/d/${destination.id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="underline underline-offset-2 inline-flex items-center gap-1"
-              >
-                {destination.title || 'the selected spreadsheet'} <ExternalLink size={12} aria-hidden="true" />
-              </a>
-              . Orders already there are skipped unless you tick the box above.
-            </p>
+            <div className="rounded-lg border border-black/10 bg-black/[.02] px-3 py-2.5 space-y-1">
+              <p className="text-[12px] text-black/60">
+                Orders go to{' '}
+                <a
+                  href={openUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2 inline-flex items-center gap-1 font-medium text-black/80"
+                >
+                  {destination.title || 'the selected spreadsheet'} <ExternalLink size={12} aria-hidden="true" />
+                </a>
+                {' '}in the “{destination.tab || 'Orders'}” tab. Each order is one row and is kept up to date
+                in place, so it never appears twice.
+              </p>
+              <p className="text-[12px] text-black/55">
+                Columns: {layout === 'legacy'
+                  ? 'the original line-by-line layout — this sheet was made by the previous version and is left as it is.'
+                  : 'Order ID · Date · Customer Name · Phone · Email · Products · Quantity · Total Amount · Payment Status · Order Status.'}
+              </p>
+              <p className="text-[12px] text-black/55">
+                {share?.shared === true
+                  ? <>Shared with <strong className="text-black/70">{share.email}</strong> as {share.role || 'writer'}.</>
+                  : share?.error
+                    ? <span className="text-amber-800">Not shared with {share.email}: {share.error}</span>
+                    : share?.shared === false
+                      ? <span className="text-amber-800">Not shared with {share.email} yet — press “Share with client”.</span>
+                      : <>Sharing with {share?.email || CLIENT_SHEET_EMAIL} could not be checked. Press “Share with client” to be sure.</>}
+              </p>
+            </div>
           )}
 
           {/* ---- what the last export did, as Google confirmed it ---- */}

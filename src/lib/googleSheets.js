@@ -9,6 +9,8 @@
 import { supabase } from './supabase.js'
 
 export const SHEETS_FUNCTION = 'google-sheets'
+export const SYNC_FUNCTION = 'google-sheets-sync'
+export const CLIENT_SHEET_EMAIL = 'ruhicollections2026@gmail.com'
 
 /**
  * The body of a failed call, when the function sent one.
@@ -57,4 +59,33 @@ export async function sheetsAction(action, body = {}) {
     throw failure
   }
   return data
+}
+
+/**
+ * Ask the backend to bring the sheet up to date now.
+ *
+ * Used after the owner changes an order's status, so the sheet does not wait
+ * for the next morning's job. It is safe to call repeatedly: the export
+ * ledger stops an order being appended twice, and the sync only updates the
+ * row that already holds it.
+ */
+export async function syncSheetsNow() {
+  const { data, error } = await supabase.functions.invoke(SYNC_FUNCTION, {
+    body: { source: 'admin' },
+    timeout: 45000,
+  })
+  if (error || !data?.ok) {
+    throw new Error(
+      data?.message
+        || data?.error
+        || error?.message
+        || 'The Google Sheet could not be updated just now.',
+    )
+  }
+  return data
+}
+
+/** Share the destination spreadsheet with the client's Google account. */
+export function shareSheet(email = CLIENT_SHEET_EMAIL) {
+  return sheetsAction('share', { email })
 }

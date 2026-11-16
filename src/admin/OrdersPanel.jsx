@@ -9,6 +9,7 @@ import { filterAndSortOrders } from '../lib/orderFiltering'
 import { formatShopDateTime } from '../lib/shopTime'
 import { downloadOrdersXlsx } from './orderExport'
 import GoogleSheetsPanel from './GoogleSheetsPanel'
+import { syncSheetsNow } from '../lib/googleSheets'
 
 const STATUSES = [
   ['pending', 'Pending'],
@@ -315,6 +316,11 @@ export default function OrdersPanel({ notify }) {
         : 'Nothing was saved — your session may have expired. Sign in again and retry.')
     } else {
       notify('success', `${order.reference} marked ${status}.`)
+      // The order itself is already saved. Telling the sheet is best-effort:
+      // a Google outage must never make the status change look unsaved.
+      syncSheetsNow()
+        .then(() => notify('success', 'The Google Sheet was updated too.'))
+        .catch(() => notify('error', 'Order saved, but the Google Sheet could not be updated yet. It will catch up automatically.'))
     }
     setBusyId('')
   }

@@ -10,8 +10,13 @@
 import { env } from './env.ts'
 import { type Json } from './http.ts'
 import { ensureToken, loadAnyConnection, patchConnection } from './googleConnection.ts'
-import { appendRows, ensureSheetHeader, readRange } from './googleSheets.mjs'
-import { buildSheetValues, SHEET_COLUMNS } from './sheetRows.mjs'
+import { appendRows, ensureSheetHeader, readRange, sheetLayoutOf } from './googleSheets.mjs'
+import {
+  buildSheetValues,
+  ORDER_LAYOUT,
+  sheetColumnsFor,
+  statusUpdate,
+} from './sheetRows.mjs'
 import {
   loadLedger,
   loadSyncOrders,
@@ -68,6 +73,26 @@ export async function runSync(): Promise<Json> {
   // The tab the owner chose; if it has gone, the first tab is used.
   const tab = String(conn.sheet_tab || 'Orders')
 
+  // Which layout this sheet already has. A sheet made by the previous version
+  // keeps its shape; a new or empty sheet gets the one-row-per-order layout.
+  // Somebody else's spreadsheet is refused rather than written over.
+  const detected = await sheetLayoutOf(token, sheetId, tab)
+  if (!detected) {
+    await recordOutcome(connId, {
+      last_sync_at: new Date().toISOString(),
+      last_sync_error: 'Google would not open the spreadsheet.',
+    })
+    return { ok: false, reason: 'sheet-unreadable', message: 'Google would not open the spreadsheet.' }
+  }
+  if (detected.layout === 'unknown') {
+    const message = 'The spreadsheet’s first row has different columns. '
+      + 'Choose an empty spreadsheet, or create “Ruhi Collections – Orders”.'
+    await recordOutcome(connId, { last_sync_at: new Date().toISOString(), last_sync_error: message })
+    return { ok: false, reason: 'unsupported-layout', message }
+  }
+  const layout = detected.layout === 'empty' ? ORDER_LAYOUT : detected.layout
+  const columns = sheetColumnsFor(layout)
+
   const serviceKey = env('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   const ledger = await loadLedger(baseUrl(), serviceKey, sheetId)
   const exportedIds = ledger.map((r) => String(r.order_id))
@@ -82,12 +107,12 @@ export async function runSync(): Promise<Json> {
   // The headings of any column added since the sheet was created are written
   // into its first row — whether or not there is anything new to send, so the
   // sheet is always correctly labelled.
-  const heading = await ensureSheetHeader(token, sheetId, tab, SHEET_COLUMNS)
+  const heading = await ensureSheetHeader(token, sheetId, tab, columns)
 
   let written = 0
   let rows = 0
   if (fresh.length) {
-    const values = buildSheetValues(fresh, {}, { includeHeaders: false })
+    const values = buildSheetValues(fresh, {}, { includeHeaders: false, layout })
     const res = await appendRows(token, sheetId, tab, values)
     if (!res.ok) {
       await recordOutcome(connId, {
@@ -99,13 +124,13 @@ export async function runSync(): Promise<Json> {
     written = fresh.length
     rows = values.length
     // The ledger is written AFTER Google accepted the rows: a crash in
-    // between sends the order again, which is safe, because the sheet is
-    // append-only and the ledger is what decides what is new.
+    // between sends the order again, which is safe, because the ledger is
+    // what decides what is new and the sheet is one row per order.
     await recordExports(baseUrl(), serviceKey, sheetId, fresh)
   }
 
   // The sheet is read once: its first column says which order each row is.
-  const referenceRows = await readRange(token, sheetId, tab, 'A1:A2000')
+  const referenceRows = await readRange(token, sheetId, tab, 'A1:A5000')
   sheetRowsRead = Array.isArray(referenceRows) ? referenceRows.length : 0
   const found = mapOrderRows(referenceRows)
   referencesFound = found.size
@@ -155,7 +180,8 @@ export async function runSync(): Promise<Json> {
     const change = changes.find((c) => String(c.order.id) === String(order.id))
     if (!change) continue
     for (const row of rows) {
-      if (await write(`C${row}:D${row}`, [[change.now, change.nowPayment]])) updated += 1
+      const update = statusUpdate(layout, row, change.now, change.nowPayment)
+      if (await write(update.range, update.values)) updated += 1
     }
   }
   if (updated || renamed) await recordStatusUpdates(baseUrl(), serviceKey, sheetId, changes)
@@ -178,6 +204,7 @@ export async function runSync(): Promise<Json> {
     statusChanges: changes.length,
     sheetRows: sheetRowsRead,
     sheetReferences: referencesFound,
+    layout,
     renamed,
     updateError: updateError || null,
     headingsWritten: heading?.written || 0,

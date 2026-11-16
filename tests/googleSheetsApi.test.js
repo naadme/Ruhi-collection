@@ -11,6 +11,7 @@ import path from 'node:path'
 import {
   createSpreadsheet,
   listSpreadsheets,
+  orderIdKeys,
   pickTab,
   renameFirstTab,
 } from '../supabase/functions/_shared/googleSheets.mjs'
@@ -23,6 +24,16 @@ const FN = 'supabase/functions/google-sheets/index.ts'
 // ---------------------------------------------------------------------------
 // The tab Google really gave the sheet
 // ---------------------------------------------------------------------------
+
+test('an Order ID is matched however Sheets chose to store it', () => {
+  // `03112601`, the number 3112601 and an apostrophe-prefixed string are the
+  // same order: the row written before this fix must be found and updated.
+  assert.ok(orderIdKeys('03112601').includes('03112601'))
+  assert.ok(orderIdKeys('3112601').includes('3112601'))
+  assert.ok(orderIdKeys('3112601').includes('03112601'))
+  assert.ok(orderIdKeys("'03112601").includes('03112601'))
+  assert.deepEqual(orderIdKeys(''), [])
+})
 
 test('a new spreadsheet reports the tab id Google assigned it', async () => {
   const realFetch = globalThis.fetch
@@ -153,10 +164,13 @@ test('creating the same spreadsheet twice reuses it', () => {
   assert.match(body, /reused: true/, 'and reused rather than made again')
 })
 
-test('signing in again changes nothing about the destination', () => {
+test('signing in again changes nothing about a correct destination', () => {
   const cb = read('supabase/functions/google-sheets-callback/index.ts')
   assert.match(cb, /hadDestination/, 'the existing destination is noticed')
-  assert.match(cb, /hadDestination\s*\?\s*null\s*:\s*await createSheetWithTab/,
-    'and no second spreadsheet is made')
+  assert.match(cb,
+    /hadDestination\s*&&\s*String\(beforeRows\[0\]\?\.spreadsheet_title\s*\|\|\s*''\)\s*===\s*DEFAULT_SHEET_TITLE/,
+    'a destination that is already the client\'s exact sheet is kept')
+  assert.match(cb, /matching \|\| await createSheetWithTab/,
+    'an existing sheet with that name is reused, not made again')
   assert.doesNotMatch(cb, /spreadsheet_id: null/, 'the destination is never wiped')
 })

@@ -28,11 +28,14 @@ const order = (over = {}) => ({
   ...over,
 })
 
-test('a paid order is eligible for the sheet', () => {
+test('every real order is eligible, whatever its status', () => {
   assert.equal(isEligible(order()), true)
-  assert.equal(isEligible(order({ payment_status: 'pending' })), false,
-    'an order whose payment was never taken is an abandoned basket')
-  assert.equal(isEligible(order({ status: 'cancelled' })), false)
+  // The client asked for Payment Status and Order Status columns, so an
+  // unpaid or cancelled order has to be visible in the sheet too.
+  assert.equal(isEligible(order({ payment_status: 'pending' })), true)
+  assert.equal(isEligible(order({ status: 'cancelled' })), true)
+  assert.equal(isEligible(order({ is_test: true })), false, 'test orders are not shop business')
+  assert.equal(isEligible(order({ is_test: 'true' })), false, 'nor a string-shaped test flag')
   assert.equal(isEligible(null), false)
 })
 
@@ -43,9 +46,22 @@ test('an order the sheet already has is never sent again', () => {
   assert.deepEqual(skipped.map((o) => o.id), ['a', 'c'])
 })
 
-test('an unpaid order is not sent, however new it is', () => {
+test('an unpaid order is sent too, so its payment status is visible', () => {
   const { fresh } = selectNewOrders([order({ id: 'b', payment_status: 'pending' })], [])
-  assert.deepEqual(fresh, [])
+  assert.deepEqual(fresh.map((o) => o.id), ['b'])
+})
+
+test('a test order is never sent', () => {
+  const { fresh } = selectNewOrders([
+    order({ id: 'real' }),
+    order({ id: 'fake', is_test: true }),
+  ], [])
+  assert.deepEqual(fresh.map((o) => o.id), ['real'])
+})
+
+test('the callback export asks only for real orders too', () => {
+  const code = read('supabase/functions/google-sheets-callback/index.ts')
+  assert.match(code, /select=id&is_test=eq\.false/, 'so a diagnostic export cannot add a test order')
 })
 
 test('a status the sheet is out of date about is found', () => {

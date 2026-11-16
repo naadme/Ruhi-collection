@@ -28,18 +28,18 @@
 export const SYNC_LOOKBACK_LIMIT = 500
 
 /**
- * The orders that are worth sending: the ones that have been paid.
+ * The orders that are worth sending.
  *
- * A checkout creates its order before the payment is taken, so an unpaid
- * order is an abandoned basket rather than an order. The store takes payment
- * online only, so "paid" is the whole story. The admin's own manual export
- * sends whatever the admin is looking at — this is the automatic one, and it
- * sends the real orders.
+ * Every real order is included, whatever its payment or fulfilment status:
+ * the client asked for the payment status and the order status as columns, so
+ * a pending payment and a cancelled order have to be visible too. Orders the
+ * shop marks as test orders (`is_test = true`) are the one exception — they
+ * are not shop business and must never end up in the client's sheet.
  */
 export const isEligible = (order) => (
   !!order
-  && String(order.payment_status || '') === 'paid'
-  && !String(order.status || '').toLowerCase().includes('cancel')
+  && order.is_test !== true
+  && String(order.is_test ?? '').toLowerCase() !== 'true'
 )
 
 /**
@@ -137,7 +137,7 @@ export async function loadSyncOrders(baseUrl, serviceKey, limit = SYNC_LOOKBACK_
   if (!baseUrl || !serviceKey) return []
   const res = await fetch(
     `${baseUrl}/rest/v1/orders`
-      + `?select=id,reference,previous_reference,created_at,status,payment_status,payment_method,full_name,email,phone,`
+      + `?select=id,reference,previous_reference,is_test,created_at,status,payment_status,payment_method,full_name,email,phone,`
       + 'address,city,state,pincode,subtotal,discount,coupon_code,shipping,total,'
       + 'razorpay_order_id,razorpay_payment_id,note,'
       + 'order_items(title,size,qty,unit_price,sku)'

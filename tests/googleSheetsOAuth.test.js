@@ -257,7 +257,7 @@ test('a spreadsheet is recognised from a bare id or from any of its links', () =
 
 test('a sheet title is trimmed and cannot run away', () => {
   assert.equal(safeSheetTitle('  Weekly orders  '), 'Weekly orders')
-  assert.equal(safeSheetTitle(''), 'Ruhi Collection — Orders')
+  assert.equal(safeSheetTitle(''), 'Ruhi Collections – Orders')
   assert.equal(safeSheetTitle('x'.repeat(500)).length, 120)
 })
 
@@ -413,23 +413,21 @@ test('every row has exactly the columns the header row names', () => {
   assert.equal(rows[0].length, SHEET_COLUMNS.length)
 })
 
-test('one order becomes one row per item, with the money repeated', () => {
+test('one order becomes ONE row, with its lines joined, not repeated', () => {
   const rows = orderRows(order({
     order_items: [
       { title: 'Denim Shirt - Blue', size: 'M', qty: 2, unit_price: 479 },
       { title: 'Denim Shirt - Red', size: 'L', qty: 1, unit_price: 479 },
     ],
   }))
-  assert.equal(rows.length, 2)
+  assert.equal(rows.length, 1, 'one order, one row')
   const header = SHEET_COLUMNS
-  assert.equal(rows[0][header.indexOf('Reference')], 'RCH-0001')
-  assert.equal(rows[0][header.indexOf('Item')], 'Denim Shirt - Blue')
-  assert.equal(rows[0][header.indexOf('Qty')], 2)
-  assert.equal(rows[0][header.indexOf('Unit price (₹)')], 479)
-  assert.equal(rows[0][header.indexOf('Line total (₹)')], 958)
-  assert.equal(rows[1][header.indexOf('Line total (₹)')], 479)
-  assert.equal(rows[0][header.indexOf('Order total (₹)')], 958, 'the order total repeats on every item row')
-  assert.equal(rows[0][header.indexOf('Payment method')], 'razorpay')
+  assert.equal(rows[0][header.indexOf('Order ID')], 'RCH-0001')
+  assert.equal(rows[0][header.indexOf('Products')],
+    'Denim Shirt - Blue (Size M) × 2; Denim Shirt - Red (Size L) × 1')
+  assert.equal(rows[0][header.indexOf('Quantity')], 3)
+  assert.equal(rows[0][header.indexOf('Total Amount')], 958)
+  assert.equal(rows[0][header.indexOf('Payment Method')], 'razorpay')
 })
 
 test('an order with no items still gets exactly one row', () => {
@@ -446,16 +444,15 @@ test('a date is written the way a spreadsheet can read as a date', () => {
   assert.match(formatPlacedAt(new Date().toISOString()), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
 })
 
-test('the header row is written once, with the first export only', () => {
+test('the header row is written once, and nothing else sits above the data', () => {
   const orders = [order()]
   const first = buildSheetValues(orders, { status: 'shipped' })
   assert.deepEqual(first[0], SHEET_COLUMNS, 'headers first')
-  assert.match(first[1][0], /Filtered to status: shipped/, 'then the filter banner')
-  assert.equal(first[2][0], 'RCH-0001', 'then the data')
+  assert.equal(first[1][0], 'RCH-0001', 'then the data — no filter banner above it')
 
   const later = buildSheetValues(orders, { status: 'shipped' }, { includeHeaders: false })
-  assert.equal(later.length, 2, 'no second header row in the middle of the data')
-  assert.match(later[0][0], /Filtered to status: shipped/)
+  assert.equal(later.length, 1, 'no second header row in the middle of the data')
+  assert.equal(later[0][0], 'RCH-0001')
 })
 
 // ---------------------------------------------------------------------------

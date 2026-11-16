@@ -35,7 +35,7 @@ test('the Product ID is snapshot, never looked up again', () => {
   // The line's own column is the only source. A lookup against `products` at
   // display time would show the ID of a different product after a renumber.
   const sheetRows = read('supabase/functions/_shared/sheetRows.mjs')
-  assert.match(sheetRows, /asText\(it\.sku\)/, 'the sheet reads the line\'s own snapshot')
+  assert.match(sheetRows, /it\?\.sku/, 'the sheet reads the line\'s own snapshot')
   assert.ok(!/from\(products\)|from\('products'\)/.test(sheetRows),
     'the sheet never looks the ID up again')
 })
@@ -69,7 +69,7 @@ test('the Google Sheet carries the Product ID and the colour', () => {
   const at = (name) => row[SHEET_COLUMNS.indexOf(name)]
   assert.equal(at('Product ID'), '0101BU')
   assert.equal(at('Colour'), 'Blue')
-  assert.equal(at('Item'), 'Denim Shirt - Blue')
+  assert.equal(at('Products'), 'Denim Shirt - Blue (Size M) × 2')
 })
 
 test('the Excel download carries the Product ID', () => {

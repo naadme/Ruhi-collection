@@ -39,6 +39,8 @@ const world = {
     failNextAppend: 0,
     failNextAppendWith: 0,
     refreshFails: false,
+    writes: [],
+    permissions: [],
   },
 }
 
@@ -118,6 +120,7 @@ function googleJson(url, init = {}) {
   const sheetsRead = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+)\/values\/(.+)$/)
   const sheetGet = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+)$/)
   const sheetBatch = u.pathname.match(/^\/v4\/spreadsheets\/([^/]+):batchUpdate$/)
+  const drivePermission = u.pathname.match(/^\/drive\/v3\/files\/([^/]+)\/permissions$/)
 
   if (u.hostname === 'accounts.google.com' && u.pathname === '/o/oauth2/v2/auth') {
     // Google answers a callback URL it does not know with a redirect to its
@@ -185,6 +188,23 @@ function googleJson(url, init = {}) {
     return json(200, { files: world.google.files })
   }
 
+  // Sharing: the file stays in the owner's Drive and the client is added as
+  // a writer. A GET lists the permissions so the panel can tell the truth.
+  if (u.hostname === 'www.googleapis.com' && drivePermission) {
+    if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
+    if (method === 'POST') {
+      const entry = {
+        id: `permission-${world.google.permissions.length + 1}`,
+        emailAddress: body.emailAddress,
+        role: body.role,
+        type: 'user',
+      }
+      world.google.permissions.push(entry)
+      return json(200, entry)
+    }
+    return json(200, { permissions: world.google.permissions })
+  }
+
   // The Sheets API refuses everything when it is not enabled on the project.
   if (u.hostname === 'sheets.googleapis.com' && world.google.sheetsApiDisabled) {
     if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
@@ -246,6 +266,15 @@ function googleJson(url, init = {}) {
     })
   }
 
+  // A direct write — the header, a refreshed row or the two status columns.
+  if (u.hostname === 'sheets.googleapis.com' && sheetsRead && method === 'PUT') {
+    if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
+    const id = decodeURIComponent(sheetsRead[1])
+    const range = decodeURIComponent(sheetsRead[2])
+    world.google.writes.push({ id, range, values: body.values })
+    return json(200, { updatedRange: `${id}!${range}`, updatedRows: body.values.length })
+  }
+
   if (u.hostname === 'sheets.googleapis.com' && sheetsWrite) {
     if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
     if (world.google.failNextAppend > 0) {
@@ -260,11 +289,18 @@ function googleJson(url, init = {}) {
     })
   }
 
-  // Reading a range back — what the "what is in the sheet" preview uses.
+  // Reading a range back — what the "what is in the sheet" preview uses, and
+  // how the sync finds the row an order already occupies.
   if (u.hostname === 'sheets.googleapis.com' && sheetsRead) {
     if (auth !== world.google.accessToken) return json(401, { error: 'invalid_token' })
     const id = decodeURIComponent(sheetsRead[1])
-    const values = world.google.appended.filter((a) => a.id === id).flatMap((a) => a.values)
+    const header = world.google.writes
+      .filter((w) => w.id === id && /(^|!)A1$/.test(w.range))
+      .flatMap((w) => w.values)
+    const values = [
+      ...header,
+      ...world.google.appended.filter((a) => a.id === id).flatMap((a) => a.values),
+    ]
     return json(200, { values })
   }
 
@@ -371,6 +407,8 @@ const reset = () => {
     failNextAppendWith: 0,
     refreshFails: false,
     sheetsApiDisabled: false,
+    writes: [],
+    permissions: [],
     registeredRedirects: [`${SUPABASE_URL}/functions/v1/google-sheets-callback`],
   }
 }
@@ -424,6 +462,8 @@ test('the owner approves, and the connection is stored encrypted', async () => {
   const page = await done.text()
   assert.match(page, /Google Sheets is connected/)
   assert.match(page, /owner@gmail\.com/)
+  assert.match(done.headers.get('content-type') || '', /text\/plain/)
+  assert.doesNotMatch(page, /<!doctype|<html/i, 'a readable text page, not raw HTML')
 
   const conn = readConnection()
   assert.ok(conn, 'the connection was stored')
@@ -440,11 +480,15 @@ test('the owner approves, and the connection is stored encrypted', async () => {
 test('a destination spreadsheet is created for the owner, so nothing is left to set up', async () => {
   const { done } = await connect()
   const page = await done.text()
-  assert.match(page, /Ruhi Collection — Orders/, 'the page says which sheet was made')
+  assert.match(page, /Ruhi Collections – Orders/, 'the page says which sheet was made')
+  assert.match(page, /shared with ruhicollections2026@gmail\.com/, 'and that the client can open it')
 
   const conn = readConnection()
   assert.equal(conn.spreadsheet_id, 'created-sheet-1', 'and the connection points at it')
   assert.equal(conn.sheet_tab, 'Orders', 'with the tab the export writes to')
+  assert.equal(conn.shared_with_email, 'ruhicollections2026@gmail.com', 'the client is recorded as a writer')
+  assert.equal(world.google.permissions[0].emailAddress, 'ruhicollections2026@gmail.com')
+  assert.equal(world.google.permissions[0].role, 'writer', 'as an editor, not a viewer')
   assert.equal(world.google.files.length, 1, 'exactly one file was created in Drive')
   assert.equal(world.google.renames[0].title, 'Orders')
   assert.equal(
@@ -471,6 +515,37 @@ test('the panel shows who is connected and which spreadsheets the app owns', asy
   assert.equal(body.sheets.length, 1, 'the sheet the app created is listed')
   assert.equal(body.spreadsheet.id, 'created-sheet-1', 'and it is already the destination')
   assert.equal(body.spreadsheet.tab, 'Orders')
+})
+
+test('the default spreadsheet has the client\'s exact name', async () => {
+  await connect()
+  const res = await post('create-sheet')
+  const body = await res.json()
+  assert.equal(body.reused, true, 'the sheet made at sign-in is reused')
+  assert.equal(body.spreadsheet.title, 'Ruhi Collections – Orders')
+  assert.equal(world.google.files.length, 1, 'not a second, near-identical file')
+})
+
+test('the status proves the layout and the client\'s access', async () => {
+  await connect()
+  const res = await post('status')
+  const body = await res.json()
+  assert.equal(body.sheetLayout, 'empty', 'a fresh sheet has no header yet')
+  assert.equal(body.share.email, 'ruhicollections2026@gmail.com')
+  assert.equal(body.share.shared, true, 'Google says the client can open it')
+  assert.equal(body.share.role, 'writer', 'and can write, not only read')
+})
+
+test('the owner can share the destination again in one press', async () => {
+  await connect()
+  const res = await post('share')
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.ok, true)
+  assert.equal(body.email, 'ruhicollections2026@gmail.com')
+  assert.equal(body.role, 'writer')
+  assert.equal(readConnection().shared_with_email, 'ruhicollections2026@gmail.com')
+  assert.equal(readConnection().share_error, null)
 })
 
 test('the owner creates a spreadsheet, and it becomes the destination', async () => {
@@ -516,7 +591,7 @@ test('a spreadsheet the connection cannot open is refused, in plain words', asyn
   assert.equal(readConnection().spreadsheet_id, 'created-sheet-1', 'and the destination is left alone')
 })
 
-test('the export writes headers and one row per item', async () => {
+test('the export writes the header once and one row per order', async () => {
   await connect()
   await post('create-sheet', { name: 'Orders' })
 
@@ -526,13 +601,23 @@ test('the export writes headers and one row per item', async () => {
   assert.equal(body.ok, true)
   assert.equal(body.orders, 1)
   assert.equal(body.skipped, 0)
+  assert.equal(body.layout, 'order', 'a new sheet gets the one-row-per-order layout')
   assert.match(body.url, /docs\.google\.com\/spreadsheets\/d\/created-sheet-2/)
+
+  const header = world.google.writes.find((w) => /(^|!)A1$/.test(w.range))
+  assert.ok(header, 'the header row was written')
+  assert.equal(header.values[0][0], 'Order ID', "with the client's first column")
+  assert.deepEqual(header.values[0].slice(0, 10), [
+    'Order ID', 'Date', 'Customer Name', 'Phone', 'Email',
+    'Products', 'Quantity', 'Total Amount', 'Payment Status', 'Order Status',
+  ])
 
   assert.equal(world.google.appended.length, 1)
   const values = world.google.appended[0].values
-  assert.equal(values[0][0], 'Reference', 'the header row comes first')
-  assert.equal(values[values.length - 1][0], 'RCH-0001', 'and the order is last')
-  assert.equal(values[values.length - 1].includes(958), true, 'the total is a number, not text')
+  assert.equal(values.length, 1, 'one order is one row')
+  assert.equal(values[0][0], 'RCH-0001')
+  assert.equal(values[0].includes(958), true, 'the total is a number, not text')
+  assert.equal(values[0][6], 2, 'the quantity is the pieces bought')
 
   assert.equal(world.db.order_sheet_exports.length, 1, 'the order is now in the ledger')
   assert.equal(world.db.order_sheet_exports[0].order_id, 'aaaaaaaa-1111-1111-1111-111111111111')
@@ -553,10 +638,16 @@ test('the same order is never sent to the same sheet twice', async () => {
   assert.match(body.message, /already in that spreadsheet/i)
   assert.equal(world.google.appended.length, 1, 'and the sheet did not grow')
 
-  // Unless the owner insists.
+  // Unless the owner insists — and even then the row is refreshed, never
+  // duplicated.
   const forced = await post('export', { ids: [id], includeExported: true })
-  assert.equal((await forced.json()).orders, 1)
-  assert.equal(world.google.appended.length, 2, 'then it is sent again, as asked')
+  const forcedBody = await forced.json()
+  assert.equal(forcedBody.orders, 0, 'no second row is appended')
+  assert.equal(forcedBody.refreshed, 1, 'the existing row is brought up to date')
+  assert.equal(world.google.appended.length, 1, 'the sheet did not grow')
+  const refresh = world.google.writes.find((w) => /(^|!)A2:X2$/.test(w.range))
+  assert.ok(refresh, "the order's own row was rewritten")
+  assert.equal(refresh.values[0][0], 'RCH-0001')
 })
 
 test('an expired access token is refreshed and the export still works', async () => {
@@ -763,7 +854,7 @@ test('the panel can show what is actually in the sheet, and the receipt of the e
   const res = await post('preview')
   assert.equal(res.status, 200)
   const body = await res.json()
-  assert.equal(body.header[0], 'Reference', 'the header row is there')
+  assert.equal(body.header[0], 'Order ID', 'the header row is there')
   assert.equal(body.rows >= 2, true, 'and the order below it')
   assert.equal(body.sample[0][0], 'RCH-0001', 'the order is in there')
   assert.match(body.url, /docs\.google\.com\/spreadsheets\/d\/created-sheet-1/)
@@ -771,7 +862,7 @@ test('the panel can show what is actually in the sheet, and the receipt of the e
   // The receipt, written only after Google accepted the rows.
   const conn = readConnection()
   assert.equal(conn.last_export_orders, 1)
-  assert.equal(conn.last_export_rows, 2, 'the header and the order')
+  assert.equal(conn.last_export_rows, 1, 'one order, one row')
   assert.match(conn.last_export_range, /A1/)
   assert.ok(conn.last_export_at, 'and when it happened')
 })

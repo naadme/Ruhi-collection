@@ -9,3 +9,4 @@ dist-debug/
 node_modules/
 .env
 .vercel
+.env*
