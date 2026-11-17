@@ -152,7 +152,7 @@ function PhotoSlot({ index, total, url, busy, framing, onPick, onUrl, onRemove, 
                 !url ||
                 (framing.x === BANNER_POSITION.x && framing.y === BANNER_POSITION.y && framing.zoom === BANNER_POSITION.zoom)
               }
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
+              className="adm-tap inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
             >
               Centre it
             </button>
@@ -268,7 +268,7 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
           <button
             type="button"
             onClick={onRemove}
-            className="inline-flex items-center gap-1.5 text-[13px] text-black/50 hover:text-red-600 shrink-0"
+            className="adm-tap inline-flex items-center gap-1.5 text-[13px] text-black/50 hover:text-red-600 shrink-0"
           >
             <Trash2 size={14} /> Remove colour
           </button>

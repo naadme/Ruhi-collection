@@ -138,7 +138,7 @@ export default function CouponsPanel({ notify }) {
       {/* Create form */}
       <form onSubmit={create} noValidate className="mt-6 bg-white border border-black/10 rounded-xl p-5">
         <h2 className="text-[16px] font-semibold inline-flex items-center gap-2"><Plus size={16} /> Create a coupon</h2>
-        <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <label className="block">
             <span className={labelCls}>Code *</span>
             <input

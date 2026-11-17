@@ -1,0 +1,128 @@
+/*
+ * The admin's own stylesheet: how /admin lays out on a phone.
+ *
+ * AdminRoot.jsx imports this file, so the build ships it beside the admin's
+ * code and a browser fetches it only when /admin opens. Shop pages never
+ * download it.
+ *
+ * Why not Tailwind classes? The shop's shared stylesheet is generated from
+ * every class name written anywhere in src/, admin files included, and every
+ * shopper downloads it before the page can draw. A Tailwind class used only
+ * by the admin would therefore add bytes to every shop page
+ * (Ruhi_Speed_Framework.md). Admin-only layout rules live here instead; the
+ * admin's markup reuses Tailwind classes only where the shop already has them.
+ *
+ * "Phone" below means narrower than Tailwind's `sm` breakpoint (640px), the
+ * width at which the admin's own markup switches to its wider layout.
+ */
+
+/* Nothing in an admin page may make the page wider than the screen. One
+   over-wide row used to let the whole page scroll sideways on a phone, which
+   also pushed the product editor half off the screen. `clip`, unlike
+   `hidden`, does not turn <main> into a scrolling box; `hidden` is the
+   fallback for browsers older than `clip`. The sticky header sits outside
+   <main>, and fixed layers (the product editor, dialogs) are not clipped. */
+.adm-main {
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+/* Photo zoom sliders sit in narrow columns beside the photo previews; left at
+   its natural width a slider pushed the "100%" beside it out of its card. */
+.adm-root input[type='range'] {
+  min-width: 0;
+}
+
+/* Shown only on a phone (the section dropdown); its wide-screen twin is
+   hidden there. */
+.adm-root .adm-phone-only {
+  display: none;
+}
+
+@media (max-width: 639.98px) {
+  .adm-root .adm-phone-only {
+    display: block;
+  }
+  .adm-root .adm-wide-only {
+    display: none;
+  }
+
+  /* Text boxes at 16px. Anything smaller makes an iPhone zoom the page in
+     when the box is tapped, and the page then has to be zoomed back out. */
+  .adm-root :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']), select, textarea) {
+    font-size: 16px;
+  }
+
+  /* A filter row (order status, review status, All / Active / Inactive) is
+     one row that scrolls sideways instead of wrapping into a tall block or
+     running off the screen. A soft shadow appears at whichever edge has more
+     buttons beyond it, and goes once that edge is reached: the two cream
+     layers scroll with the buttons and cover the shadows at the row's ends.
+     #FDF7F3 is the theme's `white`, the row's own background. */
+  .adm-root .adm-strip {
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    background:
+      linear-gradient(to right, #fdf7f3 40%, rgb(253 247 243 / 0)) left center / 28px 100% no-repeat local,
+      linear-gradient(to left, #fdf7f3 40%, rgb(253 247 243 / 0)) right center / 28px 100% no-repeat local,
+      linear-gradient(to right, rgb(74 44 35 / 0.22), rgb(74 44 35 / 0)) left center / 16px 100% no-repeat scroll,
+      linear-gradient(to left, rgb(74 44 35 / 0.22), rgb(74 44 35 / 0)) right center / 16px 100% no-repeat scroll,
+      #fdf7f3;
+  }
+  .adm-root .adm-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .adm-root .adm-strip > * {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  /* A label with its filter strip: the strip moves under the label when the
+     two do not fit side by side, and may shrink (and scroll) to the screen. */
+  .adm-root .adm-filter {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Small text buttons (Remove colour, Edit, Delete) get a finger-sized
+     target without looking any bigger. */
+  .adm-root .adm-tap {
+    min-height: 40px;
+  }
+
+  /* Photo zoom sliders: a taller touch area around the same thin track. */
+  .adm-root input[type='range'] {
+    min-height: 32px;
+  }
+
+  /* Orders: the order number and its details share the first line with the
+     open/close button; the total and the status move to a line of their own,
+     at its right. */
+  .adm-root .adm-order-head {
+    flex-basis: 12rem;
+  }
+
+  /* Reviews: the photo sits beside the review instead of on a line of its
+     own, and the buttons form one row under it. */
+  .adm-root .adm-review-body {
+    min-width: 0;
+  }
+  .adm-root .adm-review-actions {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .adm-root .adm-review-actions > * {
+    margin-top: 0;
+  }
+  .adm-root .adm-review-actions > :not(button) {
+    width: 100%;
+    max-width: none;
+    text-align: left;
+  }
+}

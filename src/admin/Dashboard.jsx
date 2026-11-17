@@ -122,13 +122,14 @@ const SECTIONS = [
 ]
 
 function SectionSwitch({ value, onChange, showOrders }) {
-  return (
+  const sections = SECTIONS.filter(([k]) => k === 'products' || showOrders)
+  const tabs = (
     <div
       role="tablist"
       aria-label="Dashboard sections"
-      className="flex flex-wrap items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit"
+      className={`${sections.length > 1 ? 'adm-wide-only ' : ''}flex flex-wrap items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit`}
     >
-      {SECTIONS.filter(([k]) => k === 'products' || showOrders).map(([k, label]) => (
+      {sections.map(([k, label]) => (
         <button
           key={k}
           role="tab"
@@ -143,6 +144,25 @@ function SectionSwitch({ value, onChange, showOrders }) {
         </button>
       ))}
     </div>
+  )
+  if (sections.length < 2) return tabs
+  // On a phone the row of nine tabs took four lines of the screen, so there
+  // the sections are one dropdown that names the open section; the phone's
+  // own picker lists them all (admin.css swaps the two).
+  return (
+    <>
+      <label className="adm-phone-only w-full">
+        <span className="sr-only">Dashboard section</span>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full h-12 pl-4 pr-3 rounded-lg border border-black/20 bg-white text-[16px] font-semibold outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+        >
+          {sections.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+      </label>
+      {tabs}
+    </>
   )
 }
 

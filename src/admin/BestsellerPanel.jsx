@@ -366,7 +366,7 @@ export default function BestsellerPanel({ notify, products = [] }) {
               className={`${inputCls} pl-9`}
             />
           </div>
-          <ul className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {(showAll ? candidates : candidates.slice(0, 24)).map((card) => (
               <li key={card.id} className="bg-white border border-black/10 rounded-xl p-3 flex gap-3 items-center">
                 <div className="w-[52px] h-[64px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">

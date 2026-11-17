@@ -4,6 +4,9 @@ import usePageTitle from '../hooks/usePageTitle'
 import { useAuth } from '../context/AuthContext'
 import Login from './Login'
 import Dashboard from './Dashboard'
+// The admin's phone layout. Imported here, so it ships with the admin's own
+// code and shop pages never download it (see the note at its top).
+import './admin.css'
 
 function Splash({ text }) {
   return (
@@ -67,7 +70,7 @@ export default function AdminRoot() {
   if (!session) return <Login />
 
   return (
-    <div className="min-h-screen bg-[#F8EDE6] font-ui flex flex-col">
+    <div className="adm-root min-h-screen bg-[#F8EDE6] font-ui flex flex-col">
       <header className="sticky top-0 z-30 bg-white border-b border-black/10">
         <div className="max-w-[1200px] mx-auto px-4 md:px-6 h-[68px] flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -84,7 +87,7 @@ export default function AdminRoot() {
           </div>
         </div>
       </header>
-      <main className="flex-1">
+      <main className="adm-main flex-1">
         <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-8">
           {!canManageProducts ? <NotAuthorized email={user?.email || ''} /> : <Dashboard showOrders={isAdmin} />}
         </div>

@@ -56,7 +56,7 @@ function Actions({ review, busy, onDecide }) {
       key={label}
       disabled={busy}
       onClick={() => onDecide(review, next)}
-      className={`inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[13px] font-semibold border transition disabled:opacity-60 ${
+      className={`adm-tap inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[13px] font-semibold border transition disabled:opacity-60 ${
         tone === 'go'
           ? 'border-green-300 bg-green-50 text-green-800 hover:bg-green-100'
           : tone === 'warn'
@@ -638,9 +638,9 @@ export default function ReviewsPanel({ notify, products = [] }) {
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
+        <div className="adm-filter flex items-center gap-2">
           <span className="text-[13px] font-semibold uppercase tracking-wider text-black/45">Show</span>
-          <div role="group" aria-label="Review status" className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit">
+          <div role="group" aria-label="Review status" className="adm-strip flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1 w-fit">
             {MODERATION_FILTERS.map(([value, label]) => {
               const on = status === value
               return (
@@ -712,7 +712,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
                     : <Star size={18} className="text-black/20" />}
                 </div>
 
-                <div className="flex-1 min-w-[260px]">
+                <div className="adm-review-body flex-1 min-w-[260px]">
                   <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <b className="font-ui text-[15px]">{who(r)}</b>
                     {!site && !reviewerLabel(r).named && (
@@ -768,7 +768,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
                   )}
                 </div>
 
-                <div className="shrink-0 flex flex-col items-end gap-2">
+                <div className="adm-review-actions shrink-0 flex flex-col items-end gap-2">
                   {site ? (
                     // Nothing to decide: this is the site's own copy, always
                     // shown, with no database row to write a status to.
@@ -795,7 +795,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
                             onClick={() => toggleVerified(r)}
                             disabled={busyId === r.id}
                             aria-pressed={Boolean(r.verified)}
-                            className={`inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[13px] font-semibold border transition disabled:opacity-60 ${
+                            className={`adm-tap inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[13px] font-semibold border transition disabled:opacity-60 ${
                               r.verified
                                 ? 'border-black/30 text-black/70 hover:bg-black hover:text-white'
                                 : 'border-green-300 bg-white text-green-800 hover:bg-green-50'
@@ -808,7 +808,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
                             type="button"
                             onClick={() => setEditingId(r.id)}
                             disabled={busyId === r.id || deletingId === r.id}
-                            className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-black/45 hover:text-black transition disabled:opacity-60"
+                            className="adm-tap mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-black/45 hover:text-black transition disabled:opacity-60"
                           >
                             <Edit size={14} /> Edit
                           </button>
@@ -840,7 +840,7 @@ export default function ReviewsPanel({ notify, products = [] }) {
                               type="button"
                               onClick={() => requestDelete(r)}
                               disabled={busyId === r.id || editingId === r.id}
-                              className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-60"
+                              className="adm-tap mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-60"
                             >
                               <Trash2 size={14} /> Delete
                             </button>

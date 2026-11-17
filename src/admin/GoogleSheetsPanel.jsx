@@ -313,7 +313,7 @@ export default function GoogleSheetsPanel({ rows, filters, notify }) {
           )}
 
           {/* ---- where the orders go ---- */}
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] items-end">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto] items-end">
             <label className="block min-w-0">
               <span className="block text-[12px] font-medium text-black/55 mb-1">Destination spreadsheet</span>
               <select
