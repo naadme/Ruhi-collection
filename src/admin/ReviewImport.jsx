@@ -364,7 +364,7 @@ export default function ReviewImport({ products = [], existing = [], orders = []
                   type="button"
                   onClick={undo}
                   disabled={undoing}
-                  className="inline-flex items-center gap-1 h-[30px] px-3 rounded-lg border border-red-400 font-semibold hover:bg-red-100 transition disabled:opacity-60"
+                  className="adm-tap inline-flex items-center gap-1 h-[30px] px-3 rounded-lg border border-red-400 font-semibold hover:bg-red-100 transition disabled:opacity-60"
                 >
                   {undoing ? <Loader2 size={13} className="animate-spin" /> : <Undo2 size={13} />} Remove them
                 </button>
@@ -372,7 +372,7 @@ export default function ReviewImport({ products = [], existing = [], orders = []
                   type="button"
                   onClick={() => setConfirmUndo(false)}
                   disabled={undoing}
-                  className="h-[30px] px-3 rounded-lg border border-black/30 font-semibold text-black/60 hover:bg-white transition"
+                  className="adm-tap h-[30px] px-3 rounded-lg border border-black/30 font-semibold text-black/60 hover:bg-white transition"
                 >
                   Keep them
                 </button>

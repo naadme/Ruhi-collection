@@ -186,7 +186,7 @@ function ImageRow({ def, draft, saved, busy, uploading, onChange, onUpload }) {
                 framing.y === BANNER_POSITION.y &&
                 framing.zoom === BANNER_POSITION.zoom)
             }
-            className="inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
+            className="adm-tap inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
           >
             Centre it
           </button>
@@ -204,7 +204,10 @@ function ImageRow({ def, draft, saved, busy, uploading, onChange, onUpload }) {
 export default function PageImagesPanel({ notify }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [saved, setSaved] = useState([])
+  // Both start as the built-in pictures, slot for slot. The panel compares
+  // them on every render, and comparing a draft with a missing saved slot
+  // used to crash the panel before the saved rows had even loaded.
+  const [saved, setSaved] = useState(() => PAGE_IMAGES.map((d) => draftFor(d, null)))
   const [drafts, setDrafts] = useState(() => PAGE_IMAGES.map((d) => draftFor(d, null)))
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState('')

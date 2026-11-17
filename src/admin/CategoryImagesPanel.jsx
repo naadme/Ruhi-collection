@@ -142,7 +142,7 @@ function CategoryRow({ row, busy, uploading, saved, onUpload, onPick, onClear, o
                 !shown ||
                 (frame.x === BANNER_POSITION.x && frame.y === BANNER_POSITION.y && frame.zoom === BANNER_POSITION.zoom)
               }
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
+              className="adm-tap inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
             >
               Centre it
             </button>

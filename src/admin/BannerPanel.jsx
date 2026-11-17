@@ -180,7 +180,7 @@ function BannerRow({ row, index, total, busy, uploading, canReorder, destination
                 type="button"
                 onClick={() => onFraming(BANNER_POSITION)}
                 disabled={!row.image || (framing.x === BANNER_POSITION.x && framing.y === BANNER_POSITION.y && framing.zoom === BANNER_POSITION.zoom)}
-                className="inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
+                className="adm-tap inline-flex items-center gap-1.5 text-[12px] font-medium border border-black/30 rounded-lg px-2.5 h-[30px] text-black/65 hover:border-black transition disabled:opacity-35"
               >
                 Centre it
               </button>
@@ -519,7 +519,7 @@ export default function BannerPanel({ notify }) {
               Every banner is hidden, so the homepage is showing its default category photos.
             </p>
           ) : (
-            <ul className="mt-3 grid sm:grid-cols-2 gap-3">
+            <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
               {live.map((row, i) => (
                 <li key={row.id || `live-${i}`} className="border border-black/10 bg-white rounded-xl p-3 flex gap-3">
                   <div className="w-[92px] h-[62px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden">
@@ -616,7 +616,7 @@ export default function BannerPanel({ notify }) {
                 </a>
                 .
               </p>
-              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+              <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {fallbacks.map((slide, i) => (
                   <li
                     key={slide.key || `${slide.to}-${i}`}

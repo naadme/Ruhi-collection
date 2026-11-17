@@ -55,7 +55,7 @@ export default function UnpaidCheckoutsPanel({ notify }) {
       type="button"
       onClick={() => setShow(key)}
       aria-pressed={show === key}
-      className={`px-4 h-10 rounded-lg text-[14px] font-medium transition ${show === key ? 'bg-black text-white' : 'text-black/60 hover:text-black'}`}
+      className={`px-4 h-10 rounded-lg text-[14px] font-medium whitespace-nowrap transition ${show === key ? 'bg-black text-white' : 'text-black/60 hover:text-black'}`}
     >
       {label}
     </button>
@@ -71,8 +71,8 @@ export default function UnpaidCheckoutsPanel({ notify }) {
             their last visit. Checkout tells them the number is for order updates only, so message them only about this order.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="adm-strip flex items-center gap-1 bg-white border border-black/15 rounded-lg p-1">
             {filterBtn('unpaid', `Didn't pay (${unpaid.length})`)}
             {filterBtn('all', `All (${state.rows.length})`)}
           </div>

@@ -85,7 +85,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
           <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
 
-        <div className="min-w-0 flex-1 basis-[16rem]">
+        <div className="adm-order-head min-w-0 flex-1 basis-[16rem]">
           <p className="font-semibold text-[15px]">
             <span className="font-mono">{order.reference}</span>
             {/* An order placed before the DDMMYYNN format keeps the number the
@@ -114,7 +114,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="ml-auto flex items-center gap-3 shrink-0">
           <span className="font-bold text-[15px] w-24 text-right">{inr(order.total)}</span>
           <label className="sr-only" htmlFor={`st-${order.id}`}>Status for {order.reference}</label>
           <select
@@ -130,7 +130,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
       </div>
 
       {open && (
-        <div className="border-t border-black/10 p-4 sm:p-5 grid md:grid-cols-[1.4fr_1fr] gap-6 bg-[#F8EDE6]">
+        <div className="border-t border-black/10 p-4 sm:p-5 grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-6 bg-[#F8EDE6]">
           <div>
             <h4 className="text-[13px] font-semibold uppercase tracking-wider text-black/45">
               Items <span className="normal-case font-normal tracking-normal text-black/40">· the Product ID is the six characters on each line</span>
@@ -139,7 +139,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
               {items.length === 0 && <li className="text-[14px] text-black/50">No line items recorded.</li>}
               {items.map((it) => (
                 <li key={it.id} className="flex justify-between gap-4 text-[15px]">
-                  <span className="min-w-0 truncate">
+                  <span className="min-w-0 break-words">
                     {it.title}
                     <span className="text-black/45 text-[13px]"> · Size {it.size} · ×{it.qty}</span>
                     {/* The six-character Product ID of the exact row that was
@@ -390,7 +390,7 @@ export default function OrdersPanel({ notify }) {
       <GoogleSheetsPanel rows={rows} filters={filters} notify={notify} />
 
       <div className="mt-6 flex flex-wrap gap-3 items-center justify-between border-y border-black/10 py-4">
-        <div className="flex flex-wrap items-center gap-1 bg-white border border-black/15 rounded-lg p-1">
+        <div className="adm-strip flex flex-wrap items-center gap-1 bg-white border border-black/15 rounded-lg p-1">
           {STATUS_FILTERS.map(([k, label]) => (
             <button
               key={k}
@@ -437,27 +437,33 @@ export default function OrdersPanel({ notify }) {
           </label>
         )}
 
+        {/* Each word stays with its date box, so on a phone the range wraps
+            as "From [date]" over "to [date]" rather than splitting a pair. */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-[14px] text-black/55">
-            <Calendar size={15} /> From
+          <span className="inline-flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[14px] text-black/55">
+              <Calendar size={15} /> From
+            </span>
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+              aria-label="Orders from date"
+              className="h-10 px-2.5 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+            />
           </span>
-          <input
-            type="date"
-            value={from}
-            max={to || undefined}
-            onChange={(e) => setFrom(e.target.value)}
-            aria-label="Orders from date"
-            className="h-10 px-2.5 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10"
-          />
-          <span className="text-[14px] text-black/55">to</span>
-          <input
-            type="date"
-            value={to}
-            min={from || undefined}
-            onChange={(e) => setTo(e.target.value)}
-            aria-label="Orders to date"
-            className="h-10 px-2.5 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10"
-          />
+          <span className="inline-flex items-center gap-2">
+            <span className="text-[14px] text-black/55">to</span>
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+              aria-label="Orders to date"
+              className="h-10 px-2.5 rounded-lg border border-black/20 bg-white text-[14px] outline-none focus:border-black focus:ring-2 focus:ring-black/10"
+            />
+          </span>
           {rangeActive && (
             <button
               onClick={clearRange}
