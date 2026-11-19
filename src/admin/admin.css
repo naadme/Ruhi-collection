@@ -126,3 +126,102 @@
     text-align: left;
   }
 }
+
+/* Express delivery by air (19 Nov 2026, OrdersPanel.jsx). An Express order has
+   to be booked by air the day it comes in, so it must be impossible to miss:
+   a deep-orange frame and tint on the whole card, a solid badge beside the
+   order ID, a banner under the card's top row, and a bar at the top of the
+   list while paid Express orders are waiting. */
+.adm-express {
+  background: #fff7ed;
+  border: 2px solid #c2410c;
+  box-shadow: inset 6px 0 0 #c2410c;
+}
+.adm-express-badge {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #c2410c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.adm-express-note {
+  margin: 0;
+  padding: 0.55rem 1rem 0.55rem 1.25rem;
+  background: #c2410c;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.adm-express-alert {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: #c2410c;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+.adm-express-alert button {
+  min-height: 40px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  background: #fff;
+  color: #c2410c;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* An Express order already shipped, delivered, returned or cancelled: still
+   marked, but quieter, so the ones to send stand out. */
+.adm-express--done {
+  background: #fffaf5;
+  border-color: #fdba74;
+  box-shadow: inset 6px 0 0 #fdba74;
+}
+.adm-express--done .adm-express-note {
+  background: #ffedd5;
+  color: #7c2d12;
+}
+
+/* The owner's switch above it: green while Express is on, grey while paused. */
+.adm-express-switch {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff;
+  font-size: 15px;
+}
+.adm-express-switch--on { border-color: #1f7a34; box-shadow: inset 4px 0 0 #1f7a34; }
+.adm-express-switch--off { background: #f4f4f5; box-shadow: inset 4px 0 0 #71717a; }
+.adm-express-switch--unknown { color: rgba(0, 0, 0, 0.6); }
+.adm-express-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.7);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.adm-express-switch-btn:disabled { opacity: 0.6; }

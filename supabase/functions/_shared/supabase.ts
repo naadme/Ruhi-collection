@@ -106,7 +106,10 @@ export async function fetchOrder(id: string): Promise<Json | null> {
   const common =
     'id,reference,status,full_name,email,phone,address,city,state,pincode,note,' +
     'payment_method,payment_status,razorpay_order_id,razorpay_payment_id,paid_at,'
-  let res = await serviceFetch(path(`${common}subtotal,shipping,discount,coupon_code,total,created_at`))
+  // delivery_speed (19 Nov 2026) is asked for first and dropped again if its
+  // migration has not run, exactly like the coupon columns below.
+  let res = await serviceFetch(path(`${common}subtotal,shipping,discount,coupon_code,total,created_at,delivery_speed`))
+  if (!res.ok) res = await serviceFetch(path(`${common}subtotal,shipping,discount,coupon_code,total,created_at`))
   if (!res.ok) {
     // The coupon columns arrive with a later migration than this function;
     // until it is applied, verification must keep working without them.
@@ -135,9 +138,16 @@ export async function fetchOrderByColumn(
   // columns (20261102120000_order_tracking_fields.sql) fall back the same way:
   // `is_test` picks the Razorpay keys, and `payment_type` and `new_customer`
   // go to the purchase event.
+  // delivery_speed (19 Nov 2026) tells the confirmation page an order is
+  // Express; asked for first, dropped if its migration has not run.
   let res = await serviceFetch(
-    path(`${common}discount,coupon_code,total,created_at,is_test,payment_type,new_customer`),
+    path(`${common}discount,coupon_code,total,created_at,is_test,payment_type,new_customer,delivery_speed`),
   )
+  if (!res.ok) {
+    res = await serviceFetch(
+      path(`${common}discount,coupon_code,total,created_at,is_test,payment_type,new_customer`),
+    )
+  }
   if (!res.ok) {
     res = await serviceFetch(path(`${common}discount,coupon_code,total,created_at`))
   }

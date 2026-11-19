@@ -69,9 +69,10 @@ async function claim(orderId: string): Promise<Json | null> {
   const res = await serviceFetch(
     `/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}` +
       `&confirmation_sent_at=is.null&${CONFIRMABLE}` +
-      '&select=id,reference,created_at,email,full_name,phone,address,city,state,pincode,' +
-      'subtotal,discount,coupon_code,shipping,total,status,note,payment_method,payment_status,' +
-      'razorpay_payment_id',
+      // Every column (19 Nov 2026), so the mail knows an Express order
+      // (delivery_speed) whether or not that column's migration has run: a
+      // column named here that does not exist yet would fail the whole claim.
+      '&select=*',
     {
       method: 'PATCH',
       headers: { Prefer: 'return=representation' },

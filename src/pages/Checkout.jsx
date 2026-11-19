@@ -10,13 +10,14 @@ import CheckoutHeader from '../components/CheckoutHeader'
 import { ShopRatingNote } from '../components/Stars'
 import { site } from '../data/site'
 import { saveOrder } from '../lib/orderStore'
-import { displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
+import { EXPRESS, EXPRESS_FEE_PER_ITEM, STANDARD, displayedTotalMatchesCharge, inr, shippingFor, totalFor } from '../lib/pricing'
 import { couponsAvailable, discountFor, serverHonoursCoupon, validateCoupon } from '../lib/coupons'
 import { EMPTY_ADDRESS, INDIAN_STATES, MAX_CART_LINES, mobileOk, mobileProblem, normalizeMobile, validateAddress } from '../lib/checkout'
 import { leadItems, leadSource, saveCheckoutLead } from '../lib/checkoutLeads'
 import { loadDetails, saveDetails } from '../lib/checkoutMemory'
 import { lookupPincode, preloadPincode } from '../lib/pincodes'
-import { deliveryWindowText } from '../lib/delivery'
+import { deliveryWindowText, expressArrivalText } from '../lib/delivery'
+import { useExpressDelivery } from '../lib/shopSettings'
 import { suggestEmail } from '../lib/emailTypos'
 import { checkoutWhatsAppLink } from '../lib/whatsapp'
 import { PaymentCancelled, PaymentFailed, onlinePaymentReady, openRazorpay, preloadRazorpay } from '../lib/razorpay'
@@ -81,10 +82,42 @@ function Field({ label, name, value, onChange, error, valid, hint, prefix, child
 // The order, first thing on a phone and beside the form on a computer: what
 // is being bought, the total with nothing added later, a coupon link only
 // while a coupon is live, and the dates the parcel should arrive.
+// One delivery option (19 Nov 2026): free standard delivery, or Express by
+// air at ₹149 per item. A real radio button, so keyboards and screen readers
+// get a normal choice. Its rose (brand.green, #C08576) is set inline, like the
+// "Online payment" card's: new Tailwind classes would grow the stylesheet
+// every page downloads.
+const ROSE = '#C08576'
+function DeliveryOption({ value, speed, onSpeed, title, when, price, priceOk }) {
+  const checked = speed === value
+  return (
+    <label
+      className="flex items-center gap-3 rounded-xl p-3 border bg-white cursor-pointer"
+      style={{ borderColor: checked ? ROSE : 'rgba(0, 0, 0, 0.15)' }}
+    >
+      <input
+        type="radio"
+        name="delivery-speed"
+        value={value}
+        checked={checked}
+        onChange={() => onSpeed(value)}
+        className="w-5 h-5 shrink-0"
+        style={{ accentColor: ROSE }}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-[15px] text-black">{title}</span>
+        <span className="block text-[13px] text-black/65">{when}</span>
+      </span>
+      <span className={`font-ui text-[15px] font-semibold shrink-0 ${priceOk ? OK_GREEN : 'text-black'}`}>{price}</span>
+    </label>
+  )
+}
+
 function Summary({
   lines, subtotal, coupon, couponsLive, couponInput, setCouponInput, couponBusy, couponNote, onApply, onRemoveCoupon, delivery,
+  speed, onSpeed, expressOn, pieces, expressBy,
 }) {
-  const shipping = shippingFor()
+  const shipping = shippingFor(speed, pieces)
   // Display only — the database recomputes the real discount when the order
   // is created and prices the payment from its own total.
   const discount = coupon ? discountFor(coupon, subtotal) : 0
@@ -129,7 +162,7 @@ function Summary({
             <span className="text-[17px] font-semibold">Total</span>{' '}
             <span className="text-[13px] text-black/60">· taxes included, no extra charges</span>
           </dt>
-          <dd className="font-ui text-[18px] font-semibold shrink-0">{inr(totalFor(subtotal, discount))}</dd>
+          <dd className="font-ui text-[18px] font-semibold shrink-0">{inr(totalFor(subtotal, discount, shipping))}</dd>
         </div>
       </dl>
 
@@ -197,10 +230,35 @@ function Summary({
         </div>
       )}
 
-      <p className="mt-3 pt-3 border-t border-black/10 flex items-center gap-2 text-[14px] text-black/75">
-        <Truck size={17} aria-hidden="true" className={`shrink-0 ${OK_GREEN}`} />
-        <span>{shipping === 0 ? 'Free delivery' : 'Delivery'} · arrives <b className="font-semibold text-black">{delivery}</b></span>
-      </p>
+      {/* Delivery: free standard, or Express by air (19 Nov 2026). Standard is
+          picked when the page opens: a paid option is never chosen for the
+          shopper (the 2023 dark-patterns guidelines), and Express shows its
+          price on the option itself, so the total never grows unannounced.
+          While the owner has paused Express, only the free line shows. */}
+      {expressOn ? (
+        <fieldset className="mt-3 pt-3 border-t border-black/10">
+          <legend className="sr-only">Delivery</legend>
+          <div className="space-y-2">
+            <DeliveryOption
+              value={STANDARD} speed={speed} onSpeed={onSpeed}
+              title="Free delivery"
+              when={<>Arrives <b className="font-semibold text-black">{delivery}</b></>}
+              price="Free" priceOk
+            />
+            <DeliveryOption
+              value={EXPRESS} speed={speed} onSpeed={onSpeed}
+              title="Express by air"
+              when={<>Arrives by <b className="font-semibold text-black">{expressBy}</b>{pieces > 1 ? ` · ${inr(EXPRESS_FEE_PER_ITEM)} per item` : ''}</>}
+              price={`+${inr(shippingFor(EXPRESS, pieces))}`}
+            />
+          </div>
+        </fieldset>
+      ) : (
+        <p className="mt-3 pt-3 border-t border-black/10 flex items-center gap-2 text-[14px] text-black/75">
+          <Truck size={17} aria-hidden="true" className={`shrink-0 ${OK_GREEN}`} />
+          <span>{shipping === 0 ? 'Free delivery' : 'Delivery'} · arrives <b className="font-semibold text-black">{delivery}</b></span>
+        </p>
+      )}
     </div>
   )
 }
@@ -234,6 +292,18 @@ export default function Checkout() {
   const [couponInput, setCouponInput] = useState('')
   const [couponBusy, setCouponBusy] = useState(false)
   const [couponNote, setCouponNote] = useState(null)
+  // Free standard delivery unless the shopper picks Express by air (19 Nov
+  // 2026). Express is offered while the dashboard's switch is on; if the
+  // database refuses it (paused since this page opened), it goes away for
+  // this visit and the order falls back to free delivery.
+  const [speed, setSpeed] = useState(STANDARD)
+  const expressSwitch = useExpressDelivery()
+  const [expressRefused, setExpressRefused] = useState(false)
+  const expressOn = expressSwitch && !expressRefused
+  useEffect(() => { if (!expressOn && speed !== STANDARD) setSpeed(STANDARD) }, [expressOn, speed])
+  // Items in the cart (Express is ₹149 for each one) and what delivery costs.
+  const pieces = lines.reduce((n, l) => n + (Number(l.qty) || 0), 0)
+  const shipping = shippingFor(speed, pieces)
   const prefilled = useRef(false)
   // The last address step and payment step sent to GTM on this visit, so a
   // retry with nothing changed is not counted twice.
@@ -592,6 +662,7 @@ export default function Checkout() {
     const started = await createRazorpayOrder(customer, items, couponCode, attributionForOrder(), {
       test: placingTest,
       experiments: experimentsForOrder(),
+      deliverySpeed: speed,
     })
     if (!started?.razorpay_order_id || !started?.key_id) {
       throw new Error('We could not start your payment. You have not been charged — please try again.')
@@ -599,7 +670,7 @@ export default function Checkout() {
 
     // What this page is showing the shopper right now, in rupees — the exact
     // number in the summary and on the Pay button.
-    const shownTotal = totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0)
+    const shownTotal = totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0, shipping)
 
     // The gateway charges the total the DATABASE priced, which comes back as
     // `started.total` — never the number this page worked out for itself. If a
@@ -779,6 +850,7 @@ export default function Checkout() {
       },
       value: Math.max(0, subtotal - (coupon ? discountFor(coupon, subtotal) : 0)),
       coupon: coupon?.code,
+      shippingTier: speed,
       eventId: newEventId(),
     }))
 
@@ -792,6 +864,12 @@ export default function Checkout() {
     } catch (err) {
       checkoutError(/coupon/i.test(err?.message || '') ? 'coupon_refused' : 'order_failed')
       setFailure(err?.message || 'We could not place your order. Please try again.')
+      // Express was paused after this page opened: the database said so, and
+      // the order goes back to free delivery for the next attempt.
+      if (/express delivery is paused/i.test(err?.message || '')) {
+        setExpressRefused(true)
+        setSpeed(STANDARD)
+      }
       // A coupon the server refused must not stay applied — the customer
       // fixes it (or pays without it) on the next attempt.
       if (/coupon/i.test(err?.message || '')) {
@@ -807,7 +885,7 @@ export default function Checkout() {
 
   // What the page is charging right now: the number in the summary, on Pay,
   // on the phone Pay bar and in the WhatsApp message.
-  const total = totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0)
+  const total = totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0, shipping)
   // "Chat with us" opens WhatsApp with the cart already written out.
   const chatHref = checkoutWhatsAppLink({
     number: site.whatsappNumber,
@@ -934,6 +1012,11 @@ export default function Checkout() {
               onApply={applyCoupon}
               onRemoveCoupon={removeCoupon}
               delivery={deliveryWindowText()}
+              speed={speed}
+              onSpeed={setSpeed}
+              expressOn={expressOn}
+              pieces={pieces}
+              expressBy={expressArrivalText()}
             />
             {/* How the shopper will pay, shown before they start typing (14 Nov
                 2026): the old checkout's one choice, "Online payment", already
@@ -1103,7 +1186,7 @@ export default function Checkout() {
           <div className="max-w-[640px] mx-auto h-[4.5rem] px-4 flex items-center gap-4">
             <div className="font-ui leading-tight min-w-0">
               <p className="font-bold text-[20px] text-black">{inr(total)}</p>
-              <p className={`text-[13px] font-medium ${OK_GREEN}`}>{shippingFor() === 0 ? 'Free delivery' : 'Taxes included'}</p>
+              <p className={`text-[13px] font-medium ${OK_GREEN}`}>{speed === EXPRESS ? 'Express by air' : 'Free delivery'}</p>
             </div>
             <button
               type="submit"

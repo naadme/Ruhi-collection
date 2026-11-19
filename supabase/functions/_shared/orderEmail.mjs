@@ -49,6 +49,28 @@ export function formatOrderDate(value) {
   )
 }
 
+/** Whether the order was placed with Express delivery by air (19 Nov 2026). */
+export function isExpress(order) {
+  return asText(order?.delivery_speed) === 'express'
+}
+
+/** Days, every day counted, from the order to an Express arrival (the owner's rule). */
+export const EXPRESS_DAYS = 4
+
+/**
+ * "Mon 23 Nov": the day an Express order placed at `value` arrives by, counted
+ * in India like the checkout's own promise (src/lib/delivery.js). '' when the
+ * order has no usable date.
+ */
+export function expressByText(value) {
+  const ms = value instanceof Date ? value.getTime() : new Date(String(value ?? '')).getTime()
+  if (!Number.isFinite(ms)) return ''
+  const day = new Date(ms + (5 * 60 + 30) * 60 * 1000 + EXPRESS_DAYS * 24 * 60 * 60 * 1000)
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${weekdays[day.getUTCDay()]} ${day.getUTCDate()} ${months[day.getUTCMonth()]}`
+}
+
 /** The delivery address, as the lines the customer gave. */
 export function addressLines(order) {
   return [
@@ -133,6 +155,10 @@ export function buildConfirmationText(order, items) {
   if (placed) lines.push(`Order date: ${placed}`)
   lines.push(`Status: ${STATUS_LABEL[asText(o.status)] || asText(o.status) || 'Received'}`)
   lines.push(`Payment: ${paymentLabel(o)}`)
+  if (isExpress(o)) {
+    const by = expressByText(o.created_at)
+    lines.push(`Delivery: Express by air${by ? ` — arrives by ${by}` : ''}`)
+  }
 
   const address = addressLines(o)
   if (address.length) {
@@ -211,6 +237,13 @@ export function buildOwnerNotificationText(order, items) {
   const lines = []
   const orderItems = Array.isArray(items) ? items : []
 
+  // An Express order (19 Nov 2026) says so before anything else: it has to be
+  // booked by air, and the customer was promised a date.
+  if (isExpress(o)) {
+    const by = expressByText(o.created_at)
+    lines.push(`EXPRESS BY AIR — book air shipping today.${by ? ` The customer was promised delivery by ${by}.` : ''}`)
+    lines.push('')
+  }
   lines.push('New order — Ruhi Womens Clothing')
   lines.push('')
   lines.push(`Order ID: ${asText(o.reference)}`)
@@ -219,6 +252,7 @@ export function buildOwnerNotificationText(order, items) {
   if (placed) lines.push(`Order date: ${placed}`)
   lines.push(`Status: ${STATUS_LABEL[asText(o.status)] || asText(o.status) || 'Received'}`)
   lines.push(`Payment: ${ownerPaymentLabel(o)}`)
+  lines.push(`Delivery: ${isExpress(o) ? 'EXPRESS BY AIR' : 'Free standard delivery'}`)
   if (asText(o.razorpay_payment_id)) lines.push(`Payment ID: ${asText(o.razorpay_payment_id)}`)
 
   lines.push('')
@@ -273,5 +307,5 @@ export function buildOwnerNotificationText(order, items) {
 export function buildOwnerNotificationSubject(order) {
   const o = order || {}
   const method = isCashOnDelivery(o) ? 'Cash on delivery' : isPaid(o) ? 'Paid online' : 'Online payment'
-  return `New order ${asText(o.reference)} — ${method} — ${inr(o.total)}`
+  return `${isExpress(o) ? 'EXPRESS BY AIR · ' : ''}New order ${asText(o.reference)} — ${method} — ${inr(o.total)}`
 }

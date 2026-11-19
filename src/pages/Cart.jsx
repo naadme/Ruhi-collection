@@ -8,6 +8,7 @@ import Img from '../components/Img'
 import QtyControl from '../components/QtyControl'
 import { ShopRatingNote } from '../components/Stars'
 import { inr, shippingFor, totalFor } from '../lib/pricing'
+import ExpressNote from '../components/ExpressNote'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent } from '../lib/trackingItems'
 
@@ -125,6 +126,8 @@ export default function Cart() {
               <dt>Total</dt><dd className="font-ui">{inr(totalFor(subtotal))}</dd>
             </div>
           </dl>
+          {/* Express by air (19 Nov 2026), while the owner has it on. */}
+          <ExpressNote className="block mt-2 text-[13px] text-black/60" />
 
           <Link
             to="/checkout"

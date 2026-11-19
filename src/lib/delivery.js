@@ -1,10 +1,16 @@
 // The delivery promise at checkout, as dates instead of "7-10 working days",
 // so the shopper knows when to expect the parcel.
 //
+// Express by air (the owner's rule, 19 Nov 2026): the parcel arrives within 4
+// days of the order, every day counted, Sundays included. An order on
+// Thursday 19 Nov arrives "by Mon 23 Nov".
+//
 // The owner's rule (12 Nov 2026): the window opens 7 working days after the
 // order, counting Monday to Saturday, and stays open for 7 days. An order on
 // Thursday 12 Nov arrives "Fri 20 – Fri 27 Nov". Days are counted in India,
 // whatever time zone the shopper's phone is set to.
+
+import { EXPRESS_DAYS } from './pricing.js'
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -41,4 +47,17 @@ export function deliveryWindowText(now = new Date()) {
   const { first, last } = deliveryWindow(now)
   const sameMonth = first.getUTCMonth() === last.getUTCMonth()
   return `${dayText(first, !sameMonth)} – ${dayText(last, true)}`
+}
+
+/** Calendar days, every day counted, from the order to an Express arrival. */
+export { EXPRESS_DAYS }
+
+/** The last day an Express order placed at `now` arrives, as a UTC-midnight Date. */
+export function expressArrival(now = new Date()) {
+  return new Date(indiaDate(now).getTime() + EXPRESS_DAYS * DAY_MS)
+}
+
+/** "Mon 23 Nov": the day an Express order placed at `now` arrives by. */
+export function expressArrivalText(now = new Date()) {
+  return dayText(expressArrival(now), true)
 }

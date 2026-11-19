@@ -193,7 +193,7 @@ test('Checkout refuses to open the payment window when the totals disagree', () 
   const SRC = read('src/pages/Checkout.jsx');
   assert.match(SRC, /displayedTotalMatchesCharge\(shownTotal, started\)/,
     'the gate is evaluated against the amount actually handed to Razorpay');
-  assert.match(SRC, /const shownTotal = totalFor\(subtotal, coupon \? discountFor\(coupon, subtotal\) : 0\)/,
+  assert.match(SRC, /const shownTotal = totalFor\(subtotal, coupon \? discountFor\(coupon, subtotal\) : 0, shipping\)/,
     'the shown total is the one rendered in the summary and on the Pay button');
   // It must bail out BEFORE the gateway window, and re-price rather than carry on.
   const gateAt = SRC.indexOf('displayedTotalMatchesCharge(shownTotal, started)');

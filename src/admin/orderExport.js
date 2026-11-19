@@ -32,6 +32,8 @@ export const EXPORT_COLUMNS = [
   'Product ID', 'Product link', 'Product', 'Colour', 'Size', 'Quantity',
   'Item price', 'Item total',
   'Coupon code', 'Discount', 'Subtotal', 'Shipping', 'Order total', 'Delivery note',
+  // 19 Nov 2026: free standard delivery, or Express by air.
+  'Delivery',
 ]
 
 const money = (v) => {
@@ -75,8 +77,9 @@ export function ordersToRows(orders) {
             money(o.shipping),
             money(o.total),
             o.note || '',
+            o.delivery_speed === 'express' ? 'Express by air' : 'Standard',
           ]
-        : ['', '', '', '', '', '']
+        : ['', '', '', '', '', '', '']
     if (!items.length) {
       rows.push([...orderCells(true), '', '', '', '', '', '', '', '', ...moneyCells(true)])
       continue

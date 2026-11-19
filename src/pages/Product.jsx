@@ -16,6 +16,7 @@ import ReviewHighlight from '../components/ReviewHighlight'
 import { RatingLine, RatingPill } from '../components/Stars'
 import { useRatings } from '../context/RatingsContext'
 import { inr } from '../lib/pricing'
+import ExpressNote from '../components/ExpressNote'
 import { MAX_QTY } from '../lib/checkout'
 import { shownDescription, variantFor } from '../lib/productGrouping'
 import { fetchPublishedReviews } from '../lib/reviewStore'
@@ -504,7 +505,11 @@ export default function Product() {
 
           <p className="mt-6 flex items-start gap-2 text-[14px] text-black/60">
             <Truck size={16} className="mt-[1px] shrink-0 text-brand-green" />
-            Free shipping for all products · Delivery in 7-10 working days
+            <span>
+              Free shipping for all products · Delivery in 7-10 working days
+              {/* Express by air (19 Nov 2026), while the owner has it on. */}
+              <ExpressNote className="block mt-1" />
+            </span>
           </p>
           <p className="mt-2 flex items-start gap-2 text-[14px] text-black/60">
             <RotateCcw size={16} className="mt-[1px] shrink-0 text-brand-green" />

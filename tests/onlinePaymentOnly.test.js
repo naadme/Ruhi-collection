@@ -38,10 +38,16 @@ const PREVIOUS = codeOf('20261021090000_order_item_skus.sql');
 const CURRENT = codeOf(FILE);
 const SRC = CURRENT.join('\n');
 
-test('this migration holds the create_order that runs: the newest definition', () => {
+test('the create_order that runs (the newest definition) still refuses cash on delivery', () => {
   const definers = fs.readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort()
     .filter((f) => fs.readFileSync(path.join(DIR, f), 'utf8').split('\n').some((l) => l.startsWith(START)));
-  assert.equal(definers.at(-1), FILE);
+  // Since 19 Nov 2026 the newest is the Express delivery one, a copy of this
+  // file's function plus the delivery choice (tests/expressDelivery.test.js).
+  assert.equal(definers.at(-1), '20261119120000_express_delivery.sql');
+  const newest = codeOf(definers.at(-1)).join('\n');
+  assert.ok(newest.includes("if v_pay <> 'razorpay' then"));
+  assert.ok(newest.includes("raise exception 'Cash on delivery is not available. Please pay online to place your order.';"));
+  assert.ok(newest.includes("and o.payment_status in ('pending', 'failed')"));
 });
 
 test('any method but online payment is refused, including none at all', () => {

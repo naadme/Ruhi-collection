@@ -65,10 +65,26 @@ test('a shop page starts the app\'s own first reads: catalogue, categories, rati
     'categories?select=*&order=position.asc,key.asc',
     // RatingsContext → fetchRatingRows: the first page of 1000.
     'product_reviews?select=product_id,rating&status=eq.approved&order=id.asc&offset=0&limit=1000',
+    // src/lib/shopSettings.js: whether Express delivery is on (19 Nov 2026).
+    'shop_settings?select=express_delivery',
   ])
   // The publishable key in the `apikey` header, as the anonymous app sends it.
   for (const c of calls) assert.deepEqual(c.init, { headers: { apikey: 'sb_publishable_test' } })
-  for (const name of ['products', 'categories', 'ratings']) assert.equal(typeof win.__ruhiEarly[name].then, 'function')
+  for (const name of ['products', 'categories', 'ratings', 'settings']) assert.equal(typeof win.__ruhiEarly[name].then, 'function')
+})
+
+test('only the product page, the cart and checkout read the Express switch', () => {
+  for (const path of ['/product/navy-set', '/cart', '/checkout']) {
+    const { win, calls } = browser({ path })
+    earlyStart(win, CFG)
+    assert.ok(queries(calls).includes('shop_settings?select=express_delivery'), path)
+  }
+  for (const path of ['/', '/shop', '/account', '/policies/shipping-policy']) {
+    const { win, calls } = browser({ path })
+    earlyStart(win, CFG)
+    assert.ok(!queries(calls).some((q) => q.startsWith('shop_settings')), path)
+    assert.equal(win.__ruhiEarly.settings, undefined, path)
+  }
 })
 
 test('only the homepage also reads the hero banners', () => {
@@ -89,6 +105,8 @@ test('the early queries are the ones the app\'s code builds', () => {
   assert.match(read('src/lib/reviewStore.js'), /\.from\('product_reviews'\)\s*\.select\('product_id, rating'\)\s*\.eq\('status', 'approved'\)\s*\.order\('id', \{ ascending: true \}\)\s*\.range\(from, from \+ pageSize - 1\)/)
   assert.match(read('src/lib/reviewStore.js'), /fetchRatingRows\(\{ pageSize = 1000,/)
   assert.match(read('src/lib/banners.js'), /\.from\('banners'\)\s*\.select\('\*'\)\s*\.eq\('slot', HOME_HERO_SLOT\)\s*\.order\('position', \{ ascending: true \}\)\s*\.order\('created_at', \{ ascending: true \}\)/)
+  assert.match(read('src/lib/shopSettings.js'), /\.from\('shop_settings'\)\.select\('express_delivery'\)/)
+  assert.match(read('src/lib/shopSettings.js'), /takeEarly\('settings'\)/)
 })
 
 // ------------------------------------------------------- who is left alone
@@ -109,7 +127,7 @@ test('the dashboard, a signed-in visitor and a returning Google sign-in read for
   // Other things a shopper's phone stores (the cart, checkout details) are no reason to stop.
   const shopper = browser({ path: '/product/navy-set', stored: ['ruhi:cart', 'ruhi:checkout-details'] })
   earlyStart(shopper.win, CFG)
-  assert.equal(shopper.calls.length, 3)
+  assert.equal(shopper.calls.length, 4)
 })
 
 test('without settings or fetch it does nothing, and it never throws', async () => {
