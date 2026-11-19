@@ -70,7 +70,7 @@ export const site = {
     { icon: 'IndianRupee', title: 'All Products', text: 'under ₹1000' },
   ],
   faq: [
-    ['How long does delivery take?', 'Most orders arrive in 7-10 working days across India.'],
+    ['How long does delivery take?', 'Delivery is free, and most orders arrive in 7-10 working days across India. Need it sooner? Choose Express by air at checkout: it arrives in 4 days, for ₹149 per item.'],
     ['Which payment methods do you accept?', 'Pay securely online at checkout with UPI, cards, net banking or wallets.'],
     ['Can I return an item?', 'Yes, within 5 days of delivery if it arrives damaged or faulty, is not what you ordered, or is not as shown on our website. An unboxing video is required, so please record one when you open your parcel. See our return & refund policy for details.'],
   ],

@@ -4,7 +4,7 @@ import { AlertTriangle, Check, Mail, PackageCheck, PhoneCall, ShieldCheck, Truck
 import usePageTitle from '../hooks/usePageTitle'
 import Img from '../components/Img'
 import { loadOrder } from '../lib/orderStore'
-import { inr, totalFor } from '../lib/pricing'
+import { EXPRESS, EXPRESS_DAYS, expressByDate, inr, totalFor } from '../lib/pricing'
 import { formatShopDateTime } from '../lib/shopTime'
 import { orderLineDetail, orderLineName } from '../lib/orderLine'
 import { site } from '../data/site'
@@ -30,13 +30,22 @@ const PAYMENT_STATES = {
 // The last step depends on how the order was paid. An order that did not go
 // through the payment gateway only needs the delivery call; a gateway order
 // shows where the money actually stands.
+// An Express order (19 Nov 2026) goes by air and arrives within 4 days of the
+// order, every day counted; the date is counted in India.
+function shippingStep(order) {
+  if (order.delivery_speed !== EXPRESS) return SHIPPING
+  const by = expressByDate(order.created_at)
+  return [Truck, 'Express by air', `We send it by air. It arrives ${by ? `by ${by}` : `within ${EXPRESS_DAYS} days`}.`]
+}
+
 function stepsFor(order) {
+  const shipping = shippingStep(order)
   if (order.payment_method !== 'razorpay') {
-    return [PACKING, SHIPPING, [PhoneCall, 'Delivery partner calls ahead', 'Our delivery partner will call you before arriving.'], UNBOXING]
+    return [PACKING, shipping, [PhoneCall, 'Delivery partner calls ahead', 'Our delivery partner will call you before arriving.'], UNBOXING]
   }
   return order.payment_status === 'paid'
-    ? [PACKING, SHIPPING, [ShieldCheck, 'Payment confirmed', 'Paid online — there is nothing to pay when your parcel arrives.'], UNBOXING]
-    : [PACKING, SHIPPING, [AlertTriangle, 'Payment pending', 'We are confirming your payment. You will not be asked to pay again.'], UNBOXING]
+    ? [PACKING, shipping, [ShieldCheck, 'Payment confirmed', 'Paid online — there is nothing to pay when your parcel arrives.'], UNBOXING]
+    : [PACKING, shipping, [AlertTriangle, 'Payment pending', 'We are confirming your payment. You will not be asked to pay again.'], UNBOXING]
 }
 
 export default function OrderConfirmation() {
@@ -156,11 +165,11 @@ export default function OrderConfirmation() {
                 <dd className="font-ui text-brand-green font-semibold">−{inr(order.discount)}</dd>
               </div>
             )}
-            <div className="flex justify-between"><dt className="text-black/65">Shipping</dt>
+            <div className="flex justify-between"><dt className="text-black/65">{order.delivery_speed === EXPRESS ? 'Express by air' : 'Shipping'}</dt>
               <dd className="font-ui">{order.shipping === 0 ? <span className="text-brand-green font-semibold">Free</span> : inr(order.shipping)}</dd></div>
             <div className="flex justify-between pt-3 border-t border-black/10 text-[18px] font-semibold">
               <dt>{paid ? 'Total (paid online)' : 'Total'}</dt>
-              <dd className="font-ui">{inr(order.total ?? totalFor(order.subtotal, Number(order.discount) || 0))}</dd>
+              <dd className="font-ui">{inr(order.total ?? totalFor(order.subtotal, Number(order.discount) || 0, Number(order.shipping) || 0))}</dd>
             </div>
           </dl>
         </div>

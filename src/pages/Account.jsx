@@ -92,6 +92,7 @@ function OrderHistory() {
               {o.payment_method === 'razorpay'
                 ? ({ paid: 'Paid', failed: 'Payment failed', refunded: 'Refunded' }[o.payment_status] || 'Payment pending')
                 : 'Payment pending'}
+              {o.delivery_speed === 'express' && ' · Express by air'}
               {' · Delivered to '}{o.city}, {o.state} {o.pincode}
             </p>
           </li>

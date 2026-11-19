@@ -4,11 +4,12 @@ import {
   Phone, RefreshCw, User, X,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { inr } from '../lib/pricing'
+import { EXPRESS, expressByDate, inr } from '../lib/pricing'
 import { filterAndSortOrders } from '../lib/orderFiltering'
 import { formatShopDateTime } from '../lib/shopTime'
 import { downloadOrdersXlsx } from './orderExport'
 import GoogleSheetsPanel from './GoogleSheetsPanel'
+import ExpressSwitch from './ExpressSwitch'
 import { syncSheetsNow } from '../lib/googleSheets'
 
 const STATUSES = [
@@ -32,6 +33,14 @@ const TONE = {
 }
 
 const STATUS_FILTERS = [['all', 'All'], ...STATUSES]
+
+// Express delivery by air (19 Nov 2026). An Express order has to be booked by
+// air the day it comes in, so the dashboard makes it impossible to miss: an
+// orange card with an "EXPRESS · BY AIR" badge, a banner with the promised
+// date, and a bar at the top counting the paid ones not yet shipped.
+const isExpressOrder = (o) => o?.delivery_speed === EXPRESS
+const DONE = new Set(['shipped', 'delivered', 'returned', 'cancelled'])
+const expressToShip = (o) => isExpressOrder(o) && o.payment_status === 'paid' && !DONE.has(o.status) && o.is_test !== true
 
 // Payment is tracked separately from fulfilment: `status` is where the parcel
 // is, `payment_status` is whether Razorpay has actually been paid. Only the
@@ -73,8 +82,17 @@ function paymentChip(order) {
 
 function Row({ order, open, onToggle, onStatus, busy }) {
   const items = order.order_items || []
+  const express = isExpressOrder(order)
+  const by = express ? expressByDate(order.created_at) : ''
+  const done = DONE.has(order.status)
+  // What Express means for this order right now: book it by air, wait for the
+  // money, or nothing left to do.
+  const expressNote = !express ? ''
+    : done ? `Express by air${by ? ` · promised by ${by}` : ''}`
+      : order.payment_status !== 'paid' ? 'Express by air: not paid yet. Send it only once it is paid.'
+        : `Express by air: book air shipping today.${by ? ` The customer was promised delivery by ${by}.` : ''}`
   return (
-    <li className="bg-white border border-black/10 rounded-xl overflow-hidden">
+    <li className={`${express ? (done ? 'adm-express adm-express--done ' : 'adm-express ') : 'bg-white border border-black/10 '}rounded-xl overflow-hidden`}>
       <div className="flex flex-wrap items-center gap-3 p-3 sm:p-4">
         <button
           onClick={onToggle}
@@ -101,6 +119,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
               {formatShopDateTime(order.created_at)}
             </span>
             <span className="ml-2 align-middle inline-block">{paymentChip(order)}</span>
+            {express && <span className="adm-express-badge">Express · by air</span>}
             {/* Placed in Razorpay's test mode (tracking brief, rule 10): no
                 money moved, and reports can leave it out. */}
             {order.is_test && (
@@ -128,6 +147,9 @@ function Row({ order, open, onToggle, onStatus, busy }) {
           </select>
         </div>
       </div>
+
+      {/* Before anything else in the card: what Express means for packing. */}
+      {express && <p className="adm-express-note">{expressNote}</p>}
 
       {open && (
         <div className="border-t border-black/10 p-4 sm:p-5 grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-6 bg-[#F8EDE6]">
@@ -166,7 +188,7 @@ function Row({ order, open, onToggle, onStatus, busy }) {
                   <dd className="font-ui text-brand-green">−{inr(order.discount)}</dd>
                 </div>
               )}
-              <div className="flex justify-between"><dt className="text-black/60">Shipping</dt>
+              <div className="flex justify-between"><dt className="text-black/60">{express ? 'Express by air' : 'Shipping'}</dt>
                 <dd className="font-ui">{order.shipping === 0 ? 'Free' : inr(order.shipping)}</dd></div>
               <div className="flex justify-between font-semibold"><dt>Total</dt><dd className="font-ui">{inr(order.total)}</dd></div>
             </dl>
@@ -250,6 +272,8 @@ export default function OrdersPanel({ notify }) {
   // Test orders (Razorpay test mode, rule 10) are listed until the owner
   // leaves them out; the counts, the list and the download follow the switch.
   const [hideTests, setHideTests] = useState(false)
+  // "Show only Express" (19 Nov 2026), from the Express bar.
+  const [expressOnly, setExpressOnly] = useState(false)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [openId, setOpenId] = useState('')
@@ -288,10 +312,12 @@ export default function OrdersPanel({ notify }) {
   // One pass over EVERY order the admin can see — status, search, date range
   // and date sort together — so the list, the header count and the Excel
   // download all describe exactly the same set.
-  const rows = useMemo(
-    () => filterAndSortOrders(state.orders, { status: filter, query, sort, from, to, hideTests }),
-    [state.orders, query, filter, sort, from, to, hideTests],
-  )
+  const rows = useMemo(() => {
+    const list = filterAndSortOrders(state.orders, { status: filter, query, sort, from, to, hideTests })
+    return expressOnly ? list.filter(isExpressOrder) : list
+  }, [state.orders, query, filter, sort, from, to, hideTests, expressOnly])
+  // Paid Express orders that still have to go out, whatever the filters.
+  const expressWaiting = useMemo(() => state.orders.filter(expressToShip).length, [state.orders])
 
   const rangeActive = Boolean(from || to)
   const clearRange = () => { setFrom(''); setTo('') }
@@ -381,6 +407,22 @@ export default function OrdersPanel({ notify }) {
         <div role="alert" className="mt-6 flex items-start gap-3 border border-red-200 bg-red-50 text-red-800 rounded-xl px-4 py-3 text-[14px]">
           <AlertTriangle size={18} className="shrink-0 mt-0.5" />
           <span className="min-w-0">We couldn't load your orders. <strong>{state.error}</strong></span>
+        </div>
+      )}
+
+      {/* Express delivery by air (19 Nov 2026): the owner's switch, and a bar
+          that cannot be missed while paid Express orders are waiting. */}
+      <ExpressSwitch notify={notify} />
+      {(expressWaiting > 0 || expressOnly) && (
+        <div role="status" className="adm-express-alert">
+          <span className="min-w-0">
+            {expressWaiting > 0
+              ? `${expressWaiting} Express ${expressWaiting === 1 ? 'order' : 'orders'} to send by air`
+              : 'No paid Express orders waiting'}
+          </span>
+          <button type="button" onClick={() => setExpressOnly((v) => !v)} aria-pressed={expressOnly}>
+            {expressOnly ? 'Show all orders' : 'Show only Express'}
+          </button>
         </div>
       )}
 

@@ -32,8 +32,10 @@ export const CURRENCY = 'INR'
  */
 export const BRAND = 'Ruhi Collections'
 
-/** shipping_tier: the shop has one delivery option, free, in 7–10 working days. */
+/** shipping_tier (A8): free standard delivery, the default. */
 export const SHIPPING_TIER = 'standard'
+/** The tiers the shop has (19 Nov 2026): free standard, or Express by air. */
+export const SHIPPING_TIERS = new Set(['standard', 'express'])
 
 /** payment_type values the brief allows (Section 3). */
 export const PAYMENT_TYPES = new Set(['upi', 'card', 'netbanking', 'wallet', 'cod'])
@@ -240,7 +242,7 @@ export function cartEvent(event, items, { eventId, value, coupon, params } = {})
  * ride at the top level, so every later event of the visit carries them — this
  * is where a guest's details first reach GTM.
  */
-export function shippingEvent({ items, customer, value, coupon, eventId } = {}) {
+export function shippingEvent({ items, customer, value, coupon, shippingTier, eventId } = {}) {
   const list = known(items)
   if (!list.length) return null
   return compact({
@@ -251,7 +253,7 @@ export function shippingEvent({ items, customer, value, coupon, eventId } = {}) 
       currency: CURRENCY,
       value: amount(value) ?? valueOf(list),
       coupon: text(coupon),
-      shipping_tier: SHIPPING_TIER,
+      shipping_tier: SHIPPING_TIERS.has(shippingTier) ? shippingTier : SHIPPING_TIER,
       items: list,
     }),
   })

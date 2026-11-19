@@ -54,6 +54,9 @@ export function earlyStart(win, cfg) {
     box.categories = quiet(read('categories?select=*&order=position.asc,key.asc'))
     box.ratings = quiet(read('product_reviews?select=product_id,rating&status=eq.approved&order=id.asc&offset=0&limit=' + cfg.ratingsPage))
     if (path === '/') box.banners = quiet(read('banners?select=*&slot=eq.' + cfg.heroSlot + '&order=position.asc,created_at.asc'))
+    // Whether Express delivery is on (the dashboard's switch, 19 Nov 2026), on
+    // the pages that offer it: product, cart and checkout (src/lib/shopSettings.js).
+    if (/^\/(product|cart|checkout)(\/|$)/.test(path)) box.settings = quiet(read('shop_settings?select=express_delivery'))
 
     // An uploaded photo's resized copies, exactly as src/lib/imageSrcSet.js
     // builds them. A photo stored anywhere else is not preloaded.

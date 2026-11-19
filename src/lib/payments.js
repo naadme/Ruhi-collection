@@ -47,10 +47,13 @@ async function invoke(name, body, fallback) {
  *  only a request, refused by the server for anyone who is not an admin.
  *  `experiments` is the A/B tests the shopper is counted in, { test: version }
  *  (src/lib/experiments.js), for the order to keep. */
-export function createRazorpayOrder(customer, items, couponCode, attribution, { test = false, experiments } = {}) {
+export function createRazorpayOrder(customer, items, couponCode, attribution, { test = false, experiments, deliverySpeed } = {}) {
   return invoke('create-razorpay-order', {
     ...customer,
     items,
+    // 'standard' or 'express' (19 Nov 2026): only ever a request — the
+    // database prices Express itself, and refuses it while it is paused.
+    ...(deliverySpeed ? { delivery_speed: deliverySpeed } : {}),
     ...(couponCode ? { coupon_code: couponCode } : {}),
     ...(attribution && Object.keys(attribution).length ? { attribution } : {}),
     ...(experiments && Object.keys(experiments).length ? { experiments } : {}),

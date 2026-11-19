@@ -87,6 +87,10 @@ function buildPayload(body: Json, items: Json[]): Json {
     // A coupon code is only ever a REQUEST: `create_order()` re-validates it
     // in the database and computes the discount itself.
     coupon_code: asString(body.coupon_code),
+    // So is the delivery option (19 Nov 2026): 'standard' or 'express'.
+    // `create_order()` refuses anything else, refuses Express while the owner
+    // has paused it, and prices it (₹149 per item) itself.
+    delivery_speed: asString(body.delivery_speed),
   }
 }
 
@@ -240,6 +244,7 @@ export async function handle(req: Request): Promise<Response> {
       reference,
       subtotal: order.subtotal,
       shipping: order.shipping,
+      delivery_speed: order.delivery_speed,
       // The discount `create_order()` itself computed, echoed so Checkout can
       // check that what it shows the shopper matches what Razorpay charges.
       // Absent on a database whose coupon migration has not run, where JSON

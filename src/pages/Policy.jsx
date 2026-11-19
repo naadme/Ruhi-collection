@@ -11,25 +11,30 @@ const LAST_UPDATED = '28 September 2026'
 
 // Written against the promises already published on this site (announcement
 // bar, features and FAQ): free shipping for all products and delivery in 7-10
-// working days. Nothing here invents a guarantee the store has not
-// already made. Keep this in sync with src/data/site.js.
+// working days, and (19 Nov 2026) optional Express delivery by air at ₹149 per
+// item, arriving within 4 days with every day counted. Nothing here invents a
+// guarantee the store has not already made. Keep this in sync with
+// src/data/site.js.
 const POLICIES = {
   'shipping-policy': {
     title: 'Shipping policy',
     intro: 'Where we deliver, what it costs and when to expect your order.',
+    updated: '19 November 2026',
     sections: [
       ['Where we deliver', [
         'We deliver across India, including metros and most smaller towns and cities served by our courier partners.',
         'At the moment we do not ship outside India.'],
       ],
       ['How much shipping costs', [
-        'Shipping is free on every order, whatever the order value — there is no minimum spend and nothing extra to pay for delivery.',
+        'Standard delivery is free on every order, whatever the order value — there is no minimum spend.',
+        'Need it sooner? Express delivery by air is optional and costs ₹149 per item. You choose it at checkout, where its price is shown before you pay.',
         'The cart and the checkout page both show what you will pay before you place the order, so there are no surprises at payment.'],
       ],
       ['When your order arrives', [
         'We usually pack and dispatch an order within 2–3 working days of it being placed.',
         'Most orders arrive within 7-10 working days from dispatch. Remote PIN codes can take a little longer.',
-        'Working days are Monday to Saturday, excluding public holidays.'],
+        'Working days are Monday to Saturday, excluding public holidays.',
+        'Express orders are sent by air and arrive within 4 days of the order, counting every day of the week. Checkout shows the date.'],
       ],
       ['Tracking your order', [
         'As soon as your order is placed you get an order ID such as 01102601, and the same ID appears on your order confirmation page and in your account.',
@@ -47,7 +52,7 @@ const POLICIES = {
     // damaged or wrong item only, with an unboxing video. "Not as shown" is
     // included because India's Consumer Protection (E-Commerce) Rules 2020 do
     // not let a seller refuse goods that are not as advertised.
-    updated: '5 November 2026',
+    updated: '19 November 2026',
     sections: [
       ['When you can return an item', [
         'You can ask for a return within 5 days of delivery if the item:',
@@ -71,7 +76,8 @@ const POLICIES = {
       ],
       ['How refunds are paid', [
         'Refunds go back to the original payment method — the same UPI app, card, bank account or wallet you paid with — once the returned item reaches us and is checked.',
-        'Banks and UPI apps usually take 5–7 working days to show the refund in your account.'],
+        'Banks and UPI apps usually take 5–7 working days to show the refund in your account.',
+        'When an Express order is returned, the Express delivery charge (₹149 per item) is not refunded.'],
       ],
       ['What we cannot take back', [
         'Returns for a change of mind, or because the size or fit is not right — please check the Size chart on each product page before ordering.',
