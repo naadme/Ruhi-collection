@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Plus, Search, Trash2, Loader2, AlertTriangle,
@@ -21,6 +21,10 @@ import CouponsPanel from './CouponsPanel'
 import UnpaidCheckoutsPanel from './UnpaidCheckoutsPanel'
 import ReviewsPanel from './ReviewsPanel'
 import GoogleSheetsButton from './GoogleSheetsButton'
+
+// "Daily numbers" (20 Nov 2026) is loaded only when the owner opens it, with
+// its own stylesheet: the rest of the admin, and the shop, download none of it.
+const DailyNumbersPanel = lazy(() => import('./daily/DailyNumbersPanel'))
 
 function Toast({ toast, onClose }) {
   useEffect(() => {
@@ -115,8 +119,10 @@ const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
 // chase the same rows through.
 // "Unpaid checkouts" (12 Nov 2026) sits beside Orders: shoppers who typed
 // their mobile number at checkout and left without paying.
+// "Daily numbers" (20 Nov 2026): ad spend, the funnel, payments and money in,
+// with filters; the owner's first stop, so it is listed first.
 const SECTIONS = [
-  ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'], ['unpaid', 'Unpaid checkouts'],
+  ['daily', 'Daily numbers'], ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'], ['unpaid', 'Unpaid checkouts'],
   ['banners', 'Banners'], ['page-images', 'Page images'],
   ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'], ['reviews', 'Reviews'],
 ]
@@ -433,6 +439,11 @@ export default function Dashboard({ showOrders }) {
           <GoogleSheetsButton />
         </div>
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
+          {section === 'daily' && (
+            <Suspense fallback={<p className="text-black/55 text-[15px]">Loading…</p>}>
+              <DailyNumbersPanel notify={notify} />
+            </Suspense>
+          )}
           {section === 'orders' && <OrdersPanel notify={notify} />}
           {section === 'unpaid' && <UnpaidCheckoutsPanel notify={notify} />}
           {section === 'categories' && <CategoriesPanel notify={notify} />}
