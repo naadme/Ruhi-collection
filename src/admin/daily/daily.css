@@ -1,0 +1,554 @@
+/*
+ * "Daily numbers" (20 Nov 2026). Imported only by DailyNumbersPanel.jsx, which
+ * the admin lazy-loads, so the build ships this as its own small file fetched
+ * when the owner opens the section. Plain CSS with dn- names on purpose: a
+ * Tailwind class used only here would add bytes to every shop page
+ * (see admin.css). Phone first; wider screens from 640px.
+ */
+
+.dn-root {
+  --dn-ink: #4a2c23;
+  --dn-soft: rgb(74 44 35 / 0.6);
+  --dn-line: rgb(74 44 35 / 0.14);
+  --dn-card: #fffaf7;
+  --dn-rose: #c08576;
+  --dn-sand: #d9bfb3;
+  --dn-good: #2f6b3f;
+  --dn-bad: #b3412e;
+  color: var(--dn-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.dn-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.dn-h1 {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin: 0;
+}
+.dn-h2 {
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0;
+}
+.dn-h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 16px 0 6px;
+}
+.dn-sub {
+  color: var(--dn-soft);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+  max-width: 760px;
+}
+.dn-muted {
+  color: var(--dn-soft);
+  font-size: 13px;
+}
+.dn-pad {
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dn-note {
+  color: var(--dn-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+.dn-good {
+  color: var(--dn-good);
+}
+.dn-bad {
+  color: var(--dn-bad);
+}
+
+/* Buttons and fields */
+.dn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgb(74 44 35 / 0.45);
+  border-radius: 8px;
+  background: #fdf7f3;
+  color: var(--dn-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.dn-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.dn-btn-dark {
+  background: var(--dn-ink);
+  border-color: var(--dn-ink);
+  color: #fdf7f3;
+}
+.dn-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  border: 0;
+  background: none;
+  color: var(--dn-ink);
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.dn-danger {
+  color: var(--dn-bad);
+  font-weight: 600;
+}
+.dn-spin {
+  animation: dn-spin 1s linear infinite;
+}
+@keyframes dn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--dn-soft);
+  min-width: 0;
+}
+.dn-field select,
+.dn-field input {
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid rgb(74 44 35 / 0.3);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--dn-ink);
+  font: inherit;
+  font-size: 16px; /* 16px: an iPhone does not zoom in on tap */
+  min-width: 0;
+  width: 100%;
+}
+.dn-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  font-size: 14px;
+}
+.dn-check input {
+  width: 18px;
+  height: 18px;
+}
+
+/* The date and filter bar */
+.dn-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin-top: 20px;
+}
+.dn-bar .dn-field {
+  min-width: 150px;
+}
+.dn-range {
+  align-self: center;
+}
+.dn-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--dn-line);
+  border-radius: 12px;
+  background: var(--dn-card);
+}
+.dn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.dn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--dn-ink);
+  border-radius: 999px;
+  background: var(--dn-ink);
+  color: #fdf7f3;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dn-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid rgb(179 65 46 / 0.35);
+  border-radius: 10px;
+  color: var(--dn-bad);
+  font-size: 14px;
+}
+.dn-dim {
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+/* Number tiles */
+.dn-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+.dn-card .dn-tiles {
+  margin: 12px 0 4px;
+}
+.dn-tile {
+  padding: 12px;
+  border: 1px solid var(--dn-line);
+  border-radius: 12px;
+  background: var(--dn-card);
+  min-width: 0;
+}
+.dn-tile-strong {
+  border-color: rgb(192 133 118 / 0.6);
+  background: #fbefe9;
+}
+.dn-tile-label {
+  font-size: 12px;
+  color: var(--dn-soft);
+}
+.dn-tile-value {
+  font-size: 24px;
+  font-weight: 700;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.dn-tiles-small .dn-tile-value {
+  font-size: 19px;
+}
+.dn-tile-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin-top: 2px;
+  font-size: 12px;
+}
+.dn-delta {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Cards */
+.dn-card {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--dn-line);
+  border-radius: 14px;
+  background: #fdf7f3;
+}
+.dn-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.dn-callout {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--dn-bad);
+  background: rgb(179 65 46 / 0.06);
+  font-size: 14px;
+}
+.dn-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px 20px;
+}
+.dn-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--dn-line);
+  border-radius: 8px;
+}
+.dn-toggle button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--dn-soft);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.dn-toggle button[aria-pressed='true'] {
+  background: var(--dn-ink);
+  color: #fdf7f3;
+}
+
+/* The funnel */
+.dn-funnel {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.dn-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--dn-line);
+}
+.dn-step-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+.dn-src {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--dn-soft);
+}
+.dn-step-num {
+  font-size: 17px;
+  font-weight: 700;
+  text-align: right;
+}
+.dn-step-na {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--dn-soft);
+}
+.dn-step-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(74 44 35 / 0.07);
+  overflow: hidden;
+}
+.dn-step-track span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--dn-rose);
+}
+.dn-step-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  font-size: 12px;
+  color: var(--dn-soft);
+}
+
+/* The chart */
+.dn-chart {
+  margin: 12px 0 4px;
+}
+.dn-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.dn-axis {
+  stroke: rgb(74 44 35 / 0.25);
+}
+.dn-bar-spend,
+.dn-key-spend {
+  fill: var(--dn-sand);
+  background: var(--dn-sand);
+}
+.dn-bar-rev,
+.dn-key-rev {
+  fill: var(--dn-ink);
+  background: var(--dn-ink);
+}
+.dn-tick {
+  fill: var(--dn-soft);
+  font-size: 11px;
+}
+.dn-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--dn-soft);
+}
+.dn-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dn-legend i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+/* Tables */
+.dn-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin-top: 10px;
+}
+.dn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.dn-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--dn-soft);
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--dn-line);
+  white-space: nowrap;
+}
+.dn-table td {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--dn-line);
+  vertical-align: top;
+}
+.dn-table td:first-child {
+  min-width: 120px;
+}
+.dn-table .dn-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Checks */
+.dn-checks {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.dn-checks li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--dn-line);
+  font-size: 14px;
+}
+.dn-checks li > span:last-child {
+  grid-column: 2;
+  color: var(--dn-ink);
+  font-size: 13px;
+}
+.dn-checks li.dn-bad > span:last-child {
+  color: var(--dn-bad);
+}
+.dn-checks b {
+  color: var(--dn-ink);
+}
+.dn-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Costs */
+.dn-margin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+.dn-margin .dn-field {
+  width: 190px;
+}
+.dn-cost-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dn-line);
+}
+.dn-cost-form .dn-field:nth-child(1),
+.dn-cost-form .dn-field:nth-child(2),
+.dn-wide,
+.dn-cost-form .dn-btn {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 640px) {
+  .dn-h1 {
+    font-size: 40px;
+  }
+  .dn-card {
+    padding: 18px 20px;
+  }
+  .dn-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .dn-tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .dn-tiles-small {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .dn-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dn-step {
+    grid-template-columns: minmax(180px, 240px) 90px minmax(0, 1fr) minmax(0, 260px);
+    align-items: center;
+  }
+  .dn-step-track,
+  .dn-step-meta {
+    grid-column: auto;
+  }
+  .dn-step-na {
+    grid-column: 2 / -1;
+  }
+  .dn-cost-form {
+    grid-template-columns: 2fr 2fr 1fr 1fr 1fr;
+  }
+  .dn-cost-form .dn-field:nth-child(1),
+  .dn-cost-form .dn-field:nth-child(2) {
+    grid-column: auto;
+  }
+  .dn-wide {
+    grid-column: 1 / 5;
+  }
+  .dn-cost-form .dn-btn {
+    grid-column: 5;
+    align-self: end;
+  }
+}

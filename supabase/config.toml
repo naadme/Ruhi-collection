@@ -466,3 +466,12 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# The "Daily numbers" sync (20 Nov 2026): called every hour by the database
+# (pg_cron → public.dash_request_sync(), through pg_net) and by the owner's
+# "Refresh now" button. The hourly call carries no Supabase JWT — it proves
+# itself with DASHBOARD_SYNC_SECRET instead — so JWT verification is off and
+# the function checks that secret, or that the caller is the store owner,
+# before it does anything.
+[functions.dashboard-sync]
+verify_jwt = false
