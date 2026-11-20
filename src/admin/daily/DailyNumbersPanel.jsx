@@ -274,7 +274,7 @@ export default function DailyNumbersPanel({ notify }) {
   const margin = setup?.margin ?? 30
   const model = useMemo(() => {
     if (!d) return null
-    const base = { metaDaily: d.metaDaily, orders: d.orders, leads: d.leads, attempts: d.attempts, expenses: d.expenses }
+    const base = { metaDaily: d.metaDaily, orders: d.orders, leads: d.leads, attempts: d.attempts, expenses: d.expenses, settlements: d.settlements }
     const now = periodTotals({ data: { ...base, ga4: d.ga4, ga4Ab: d.ga4Ab, ga4Items: d.ga4Items }, filters, range, metaAds, margin })
     const before = prev ? periodTotals({ data: { ...base, ga4: d.ga4Prev, ga4Ab: d.ga4AbPrev, ga4Items: d.ga4ItemsPrev }, filters, range: prev, metaAds, margin }) : null
     const inNow = (a) => a.day >= range.from && a.day <= range.to
@@ -293,7 +293,7 @@ export default function DailyNumbersPanel({ notify }) {
       channels: channelRows({ data: { ...base, ga4: d.ga4Whole }, range }),
       products: productRows({ itemTotals: d.itemTotals, orders: d.orders, range }).slice(0, 15),
       payments: paymentSummary(d.attempts.filter(inNow).filter((a) => !filters.payment || a.method === filters.payment)),
-      money: moneySummary({ attempts: d.attempts, refunds: d.refunds, settlements: d.settlements, allCaptured: d.waiting, range }),
+      money: moneySummary({ attempts: d.attempts, settlements: d.settlements, allCaptured: d.waiting, range }),
       checks: checks({
         orders: d.orders,
         ga4Purchases: wholeGa4Purchases,
@@ -567,15 +567,21 @@ export default function DailyNumbersPanel({ notify }) {
             </div>
           </Card>
 
-          <Card title="Money in" sub="Razorpay, whole shop. Razorpay usually pays into the bank about 2 working days after a payment.">
+          <Card title="Money in" sub="The payments shoppers made on these days, and where that money is now. Razorpay keeps each payment for about 2 working days, then transfers it to your bank. Whole shop.">
             <div className="dn-tiles dn-tiles-small">
-              <Tile label="Collected" value={fmtInr(model.money.collected)} />
-              <Tile label="Razorpay fees" value={fmtInr(model.money.fees)} note={`incl. ${fmtInr(model.money.feesGst)} GST`} />
+              <Tile label="Collected" value={fmtInr(model.money.collected)} note={`Paid by shoppers on these days (${fmtNum(model.money.payments)} payments)`} strong />
+              <Tile label="Already in your bank" value={fmtInr(model.money.inBank)} note="Of that, transferred by Razorpay, after fees" />
+              <Tile label="Waiting to reach your bank" value={fmtInr(model.money.waiting)} note="Of that, paid by the shopper and held by Razorpay until its next transfer" />
+              <Tile label="Razorpay fees" value={fmtInr(model.money.fees)} note={model.money.fees ? `incl. ${fmtInr(model.money.feesGst)} GST` : 'UPI payments carry no fee'} />
               <Tile label="Refunded" value={fmtInr(model.money.refunds)} />
-              <Tile label="Paid into the bank" value={fmtInr(model.money.settled)} />
-              <Tile label="Waiting to reach the bank" value={fmtInr(model.money.waiting)} note="Now, after fees" />
             </div>
-            <Table keyOf={(r) => r.id} rows={model.money.settlements} empty="No settlement in this period." cols={[
+            <p className="dn-sub">
+              {fmtInr(model.money.collected)} collected = {fmtInr(model.money.inBank)} in your bank + {fmtInr(model.money.waiting)} waiting + {fmtInr(model.money.fees)} fees + {fmtInr(model.money.refunds)} refunded.
+              {' '}Right now, from all dates, {fmtInr(model.money.waitingNow)} ({fmtNum(model.money.waitingNowCount)} payments) is waiting to reach your bank.
+            </p>
+            <h3 className="dn-h3">Razorpay's transfers to your bank on these days: {fmtInr(model.money.transferred)}</h3>
+            <p className="dn-muted">A transfer carries payments from about 2 working days before it, so these can include payments from before the first day.</p>
+            <Table keyOf={(r) => r.id} rows={model.money.transfers} empty="No transfer on these days." cols={[
               ['Date', (r) => fmtDay(r.day)],
               ['Amount', (r) => fmtInr(Number(r.amount)), { num: true }],
               ['Fees', (r) => fmtInr(Number(r.fees)), { num: true }],

@@ -364,7 +364,11 @@ export function periodTotals({ data, filters, range, metaAds, margin }) {
   setStep('pay_window', payWindow.length, noOrders)
   setStep('tried', payWindow.filter((o) => attemptsByOrder.has(o.razorpay_order_id)).length, noOrders)
   setStep('paid', paid.length, noOrders)
-  setStep('settled', paid.filter((o) => (attemptsByOrder.get(o.razorpay_order_id) || []).some((a) => a.settlement_id)).length, noOrders)
+  // In the bank = its transfer is processed (same rule as Money in); without
+  // the transfer list, any transfer counts.
+  const processed = data.settlements ? new Set(data.settlements.filter((s) => s.status === 'processed').map((s) => s.id)) : null
+  const banked = (a) => Boolean(a.settlement_id) && (!processed || processed.has(a.settlement_id))
+  setStep('settled', paid.filter((o) => (attemptsByOrder.get(o.razorpay_order_id) || []).some(banked)).length, noOrders)
 
   const marginRate = (Number(margin) || 30) / 100
   return {
@@ -591,17 +595,34 @@ export function paymentSummary(attempts) {
   }
 }
 
-/** Money through Razorpay in the range, and what is still waiting to reach the bank. */
-export function moneySummary({ attempts, refunds, settlements, allCaptured, range }) {
-  const captured = attempts.filter((a) => a.captured && inRange(a.day, range))
+/**
+ * Money in (20 Nov 2026, the owner asked why the tiles didn't add up): it
+ * follows the payments shoppers made on the chosen days, so for any dates
+ *   collected = in the bank + waiting + Razorpay fees + refunded.
+ * Razorpay's transfers ON those days are listed separately: a transfer
+ * usually carries payments from about 2 working days earlier.
+ * A payment is in the bank only once its transfer is 'processed' (it then has
+ * the bank's reference); a transfer still 'created' hasn't arrived yet.
+ */
+export function moneySummary({ attempts, settlements, allCaptured, range }) {
+  const paid = attempts.filter((a) => a.captured && inRange(a.day, range))
+  const net = (a) => (Number(a.amount) || 0) - (Number(a.fee) || 0) - (Number(a.amount_refunded) || 0)
+  const status = new Map(settlements.map((s) => [s.id, s.status]))
+  const banked = (a) => Boolean(a.settlement_id) && status.get(a.settlement_id) === 'processed'
+  const transfers = settlements.filter((s) => inRange(s.day, range)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+  const waitingNow = (allCaptured || []).filter((a) => !banked(a))
   return {
-    collected: sum(captured, 'amount'),
-    fees: sum(captured, 'fee'),
-    feesGst: sum(captured, 'tax'),
-    refunds: sum(refunds.filter((r) => inRange(r.day, range)), 'amount'),
-    settled: sum(settlements.filter((s) => inRange(s.day, range)), 'amount'),
-    settlements: settlements.filter((s) => inRange(s.day, range)).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
-    waiting: sum((allCaptured || []).filter((a) => !a.settlement_id), (a) => (Number(a.amount) || 0) - (Number(a.fee) || 0) - (Number(a.amount_refunded) || 0)),
+    payments: paid.length,
+    collected: sum(paid, 'amount'),
+    inBank: sum(paid.filter(banked), net),
+    waiting: sum(paid.filter((a) => !banked(a)), net),
+    fees: sum(paid, 'fee'),
+    feesGst: sum(paid, 'tax'),
+    refunds: sum(paid, 'amount_refunded'),
+    transfers,
+    transferred: sum(transfers, 'amount'),
+    waitingNow: sum(waitingNow, net),
+    waitingNowCount: waitingNow.length,
   }
 }
 

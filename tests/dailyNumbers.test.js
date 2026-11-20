@@ -151,6 +151,11 @@ test('the funnel runs from the ad to the bank', () => {
       begin_checkout: 8, leads: 1, add_shipping_info: 0, pay_window: 3, tried: 3, paid: 2, settled: 1,
     },
   )
+  // With the transfer list, only a processed transfer counts as in the bank.
+  const unprocessed = M.periodTotals({ data: { ...DATA, settlements: [{ id: 'setl_1', status: 'created' }] }, filters: M.EMPTY_FILTERS, range: RANGE, metaAds: META_ADS, margin: 30 })
+  assert.equal(unprocessed.step.settled, 0)
+  const processedT = M.periodTotals({ data: { ...DATA, settlements: [{ id: 'setl_1', status: 'processed' }] }, filters: M.EMPTY_FILTERS, range: RANGE, metaAds: META_ADS, margin: 30 })
+  assert.equal(processedT.step.settled, 1)
   const rows = M.funnelRows(t, null)
   assert.equal(rows.find((r) => r.key === 'clicks').ofPrevious, 100 / 5000)
   assert.equal(rows.find((r) => r.key === 'add_to_cart').costEach, 600 / 12)
@@ -235,18 +240,37 @@ test('day rows, ad rows, payments, money and checks', () => {
   assert.deepEqual(pay.reasons.map((r) => [r.reason, r.n]), [['Payment was cancelled by the user', 2]])
   assert.deepEqual(pay.byMethod.map((m) => [m.method, m.attempts, m.ok]), [['upi', 3, 1], ['card', 1, 1]])
 
+  // Money in follows the payments made on the chosen days, so the tiles add up:
+  // collected = in the bank + waiting + fees + refunded (the owner's question, 20 Nov).
+  const attempts = DATA.attempts.map((a) => (a.id === 'p2' ? { ...a, amount_refunded: 100 } : a))
+  const older = { id: 'p0', rzp_order_id: 'order_Z', day: '2026-11-10', status: 'captured', captured: true, amount: 999, fee: 0, tax: 0 }
   const money = M.moneySummary({
-    attempts: DATA.attempts,
-    refunds: [{ day: '2026-11-19', amount: 100 }],
-    settlements: [{ id: 's', day: '2026-11-19', amount: 829, created_at: '2026-11-19T10:00:00Z' }],
-    allCaptured: DATA.attempts.filter((a) => a.captured),
+    attempts: [...attempts, older],
+    settlements: [
+      { id: 'setl_1', day: '2026-11-19', amount: 829, status: 'processed', created_at: '2026-11-19T10:00:00Z' },
+      { id: 'old', day: '2026-11-12', amount: 999, status: 'processed', created_at: '2026-11-12T10:00:00Z' },
+    ],
+    allCaptured: [...attempts.filter((a) => a.captured), { ...older, settlement_id: null }],
     range: RANGE,
   })
-  assert.equal(money.collected, 2547)
+  assert.equal(money.payments, 2)
+  assert.equal(money.collected, 2547, 'payments made on these days only')
+  assert.equal(money.inBank, 849 - 20, 'A is in a settlement')
+  assert.equal(money.waiting, 1698 - 40 - 100, 'B is not settled yet (after its fee and refund)')
   assert.equal(money.fees, 60)
   assert.equal(money.refunds, 100)
-  assert.equal(money.settled, 829)
-  assert.equal(money.waiting, 1698 - 40, 'B is captured but not in a settlement yet')
+  assert.equal(money.collected, money.inBank + money.waiting + money.fees + money.refunds, 'the tiles add up')
+  assert.equal(money.transferred, 829, 'transfers made on these days, listed separately')
+  assert.deepEqual(money.transfers.map((s) => s.id), ['setl_1'])
+  assert.equal(money.waitingNow, 1558 + 999, 'right now, whatever the dates: B and the older payment')
+  assert.equal(money.waitingNowCount, 2)
+  // A transfer Razorpay has only 'created' (no bank reference yet) hasn't arrived.
+  const pendingTransfer = M.moneySummary({
+    attempts, allCaptured: attempts.filter((a) => a.captured), range: RANGE,
+    settlements: [{ id: 'setl_1', day: '2026-11-19', amount: 829, status: 'created', created_at: '2026-11-19T10:00:00Z' }],
+  })
+  assert.equal(pendingTransfer.inBank, 0)
+  assert.equal(pendingTransfer.waiting, 829 + 1558)
 
   const list = M.checks({
     orders: [...DATA.orders, order({ created_at: '2026-11-19T08:00:00Z', reference: 'STUCK', razorpay_order_id: 'order_S' })],

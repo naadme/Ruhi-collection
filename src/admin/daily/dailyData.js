@@ -61,7 +61,7 @@ export async function loadPeriod({ range, prev, filters, adNames }) {
 
   const [
     metaDaily, metaSlices, ga4, ga4Prev, ga4Ab, ga4AbPrev, ga4Items, ga4ItemsPrev, itemTotals, ga4Whole,
-    orders, leads, attempts, waiting, refunds, settlements, expenses,
+    orders, leads, attempts, waiting, settlements, expenses,
   ] = await Promise.all([
     all(() => supabase.from('dash_meta_daily').select('*').gte('day', from).lte('day', to).order('day')),
     all(() => supabase.from('dash_meta_slices').select('*').gte('day', range.from).lte('day', to).order('day')),
@@ -82,16 +82,17 @@ export async function loadPeriod({ range, prev, filters, adNames }) {
     all(() => supabase.from('dash_rzp_payments')
       .select('id,rzp_order_id,day,status,method,amount,fee,tax,amount_refunded,captured,error_code,error_reason,error_source,error_step,error_description,settlement_id')
       .gte('day', from).lte('day', to)),
-    all(() => supabase.from('dash_rzp_payments').select('id,amount,fee,amount_refunded,settlement_id').eq('captured', true).is('settlement_id', null)),
-    all(() => supabase.from('dash_rzp_refunds').select('id,day,amount').gte('day', range.from).lte('day', to)),
-    all(() => supabase.from('dash_rzp_settlements').select('*').gte('day', range.from).lte('day', to)),
+    // Every captured payment: one is waiting until its transfer is processed, not just until it has one.
+    all(() => supabase.from('dash_rzp_payments').select('id,amount,fee,amount_refunded,settlement_id').eq('captured', true)),
+    // Every transfer (a handful a week): a payment counts as in the bank only once its transfer is processed.
+    all(() => supabase.from('dash_rzp_settlements').select('*').order('day')),
     all(() => supabase.from('dash_expenses').select('*').lte('starts_on', to).gte('ends_on', from).order('starts_on', { ascending: false })),
   ])
 
   return {
     metaDaily, metaSlices, ga4, ga4Prev, ga4Ab, ga4AbPrev, ga4Items, ga4ItemsPrev, itemTotals,
     ga4Whole: ga4Whole || ga4,
-    orders, leads, attempts, waiting, refunds, settlements, expenses,
+    orders, leads, attempts, waiting, settlements, expenses,
   }
 }
 
