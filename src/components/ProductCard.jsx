@@ -12,6 +12,7 @@ import { RatingPill } from './Stars'
 import { newEventId, trackSafely } from '../lib/tracking'
 import { cartEvent, viewedItem } from '../lib/trackingItems'
 import { useItemList } from './ItemList'
+import { isDesignSoldOut } from '../lib/stock'
 // The second photo that fades in on hover is for a mouse only. On a touch
 // screen (every phone, including Instagram's and Facebook's in-app browsers)
 // iOS treats the first tap on a link whose hover reveals new content as the
@@ -25,7 +26,9 @@ const canHover = typeof window !== 'undefined' &&
 // still reach every card — a context update is never blocked by memo().
 // `priority`: this card opens the first screen of a listing (the shop's first
 // row), so its photo is the one the page waits for: fetched at once and first.
-function ProductCard({ product: p, priority = false }) {
+// `to` (20 Nov 2026): another address for the card, e.g. the product with the
+// shopper's size already chosen (src/components/SoldOutBlock.jsx).
+function ProductCard({ product: p, priority = false, to = '' }) {
   const { has, toggle } = useWishlist(); const fav = has(p.id)
   const { typeLabel } = useCategories()
   // GA4 (src/components/ItemList.jsx): the list this card sits in learns when
@@ -57,7 +60,11 @@ function ProductCard({ product: p, priority = false }) {
   // A card with no id has no page of its own and is rendered WITHOUT a link:
   // it must never fall back to the shop listing, which is what made a card
   // open the category page instead of its product.
-  const href = productHref(p)
+  const href = to || productHref(p)
+  // Only her wishlist can show a design sold out in every colour: lists leave
+  // such designs out (src/lib/stock.js). The card opens its page, which
+  // offers similar sets.
+  const soldOut = isDesignSoldOut(p)
   const swap = canHover && Boolean(p.hover) && p.hover !== p.image
   const card = (
     <>
@@ -66,6 +73,7 @@ function ProductCard({ product: p, priority = false }) {
         {swap && <Img src={p.hover} style={imageFramingStyle(p.image_framing, p.hover)} alt="" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 300px" className="absolute inset-0 w-full h-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100" />}
         {p.badge && <span className="absolute top-2 left-1 bg-brand-badge text-white text-[10px] font-bold px-1.5 py-[3px] rounded-sm font-ui">{p.badge}</span>}
         {rating && <RatingPill rating={rating} className="absolute bottom-2 left-2" />}
+        {soldOut && <span className="absolute bottom-2 right-2 bg-black/80 text-white text-[11px] font-bold px-1.5 py-[3px] rounded-sm font-ui">Sold out · see similar</span>}
       </div>
       <h3 className="text-[19px] md:text-[21px] leading-snug mt-2 pr-1 group-hover:underline underline-offset-2">{p.title}</h3>
       {priced && <p className="font-ui font-bold text-[17px] flex flex-wrap gap-x-3 items-baseline"><span className="text-red-600">{inr(p.price)}</span>

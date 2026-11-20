@@ -25,7 +25,8 @@ const Sel = ({ label, value, onChange, opts }) => (
 
 export default function Shop() {
   usePageTitle('Shop', 'Browse every Ruhi Womens Clothing style — co-ord sets, dresses, tops and shirts. Filter by category, sort by price and find your fit. Free shipping for all products.')
-  const { products, loading, answered, error, source } = useProducts()
+  // Only what can be bought: designs with a size in stock (src/lib/stock.js).
+  const { listable: products, loading, answered, error, source } = useProducts()
   const { totals } = useRatings()
   // The Type filter is the client's own category list, so a category added in
   // the dashboard is filterable here the moment it is saved.

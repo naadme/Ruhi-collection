@@ -65,7 +65,8 @@ export const Hero = () => {
   // banner — and when the read does not come back, so the hero can never be
   // left empty.
   const [bannersKnown, setBannersKnown] = useState(false)
-  const { products, getProduct, answered } = useProducts()
+  // The fallback slides advertise only categories with something to buy.
+  const { listable: products, getProduct, answered } = useProducts()
   const { categories, typeLabel } = useCategories()
   useEffect(() => {
     let alive = true
@@ -198,7 +199,8 @@ export const Hero = () => {
   )
 }
 export const Categories = () => {
-  const { products, answered } = useProducts()
+  // A category whose sets are all sold out is not advertised (src/lib/stock.js).
+  const { listable: products, answered } = useProducts()
   const { categories, loading: categoriesLoading } = useCategories()
   // Until the real catalogue and categories have answered, each tile keeps its
   // place without a photograph. Drawing the bundled seed's photos first made
@@ -234,7 +236,9 @@ export const Categories = () => {
 // The rule that picks them lives in src/lib/bestsellerRules.js, so it can be
 // tested in plain Node and the homepage cannot drift away from it.
 export const BestSellers = () => {
-  const { products, loading, source } = useProducts()
+  // Sold-out designs leave the row (src/lib/stock.js); the owner's picks stay
+  // saved and come back with their stock.
+  const { products: everything, listable: products, loading, source } = useProducts()
   const { categories } = useCategories()
   const catKeys = useMemo(() => categories.map((c) => c.key), [categories])
 
@@ -263,7 +267,13 @@ export const BestSellers = () => {
   // selection off: that would show designs she did not choose.
   const ownerHasChosen = Array.isArray(picks) && picks.length > 0
 
-  const items = ownerHasChosen ? chosen : derived
+  // Every design she switched on is sold out right now: the row shows what
+  // is in stock rather than an empty row that says she switched them off.
+  const picksAllSoldOut = useMemo(
+    () => ownerHasChosen && !chosen.length && resolveBestsellers(picks, everything).length > 0,
+    [ownerHasChosen, chosen, picks, everything],
+  )
+  const items = ownerHasChosen && !picksAllSoldOut ? chosen : derived
 
   // The row shows four designs at a time, so a fifth onwards is paged with
   // the arrows — and with FOUR or fewer there is nothing to page through, so

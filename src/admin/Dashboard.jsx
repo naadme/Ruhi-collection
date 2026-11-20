@@ -21,6 +21,8 @@ import CouponsPanel from './CouponsPanel'
 import UnpaidCheckoutsPanel from './UnpaidCheckoutsPanel'
 import ReviewsPanel from './ReviewsPanel'
 import GoogleSheetsButton from './GoogleSheetsButton'
+import StockPanel from './StockPanel'
+import SoldOutAlerts from './SoldOutAlerts'
 
 // "Daily numbers" (20 Nov 2026) is loaded only when the owner opens it, with
 // its own stylesheet: the rest of the admin, and the shop, download none of it.
@@ -121,14 +123,16 @@ const TABS = [['all', 'All'], ['live', 'Live'], ['hidden', 'Hidden']]
 // their mobile number at checkout and left without paying.
 // "Daily numbers" (20 Nov 2026): ad spend, the funnel, payments and money in,
 // with filters; the owner's first stop, so it is listed first.
+// "Stock" (20 Nov 2026) sits beside Products, for everyone who manages the
+// catalogue: marking a size sold out is a catalogue edit (StockPanel.jsx).
 const SECTIONS = [
-  ['daily', 'Daily numbers'], ['products', 'Products'], ['categories', 'Categories'], ['orders', 'Orders'], ['unpaid', 'Unpaid checkouts'],
+  ['daily', 'Daily numbers'], ['products', 'Products'], ['stock', 'Stock'], ['categories', 'Categories'], ['orders', 'Orders'], ['unpaid', 'Unpaid checkouts'],
   ['banners', 'Banners'], ['page-images', 'Page images'],
   ['bestsellers', 'Bestsellers'], ['coupons', 'Coupons'], ['reviews', 'Reviews'],
 ]
 
 function SectionSwitch({ value, onChange, showOrders }) {
-  const sections = SECTIONS.filter(([k]) => k === 'products' || showOrders)
+  const sections = SECTIONS.filter(([k]) => k === 'products' || k === 'stock' || showOrders)
   const tabs = (
     <div
       role="tablist"
@@ -206,11 +210,12 @@ export default function Dashboard({ showOrders }) {
   }, [])
 
   useEffect(() => {
-    if (!showOrders) return
     const wanted = new URLSearchParams(window.location.search).get('section')
     // A link written while the photographs had a tab of their own still lands
     // somewhere useful — the combined Categories section, where they now are.
     const section = wanted === 'category-images' ? 'categories' : wanted
+    // Product managers have Products and Stock; the owner has every section.
+    if (!showOrders && section !== 'stock') return
     if (section && SECTIONS.some(([k]) => k === section)) setSection(section)
   }, [showOrders])
 
@@ -431,6 +436,23 @@ export default function Dashboard({ showOrders }) {
   // Orders, banners, best sellers and coupons live behind their own
   // owner-only sections; returning early here keeps the products panel (and
   // every hook above it) untouched.
+  // The Stock screen, for the owner and for product managers.
+  if (section === 'stock') {
+    return (
+      <div className="font-ui">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
+          <GoogleSheetsButton />
+        </div>
+        <SoldOutAlerts />
+        <div id="panel-stock" role="tabpanel" className="mt-8">
+          <StockPanel />
+        </div>
+        <Toast toast={toast} onClose={() => setToast(null)} />
+      </div>
+    )
+  }
+
   if (showOrders && section !== 'products') {
     return (
       <div className="font-ui">
@@ -438,6 +460,8 @@ export default function Dashboard({ showOrders }) {
           <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
           <GoogleSheetsButton />
         </div>
+        {/* A colour sold out in every size: the alert, then the 24-hour reminder. */}
+        <SoldOutAlerts />
         <div id={`panel-${section}`} role="tabpanel" className="mt-8">
           {section === 'daily' && (
             <Suspense fallback={<p className="text-black/55 text-[15px]">Loading…</p>}>
@@ -464,6 +488,7 @@ export default function Dashboard({ showOrders }) {
         <SectionSwitch value={section} onChange={changeSection} showOrders={showOrders} />
         <GoogleSheetsButton />
       </div>
+      <SoldOutAlerts />
 
       <div id="panel-products" role="tabpanel">
         {/* Page head */}

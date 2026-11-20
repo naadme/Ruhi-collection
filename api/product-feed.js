@@ -16,6 +16,9 @@ const COLUMNS = 'id,sku,title,type,colour,gender,price,compare,sizes,image,hover
 // The design ID (20261102130000_design_ids.sql) is asked for first and dropped
 // again on a database that does not have it yet, which then groups by name.
 const WITH_DESIGN = `${COLUMNS},design_id`
+// Sold-out sizes (20261120210000_sold_out.sql) the same way: a database that
+// does not have the column yet gets a feed with every size in stock, as before.
+const WITH_STOCK = `${WITH_DESIGN},sold_out_sizes`
 
 export default async function handler(req, res) {
   const url = process.env.VITE_SUPABASE_URL
@@ -35,7 +38,8 @@ export default async function handler(req, res) {
       `${url.replace(/\/$/, '')}/rest/v1/products?select=${columns}&is_active=eq.true&order=created_at.desc,id.asc`,
       { headers: { apikey: key, Authorization: `Bearer ${key}` } },
     )
-    let response = await read(WITH_DESIGN)
+    let response = await read(WITH_STOCK)
+    if (response.status === 400) response = await read(WITH_DESIGN)
     if (response.status === 400) response = await read(COLUMNS)
     if (!response.ok) throw new Error(`Supabase answered ${response.status}`)
     const rows = await response.json()

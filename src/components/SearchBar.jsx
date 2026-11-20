@@ -12,7 +12,8 @@ import { listEvent, listItem } from '../lib/trackingItems'
 import { LISTS } from '../lib/itemLists'
 
 export default function SearchBar({ onClose }) {
-  const { products, loading } = useProducts()
+  // Suggestions offer only what can be bought (src/lib/stock.js).
+  const { listable: products, loading } = useProducts()
   // Search matches the live category label too, so a category the client
   // renamed is found under its new name.
   const { typeLabel } = useCategories()

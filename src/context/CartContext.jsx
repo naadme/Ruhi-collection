@@ -6,6 +6,7 @@ import { MAX_QTY } from '../lib/checkout'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent, cartLineItem } from '../lib/trackingItems'
 import { prefetchCheckoutWhenIdle } from '../lib/checkoutPage'
+import { isSizeSoldOut } from '../lib/stock'
 
 /**
  * Restore a persisted array, never anything else.
@@ -48,7 +49,9 @@ const resolveLine = (i, getProduct, getRow) => {
   // colour's price and must never be charged for another.
   const row = getRow(i.id)
   const price = Number(row ? row.price : product.price) || 0
-  return { ...i, color, price, image: (variant && variant.image) || product.image, product, row }
+  // Marked sold out in this size since it was added (src/lib/stock.js).
+  const soldOut = isSizeSoldOut(row || variant || product, i.size)
+  return { ...i, color, price, image: (variant && variant.image) || product.image, product, row, soldOut }
 }
 
 export function CartProvider({ children }) {
@@ -156,19 +159,26 @@ export function CartProvider({ children }) {
   // Derived in one pass and memoised: the basket view, the header badge and the
   // checkout summary all read these, and they must not be rebuilt on renders
   // that only touch `open`.
-  const { lines, unavailable, count, subtotal } = useMemo(() => {
+  //
+  // A line sold out since it was added (20 Nov 2026) is kept apart in
+  // `soldOutLines`: still shown and named, but never in `lines`, so it is left
+  // out of the total, the tracking and the order checkout sends. The header's
+  // count still includes it, so the shopper finds out why in her basket.
+  const { lines, soldOutLines, unavailable, count, subtotal } = useMemo(() => {
     const built = []
+    const out = []
     let missing = 0
     let qty = 0
     let sub = 0
     for (const i of items) {
       const line = resolveLine(i, getProduct, getRow)
       if (!line) { missing += 1; continue }
-      built.push(line)
       qty += i.qty
+      if (line.soldOut) { out.push(line); continue }
+      built.push(line)
       sub += i.qty * line.price
     }
-    return { lines: built, unavailable: missing, count: qty, subtotal: sub }
+    return { lines: built, soldOutLines: out, unavailable: missing, count: qty, subtotal: sub }
   }, [items, getProduct, getRow])
   const total = useMemo(() => totalFor(subtotal), [subtotal])
   // Every line as GTM's `items` describe it (view_cart, begin_checkout and the
@@ -178,8 +188,8 @@ export function CartProvider({ children }) {
     [lines, typeLabel],
   )
   const value = useMemo(
-    () => ({ lines, trackedItems, unavailable, prune, clear, empty, count, subtotal, total, add, setQty, remove, open, setOpen }),
-    [lines, trackedItems, unavailable, prune, clear, empty, count, subtotal, total, add, setQty, remove, open],
+    () => ({ lines, soldOutLines, trackedItems, unavailable, prune, clear, empty, count, subtotal, total, add, setQty, remove, open, setOpen }),
+    [lines, soldOutLines, trackedItems, unavailable, prune, clear, empty, count, subtotal, total, add, setQty, remove, open],
   )
   return (
     <Ctx.Provider value={value}>

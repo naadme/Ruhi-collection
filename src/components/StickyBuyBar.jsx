@@ -10,7 +10,10 @@ import { ratingAria, ratingText } from '../lib/ratingSummary'
 //
 // While a page has the bar (`enabled`), the body gets room for it at its very
 // end (index.css, `has-buy-bar`), so the footer's last links are never under it.
-export default function StickyBuyBar({ enabled, visible, price, compare, rating, onRating, needsSize, onChooseSize, onAdd }) {
+// `soldOut` (20 Nov 2026): the label for a page whose colour or chosen size is
+// sold out ("Other colours", "Similar styles"); the button then takes
+// the shopper to what she can buy instead (`onSoldOut`).
+export default function StickyBuyBar({ enabled, visible, price, compare, rating, onRating, needsSize, onChooseSize, onAdd, soldOut, onSoldOut }) {
   useEffect(() => {
     if (!enabled) return undefined
     document.body.classList.add('has-buy-bar')
@@ -44,10 +47,10 @@ export default function StickyBuyBar({ enabled, visible, price, compare, rating,
         </div>
         <button
           type="button"
-          onClick={needsSize ? onChooseSize : onAdd}
+          onClick={soldOut ? onSoldOut : needsSize ? onChooseSize : onAdd}
           className="ml-auto h-12 px-6 min-w-[9.5rem] rounded-lg bg-brand-cta text-white text-[16px] font-semibold hover:bg-brand-cta-hover transition"
         >
-          {needsSize ? 'Choose size' : 'Add to cart'}
+          {soldOut || (needsSize ? 'Choose size' : 'Add to cart')}
         </button>
       </div>
     </div>

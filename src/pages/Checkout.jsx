@@ -265,7 +265,7 @@ function Summary({
 
 export default function Checkout() {
   usePageTitle('Checkout')
-  const { lines, trackedItems, subtotal, prune, clear } = useCart()
+  const { lines, soldOutLines, trackedItems, subtotal, prune, clear } = useCart()
   const { reload, loading, answered, error: catalogueError, source } = useProducts()
   const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
@@ -864,6 +864,10 @@ export default function Checkout() {
     } catch (err) {
       checkoutError(/coupon/i.test(err?.message || '') ? 'coupon_refused' : 'order_failed')
       setFailure(err?.message || 'We could not place your order. Please try again.')
+      // Something sold out while she was checking out (the database names it,
+      // supabase/migrations/20261120210000_sold_out.sql): read the catalogue
+      // again, so that line turns into a sold-out line and the rest can be paid.
+      if (/sold out/i.test(err?.message || '')) reload()
       // Express was paused after this page opened: the database said so, and
       // the order goes back to free delivery for the next attempt.
       if (/express delivery is paused/i.test(err?.message || '')) {
@@ -927,12 +931,15 @@ export default function Checkout() {
   }
 
   if (!lines.length && !submitting && !recovery) {
+    // Everything left in the basket sold out after it was added.
+    const allSoldOut = soldOutLines.length > 0
     return (
       <>
         {header}
         <section className="max-w-[720px] mx-auto px-4 py-24 text-center">
-          <h1 className="text-[38px]">Your cart is empty</h1>
-          <p className="text-black/60 mt-3 text-[17px]">Add something you love before checking out.</p>
+          <h1 className="text-[38px]">{allSoldOut ? 'Your cart has sold out' : 'Your cart is empty'}</h1>
+          <p className="text-black/60 mt-3 text-[17px]">{allSoldOut ? 'What you added sold out since. Your cart shows other colours in your size.' : 'Add something you love before checking out.'}</p>
+          {allSoldOut && <Link to="/cart" className="inline-block underline underline-offset-2 mt-6 text-[17px]">See your cart</Link>}
           <Link to="/shop" className="inline-block bg-brand-green text-white px-10 py-4 rounded-lg mt-8 text-[17px]">Continue shopping</Link>
         </section>
       </>
@@ -993,6 +1000,19 @@ export default function Checkout() {
           <div role="alert" className="mb-4 flex items-start gap-3 border border-red-200 bg-red-50 text-red-800 rounded-xl px-4 py-3.5 text-[15px]">
             <AlertTriangle size={18} className="shrink-0 mt-0.5" />
             <span>{failure}</span>
+          </div>
+        )}
+
+        {/* Lines that sold out after they were added: named, and not part of
+            this order or its total (src/context/CartContext.jsx). */}
+        {soldOutLines.length > 0 && (
+          <div role="status" className="mb-4 flex items-start gap-3 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl px-4 py-3.5 text-[15px]">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <span>
+              Sold out since you added {soldOutLines.length === 1 ? 'it' : 'them'}, so not in this order:{' '}
+              {soldOutLines.map((l) => [l.product.title, l.color, l.size].filter(Boolean).join(', ')).join('; ')}.{' '}
+              <Link to="/cart" className="underline underline-offset-2">See other colours</Link>
+            </span>
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import usePageTitle from '../hooks/usePageTitle'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, ChevronLeft, Heart, RotateCcw, Truck } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
@@ -32,6 +32,9 @@ import StickyBuyBar from '../components/StickyBuyBar'
 import { SizeChartLink } from '../components/SizeChart'
 import { prefetchCheckout } from '../lib/checkoutPage'
 import useExperiment from '../hooks/useExperiment'
+import { designRows, inStockSizes, isColourSoldOut, isDesignSoldOut, isSizeSoldOut, soldOutSizes } from '../lib/stock'
+import { soldOutBlock } from '../lib/soldOutParts'
+import { NoLongerAvailable, SoldOutBlock } from '../components/SoldOutParts'
 
 // How long a colour and size must stay on screen before view_item goes out.
 // Opening another colour briefly renders it with the previous colour's size
@@ -44,7 +47,7 @@ const VIEW_SETTLE_MS = 300
 // the main photo has loaded — or this long after the product appears.
 const RELATED_WAIT_MS = 3000
 
-function Gallery({ product, rating, onRating, onPhotoLoad }) {
+function Gallery({ product, rating, onRating, onPhotoLoad, soldOutLabel }) {
   const shots = [...new Set(
     (product.gallery?.length ? product.gallery : [product.image, product.hover]).filter(Boolean)
   )]
@@ -62,6 +65,11 @@ function Gallery({ product, rating, onRating, onPhotoLoad }) {
         <Img src={src} style={imageFramingStyle(product.image_framing, src)} alt={`${product.title} — view ${active + 1}`} loading="eager" fetchpriority={active === 0 ? 'high' : undefined} onLoad={onPhotoLoad} sizes={PRODUCT_PHOTO_SIZES} className="w-full h-full object-cover" />
         {product.badge && (
           <span className="absolute top-3 left-3 bg-brand-badge text-white text-[11px] font-bold px-2 py-1 rounded-sm font-ui">{product.badge}</span>
+        )}
+        {/* "Sold out" / "Sold out in this colour" on the photo itself: what a
+            shopper arriving from an ad sees first. */}
+        {soldOutLabel && (
+          <span className="absolute top-3 right-3 bg-black/80 text-white text-[12px] font-bold px-2 py-1 rounded-sm font-ui">{soldOutLabel}</span>
         )}
         {/* The rating on the photo itself: on a phone the photo fills the
             first screen, so this is where a shopper arriving from an ad first
@@ -89,7 +97,7 @@ function Gallery({ product, rating, onRating, onPhotoLoad }) {
 
 export default function Product() {
   const { id } = useParams()
-  const { getProduct, products, loading, answered, error, source, reload } = useProducts()
+  const { getProduct, listable, loading, answered, error, source, reload } = useProducts()
   // The category name on the breadcrumb, the product page and the back link is
   // the client's own label — renamed in the dashboard whenever they like.
   const { typeLabel } = useCategories()
@@ -101,6 +109,11 @@ export default function Product() {
   const [size, setSize] = useState(null)
   const [qty, setQty] = useState(1)
   const [problem, setProblem] = useState('')
+
+  // A design with any sold-out size: fetch the block's code now, so it is
+  // here before she taps a sold-out size or scrolls to it.
+  const anySoldOut = useMemo(() => designRows(p).some((r) => soldOutSizes(r).length > 0), [p])
+  useEffect(() => { if (anySoldOut) soldOutBlock.prefetch() }, [anySoldOut])
 
   // The phone buy bar stands in for the page's own buttons while they are off
   // screen, and steps aside when they are in view so the two never show at once.
@@ -139,7 +152,7 @@ export default function Product() {
   const unreadable = answered && Boolean(error) && source === 'seed'
   // The name is safe to show while waiting (analytics reads the title on
   // arrival); only the seed's price is not.
-  usePageTitle(unreadable ? 'Product' : p ? p.title : answered ? 'Product not found' : 'Product')
+  usePageTitle(unreadable ? 'Product' : p ? p.title : answered ? 'No longer available' : 'Product')
 
   // Reset the selections whenever the shopper opens a different product.
   useEffect(() => {
@@ -249,12 +262,12 @@ export default function Product() {
   }
 
   if (!p) {
+    // A link to a style we stopped selling (hidden) or a mistyped one: never a
+    // dead end (src/components/NoLongerAvailable.jsx, fetched on demand).
     return (
-      <section className="text-center py-32 px-4">
-        <h1 className="text-[42px]">Product not found</h1>
-        <p className="text-black/60 mt-3 text-[17px]">It may have sold out or been removed from the store.</p>
-        <Link to="/shop" className="btn-outline mt-8">Back to catalog</Link>
-      </section>
+      <Suspense fallback={<section className="py-32" aria-busy="true" />}>
+        <NoLongerAvailable id={id} />
+      </Suspense>
     )
   }
 
@@ -285,6 +298,8 @@ export default function Product() {
         // list would advertise sizes the chosen colour does not stock — or hide
         // ones it does. The selector follows the colour, like everything else.
         sizes: chosen.sizes && chosen.sizes.length ? chosen.sizes : p.sizes,
+        // Sold-out sizes belong to the colour row too (src/lib/stock.js).
+        sold_out_sizes: chosen.sold_out_sizes || [],
       }
     : p
   // A heart saved before the catalogue was grouped still names its own colour
@@ -295,12 +310,29 @@ export default function Product() {
   const off = shown.compare ? Math.round((1 - shown.price / shown.compare) * 100) : 0
   const needsSize = shown.sizes.length > 1 && !size
 
+  // Sold out (20 Nov 2026, src/lib/stock.js): every size of the colour on
+  // screen, the size she tapped, or every colour of the design. The buy
+  // buttons then give way to what she can buy instead.
+  const designOut = isDesignSoldOut(p)
+  const colourOut = isColourSoldOut(shown)
+  const sizeOut = !colourOut && isSizeSoldOut(shown, size)
+  const blockOn = colourOut || sizeOut
+  // Other colours of this set she could buy (in her size, once she has one).
+  const othersInStock = colors.filter((c) => c.id !== shown.id && (size ? inStockSizes(c).includes(size) : inStockSizes(c).length > 0)).length
+  const toBlock = () => {
+    const el = document.getElementById('sold-out-block')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    el?.focus({ preventScroll: true })
+  }
+  // Sold-out colours stay choosable, struck through, at the end of the row.
+  const colourList = [...colors.filter((c) => !isColourSoldOut(c)), ...colors.filter(isColourSoldOut)]
+
   // The colour on screen, as the cart and the order name it.
   const shownColour = (colors.length ? chosen?.color : '') || p.colour
   const choose = (s) => {
     // A chosen size is the clearest sign of buying: fetch the checkout's code
     // now, so "Buy it now" opens it without a wait (src/lib/checkoutPage.js).
-    prefetchCheckout()
+    if (!isSizeSoldOut(shown, s)) prefetchCheckout()
     // GA4's select_size: the size a shopper picks, also when it is the first
     // size the page already assumed — which sizes people weigh up, per design.
     if (s !== size) {
@@ -340,6 +372,11 @@ export default function Product() {
       setProblem(`Quantity must be between 1 and ${MAX_QTY}.`)
       return
     }
+    // Nothing sold out can be added: show what she can buy instead.
+    if (isSizeSoldOut(shown, size || shown.sizes[0])) {
+      toBlock()
+      return
+    }
     add(shown.id, qty, size || shown.sizes[0], chosen && chosen.color, { openDrawer: !goToCheckout, method })
     if (goToCheckout) navigate('/checkout')
   }
@@ -353,8 +390,12 @@ export default function Product() {
     url: cleanProductUrl(window.location.origin, shown.id),
   })
 
-  const rel = products.filter((x) => x.type === p.type && x.id !== p.id).slice(0, 4)
-  const fallback = products.filter((x) => x.id !== p.id).slice(0, 4)
+  // Recommendations never include a sold-out item (`listable`, src/lib/stock.js),
+  // nor this design in any of its colours.
+  const ownIds = new Set([p.id, ...colors.map((c) => c.id)])
+  const notOwn = (x) => !ownIds.has(x.id) && !(x.colors || []).some((c) => ownIds.has(c.id))
+  const rel = listable.filter((x) => x.type === p.type && notOwn(x)).slice(0, 4)
+  const fallback = listable.filter(notOwn).slice(0, 4)
   const related = rel.length ? rel : fallback
 
   return (
@@ -368,7 +409,7 @@ export default function Product() {
       </nav>
 
       <div className="grid md:grid-cols-2 gap-10 lg:gap-16">
-        <Gallery key={shown.id} product={shown} rating={rating} onRating={toReviews} onPhotoLoad={() => setRelatedReady(true)} />
+        <Gallery key={shown.id} product={shown} rating={rating} onRating={toReviews} onPhotoLoad={() => setRelatedReady(true)} soldOutLabel={designOut ? 'Sold out' : colourOut ? 'Sold out in this colour' : ''} />
 
         {/* `min-w-0`: a grid item is never narrower than its content by
             default, and the colour row is wider than a phone on purpose. */}
@@ -410,6 +451,18 @@ export default function Product() {
             </>
           )}
 
+          {/* A sold-out colour says so by the price, with the way to what is
+              in stock right under it. */}
+          {colourOut && (
+            <p className="mt-2 text-[15px] text-black/70">
+              <b className="font-semibold text-black">{designOut ? 'Sold out' : `${shownColour || 'This colour'} is sold out`}</b>
+              {' · '}
+              <button type="button" onClick={toBlock} className="underline underline-offset-2">
+                {!designOut && othersInStock > 0 ? `See ${othersInStock} ${othersInStock === 1 ? 'colour' : 'colours'} in stock` : 'See similar styles'}
+              </button>
+            </p>
+          )}
+
           {/* The colour's own Product ID — the six characters the order
               sheet, the confirmation email and the admin's order details all
               quote for this exact colour. It follows the colour the shopper
@@ -435,24 +488,27 @@ export default function Product() {
                   would otherwise push the size and the buttons down by several
                   rows. They wrap as before on larger screens. */}
               <div ref={colourRow} className="relative flex gap-3 overflow-x-auto -mx-4 px-4 py-1 -my-1 md:m-0 md:p-0 md:flex-wrap md:overflow-visible">
-                {colors.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => navigate(`/product/${c.id}`, { replace: true })}
-                    aria-label={`View ${p.title} in ${c.color}`}
-                    aria-current={c.id === shown.id}
-                    className={`shrink-0 whitespace-nowrap h-11 min-w-[52px] px-4 rounded-full font-ui transition ${c.id === shown.id ? 'bg-black text-white border-black' : 'border border-black/40 hover:border-black'}`}
-                  >
-                    {c.color}
-                  </button>
-                ))}
+                {colourList.map((c) => {
+                  const out = isColourSoldOut(c)
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => navigate(`/product/${c.id}`, { replace: true })}
+                      aria-label={`View ${p.title} in ${c.color}${out ? ' (sold out)' : ''}`}
+                      aria-current={c.id === shown.id}
+                      className={`shrink-0 whitespace-nowrap h-11 min-w-[52px] px-4 rounded-full font-ui transition ${c.id === shown.id ? 'bg-black text-white border-black' : out ? 'border border-black/20 text-black/45' : 'border border-black/40 hover:border-black'}${out ? ' line-through' : ''}`}
+                    >
+                      {c.color}
+                    </button>
+                  )
+                })}
               </div>
             </fieldset>
           )}
 
           <fieldset className="mt-7 relative" id="size-options" tabIndex={-1}>
-            <legend className="text-sm mb-2">Size {needsSize && <span className="text-red-600">*</span>}</legend>
+            <legend className="text-sm mb-2">Size {needsSize && !colourOut && <span className="text-red-600">*</span>}</legend>
             {/* The chart for this category, opened from a link so the page
                 itself does not grow (src/components/SizeChart.jsx). */}
             <div className="absolute right-0 top-0 -translate-y-0.5">
@@ -462,42 +518,65 @@ export default function Product() {
               />
             </div>
             <div className="flex flex-wrap gap-3">
-              {shown.sizes.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => choose(s)}
-                  aria-pressed={size === s}
-                  className={`h-11 min-w-[52px] px-4 rounded-full font-ui transition ${size === s ? 'bg-black text-white border-black' : 'border border-black/40 hover:border-black'}`}
-                >
-                  {s}
-                </button>
-              ))}
+              {shown.sizes.map((s) => {
+                // A sold-out size stays on screen, struck through: hidden, it
+                // reads as "doesn't come in my size". Tapping it shows what is
+                // in stock in that size instead.
+                const out = isSizeSoldOut(shown, s)
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => choose(s)}
+                    aria-pressed={size === s}
+                    aria-label={out ? `${s}, sold out` : undefined}
+                    className={`h-11 min-w-[52px] px-4 rounded-full font-ui transition ${size === s ? 'bg-black text-white border-black' : out ? 'border border-black/20 text-black/45' : 'border border-black/40 hover:border-black'}${out ? ' line-through' : ''}`}
+                  >
+                    {s}
+                  </button>
+                )
+              })}
             </div>
           </fieldset>
 
-          <p className="mt-6 mb-2 text-sm">Quantity</p>
-          <QtyControl qty={qty} onChange={(v) => { setQty(Math.min(MAX_QTY, Math.max(1, v))); setProblem('') }} />
+          {blockOn ? (
+            // What she can buy instead takes the buy buttons' place
+            // (src/components/SoldOutBlock.jsx): never a dead end.
+            <div id="sold-out-block" ref={setCtaEl} tabIndex={-1} className="outline-none scroll-mt-24">
+              <Suspense fallback={<div className="mt-7 min-h-[16rem]" aria-hidden="true" />}>
+                <SoldOutBlock
+                  design={p} shown={shown} colour={shownColour} size={size || ''}
+                  colourOut={colourOut} designOut={designOut}
+                  onPick={(c) => navigate(`/product/${c.id}${size ? `?size=${encodeURIComponent(size)}` : ''}`, { replace: true })}
+                />
+              </Suspense>
+            </div>
+          ) : (
+            <>
+              <p className="mt-6 mb-2 text-sm">Quantity</p>
+              <QtyControl qty={qty} onChange={(v) => { setQty(Math.min(MAX_QTY, Math.max(1, v))); setProblem('') }} />
 
-          {problem && (
-            <p role="alert" className="mt-4 flex items-center gap-2 text-[15px] text-red-700">
-              <AlertTriangle size={16} className="shrink-0" /> {problem}
-            </p>
+              {problem && (
+                <p role="alert" className="mt-4 flex items-center gap-2 text-[15px] text-red-700">
+                  <AlertTriangle size={16} className="shrink-0" /> {problem}
+                </p>
+              )}
+
+              <div ref={setCtaEl}>
+                <button
+                  onClick={() => place(false, 'add_to_cart')}
+                  className="block w-full mt-7 h-14 border-2 border-black text-lg rounded-lg hover:bg-black hover:text-white transition"
+                >
+                  Add to cart
+                </button>
+                {/* The press starts the checkout's code on its way before the
+                    tap completes, for designs with no size to choose. */}
+                <button onPointerDown={() => prefetchCheckout()} onClick={() => place(true, 'buy_now')} className="block w-full mt-3 h-14 bg-brand-cta text-white text-lg font-medium rounded-lg hover:bg-brand-cta-hover transition">
+                  Buy it now
+                </button>
+              </div>
+            </>
           )}
-
-          <div ref={setCtaEl}>
-            <button
-              onClick={() => place(false, 'add_to_cart')}
-              className="block w-full mt-7 h-14 border-2 border-black text-lg rounded-lg hover:bg-black hover:text-white transition"
-            >
-              Add to cart
-            </button>
-            {/* The press starts the checkout's code on its way before the
-                tap completes, for designs with no size to choose. */}
-            <button onPointerDown={() => prefetchCheckout()} onClick={() => place(true, 'buy_now')} className="block w-full mt-3 h-14 bg-brand-cta text-white text-lg font-medium rounded-lg hover:bg-brand-cta-hover transition">
-              Buy it now
-            </button>
-          </div>
 
           {/* One customer's words where the decision is made, with a way to
               every review (src/components/ReviewHighlight.jsx). */}
@@ -545,7 +624,8 @@ export default function Product() {
         </div>
       </div>
 
-      {relatedReady && related.length > 0 && (
+      {/* While the block is showing, it already offers similar sets. */}
+      {relatedReady && !blockOn && related.length > 0 && (
         <>
           <h2 className="text-[30px] mt-20 mb-6">You may also like</h2>
           <ItemList list={LISTS.related} products={related}>
@@ -570,6 +650,8 @@ export default function Product() {
         needsSize={needsSize}
         onChooseSize={chooseSizeFromBar}
         onAdd={() => place(false, 'sticky_bar')}
+        soldOut={blockOn ? (!designOut && othersInStock > 0 ? 'Other colours' : 'Similar styles') : ''}
+        onSoldOut={toBlock}
       />
 
       <WhatsAppButton

@@ -17,7 +17,8 @@ const countFor = (products, to) => {
 
 export default function Collections() {
   usePageTitle('Collections', 'Browse the Ruhi Womens Clothing ranges — tops and shirts, co-ord sets and dresses.')
-  const { products, loading } = useProducts()
+  // Counts and tiles advertise only what can be bought (src/lib/stock.js).
+  const { listable: products, loading } = useProducts()
   // The four launch collections keep their curated copy and photography; a
   // category the client added later gets a tile of its own — its label, a
   // photo from the products it actually holds — so it is reachable here too.

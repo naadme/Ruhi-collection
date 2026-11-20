@@ -5,6 +5,7 @@ import { groupedCards } from '../lib/productGrouping'
 import { indexProducts } from '../lib/productLookup'
 import { isClientProduct } from '../lib/clientProducts'
 import { earlyRows } from '../lib/earlyData'
+import { listableRows } from '../lib/stock'
 
 const Ctx = createContext(null)
 export const useProducts = () => useContext(Ctx)
@@ -51,6 +52,9 @@ const toProduct = (r) => {
     // a row written before it existed — groups exactly as it always has.
     colour: r.colour || null,
     is_active: r.is_active !== false,
+    // The sizes of THIS colour that have run out (src/lib/stock.js). Rows read
+    // before the column existed have none.
+    sold_out_sizes: Array.isArray(r.sold_out_sizes) ? r.sold_out_sizes : [],
   }
 }
 
@@ -275,6 +279,12 @@ export function ProductsProvider({ children }) {
   // so the shop, search, wishlist, related lists and homepage all agree. Only
   // *visible* rows take part — a hidden colour is simply not offered.
   const products = useMemo(() => groupColours(all.filter((p) => p.is_active)), [all])
+  // What every LIST shows (shop grid, search, homepage, recommendations): only
+  // colours with a size in stock, each with only its sizes in stock, so a
+  // sold-out item is never recommended and a design with a sold-out colour
+  // leads with one in stock (src/lib/stock.js). Its page, the cart and the
+  // wishlist still use `products`, so a sold-out page keeps opening.
+  const listable = useMemo(() => groupColours(listableRows(all)), [all])
   // The storefront only ever resolves *visible* products, regardless of who is
   // signed in — hidden items live exclusively in the dashboard.
   //
@@ -304,8 +314,8 @@ export function ProductsProvider({ children }) {
 
   // Memoised so a consumer only re-renders when one of these actually changes.
   const value = useMemo(
-    () => ({ products, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, answered, error, source }),
-    [products, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, answered, error, source],
+    () => ({ products, listable, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, answered, error, source }),
+    [products, listable, all, getProduct, getVariant, getRow, reload, applyRow, removeRow, loading, answered, error, source],
   )
 
   return (
