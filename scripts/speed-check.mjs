@@ -54,6 +54,18 @@ const BLOCK = [
   '*facebook.com/privacy_sandbox*', '*_vercel/insights*', '*vercel-insights.com*',
   '*googletagmanager.com/a?*', '*googletagmanager.com/td?*',
 ]
+// Blocking by address is not enough on its own: Lighthouse applies
+// --blocked-url-patterns to the page only, and on 17 and 19 Nov 2026 about one
+// Meta hit per live round still got through (most likely from the hidden iframe
+// the Meta pixel opens on www.facebook.com/tr/ once its normal hit is refused).
+// So these hosts, which only ever receive hits, also fail to resolve for the
+// whole browser. The tracking scripts come from other hosts
+// (www.googletagmanager.com, connect.facebook.net) and still load and run.
+const NO_DNS = [
+  '*.google-analytics.com', 'analytics.google.com', '*.doubleclick.net',
+  'www.google.com', 'www.facebook.com', '*.vercel-insights.com',
+]
+const HOST_RULES = NO_DNS.map((host) => `MAP ${host} ~NOTFOUND`).join(', ')
 // A request that looks like a tracking hit and was answered: the run counted as a visit.
 const TRACKING_HIT = /\/g\/collect|\/j\/collect|\/r\/collect|\/ccm\/collect|facebook\.com\/(tr|privacy_sandbox)|_vercel\/insights|vercel-insights\.com/
 
@@ -149,9 +161,14 @@ async function serve(dir) {
   return { server, base: `http://127.0.0.1:${server.address().port}` }
 }
 
+// A run that let a tracking hit through. Never retried: a retry could send
+// another test visit to the shop's reports.
+class TrackingLeak extends Error {}
+
 // Headless Chrome occasionally drops a run ("Target closed"); one retry, then give up.
 async function lighthouse(url) {
   try { return await lighthouseOnce(url) } catch (first) {
+    if (first instanceof TrackingLeak) throw first
     console.log(`  (Lighthouse run failed, retrying once: ${String(first.message).slice(0, 120)})`)
     return lighthouseOnce(url)
   }
@@ -169,7 +186,7 @@ const run = (cmd, argv, env) => new Promise((resolve) => {
 async function lighthouseOnce(url) {
   const out = join(mkdtempSync(join(tmpdir(), 'ruhi-lh-')), 'report.json')
   const argv = ['-y', `lighthouse@${check.lighthouse}`, url, '--quiet', '--only-categories=performance',
-    '--chrome-flags=--headless=new --no-first-run --no-default-browser-check --disable-extensions',
+    `--chrome-flags=--headless=new --no-first-run --no-default-browser-check --disable-extensions --host-resolver-rules='${HOST_RULES}'`,
     ...BLOCK.map((p) => `--blocked-url-patterns=${p}`), '--output=json', `--output-path=${out}`]
   const done = await run('npx', argv, { ...process.env, CHROME_PATH: CHROME })
   if (done.status !== 0 || !existsSync(out)) throw new Error(`Lighthouse failed for ${url}: ${(done.stderr || '').slice(-400)}`)
@@ -178,7 +195,7 @@ async function lighthouseOnce(url) {
   const a = r.audits
   const leaked = (a['network-requests']?.details?.items || []).filter((q) => q.statusCode > 0 && TRACKING_HIT.test(q.url))
   if (leaked.length) {
-    throw new Error(`A tracking hit was not blocked, so this run reached the shop's reports. Add its address to BLOCK in scripts/speed-check.mjs:\n  ${[...new Set(leaked.map((q) => q.url.split('?')[0]))].join('\n  ')}`)
+    throw new TrackingLeak(`A tracking hit was not blocked, so this run reached the shop's reports. Add its address to BLOCK (and its host to NO_DNS) in scripts/speed-check.mjs:\n  ${[...new Set(leaked.map((q) => q.url.split('?')[0]))].join('\n  ')}`)
   }
   return {
     score: Math.round((r.categories.performance.score || 0) * 100),

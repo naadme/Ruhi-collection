@@ -43,7 +43,28 @@ test('the tracking scripts themselves still load, so their cost is measured', ()
 test('a hit that gets through anyway is recognised, and the run stops', () => {
   for (const url of HITS) assert.ok(hitCheck.test(url), `not recognised: ${url}`)
   for (const url of SCRIPTS) assert.equal(hitCheck.test(url), false, `script mistaken for a hit: ${url}`)
-  assert.match(source, /if \(leaked\.length\) \{\s*throw new Error/)
+  assert.match(source, /if \(leaked\.length\) \{\s*throw new TrackingLeak\(/)
+})
+
+// 17 and 19 Nov 2026: about one Meta hit per live round still got through the
+// address blocks, so the hosts that only receive hits also fail to resolve.
+test('hit-only hosts fail to resolve for the whole browser; script hosts still load', () => {
+  const hosts = [...source.match(/const NO_DNS = \[([\s\S]*?)\]/)[1].matchAll(/'([^']+)'/g)].map(([, h]) => h)
+  const resolvesNot = (url) => {
+    const host = new URL(url).hostname
+    return hosts.some((h) => (h.startsWith('*.') ? host.endsWith(h.slice(1)) : host === h))
+  }
+  for (const url of HITS.filter((u) => !u.includes('ruhi-collections.com'))) assert.ok(resolvesNot(url), `still resolves: ${url}`)
+  for (const url of [...SCRIPTS, 'https://fonts.gstatic.com/s/inter.woff2', 'https://xhsjwhzutalckeektluj.supabase.co/rest/v1/products', 'https://www.ruhi-collections.com/']) {
+    assert.equal(resolvesNot(url), false, `blocked by mistake: ${url}`)
+  }
+  assert.match(source, /--host-resolver-rules='\$\{HOST_RULES\}'/, 'the rules reach Chrome')
+  assert.match(source, /MAP \$\{host\} ~NOTFOUND/)
+})
+
+test('a run that let a hit through is not retried', () => {
+  assert.match(source, /throw new TrackingLeak\(/)
+  assert.match(source, /if \(first instanceof TrackingLeak\) throw first/)
 })
 
 // The live site also runs the Meta pixel, which local builds never load, so the live
