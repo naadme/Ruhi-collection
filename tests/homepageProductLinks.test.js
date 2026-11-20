@@ -158,12 +158,16 @@ test('a deleted or hidden product resolves to NOTHING — never to another produ
   assert.equal(findProduct(index, undefined), null)
 })
 
-test('the product page says “not found” instead of opening a different product', () => {
+test('the product page says “no longer available” instead of opening a different product', () => {
   const src = read('src/pages/Product.jsx')
-  assert.match(src, /Product not found/, 'a product that cannot be resolved is reported')
-  assert.match(src, /if \(!p\)/, 'and the page stops there')
+  // Since 20 Nov 2026 the page also offers what is in stock (cards to choose
+  // from, src/components/NoLongerAvailable.jsx), but it still never opens
+  // another product in the missing one's place.
+  const gone = read('src/components/NoLongerAvailable.jsx')
+  assert.match(gone, /This style is no longer available/, 'a product that cannot be resolved is reported')
+  assert.match(src, /if \(!p\) \{[\s\S]{0,300}<NoLongerAvailable id=\{id\} \/>/, 'and the page stops there')
   // The page must never fall back to "the first product in the list".
-  assert.doesNotMatch(src, /products\[0\]/, 'no product is ever substituted for a missing one')
+  assert.doesNotMatch(src + gone, /products\[0\]|listable\[0\]/, 'no product is ever substituted for a missing one')
 })
 
 // ---- the homepage's own rows ----------------------------------------------

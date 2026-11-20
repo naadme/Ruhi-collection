@@ -1,5 +1,5 @@
 import usePageTitle from '../hooks/usePageTitle'
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Lock } from 'lucide-react'
 import { useCart } from '../context/CartContext'
@@ -11,10 +11,11 @@ import { inr, shippingFor, totalFor } from '../lib/pricing'
 import ExpressNote from '../components/ExpressNote'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent } from '../lib/trackingItems'
+import { SoldOutCartLines } from '../components/SoldOutParts'
 
 export default function Cart() {
   usePageTitle('Cart')
-  const { lines, trackedItems, unavailable, prune, subtotal, setQty, remove, setOpen, empty } = useCart()
+  const { lines, soldOutLines, trackedItems, unavailable, prune, subtotal, setQty, remove, setOpen, empty } = useCart()
   const { answered, source } = useProducts()
   // Until the database has answered, the basket can only be priced from the
   // bundled seed (placeholder prices, and "unavailable" for anything newer).
@@ -68,6 +69,15 @@ export default function Cart() {
     </section>
   )
 
+  // Everything left in the basket has sold out since it was added.
+  if (!lines.length && soldOutLines.length) return (
+    <section className="max-w-[1100px] mx-auto px-4 py-14">
+      <h1 className="text-[40px] mb-8">Your cart</h1>
+      <Suspense fallback={null}><SoldOutCartLines lines={soldOutLines} onRemove={remove} /></Suspense>
+      <Link to="/shop" onClick={() => { setOpen(false); window.scrollTo(0, 0) }} className="inline-block bg-[#8A6556] text-white px-12 py-5 rounded-lg mt-8 text-lg">Continue shopping</Link>
+    </section>
+  )
+
   if (!lines.length) return (
     <section className="text-center py-24 px-4">
       <h1 className="text-[48px] md:text-[64px]">Your cart is empty</h1>
@@ -93,6 +103,9 @@ export default function Cart() {
           <button onClick={prune} className="underline underline-offset-2 font-medium">Remove {unavailable === 1 ? 'it' : 'them'}</button>
         </div>
       )}
+
+      {/* Sold out since added: named, kept apart, not in the total. */}
+      {soldOutLines.length > 0 && <Suspense fallback={null}><SoldOutCartLines lines={soldOutLines} onRemove={remove} className="mb-6" /></Suspense>}
 
       <div className="grid lg:grid-cols-[1.5fr_1fr] gap-8 lg:gap-12 items-start">
         <ul className="divide-y border-t border-black/10">

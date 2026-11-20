@@ -2,6 +2,17 @@ import { ChevronDown, ChevronRight, Loader2, Package, Pencil, Plus, Trash2 } fro
 import { useCategories } from '../context/CategoriesContext'
 import { colourOf } from '../lib/productForm'
 import { productId } from '../lib/productIdentity'
+import { soldOutSizes } from '../lib/stock'
+import { stockLabel, stockSummary } from '../lib/stockAdmin'
+
+// Sold out (20 Nov 2026): which sizes of one colour have run out, for the
+// product list. Marking is done on the Stock screen or in the editor.
+const soldOutText = (r) => {
+  const out = soldOutSizes(r)
+  const sizes = Array.isArray(r.sizes) ? r.sizes : []
+  if (!out.length) return ''
+  return sizes.length && sizes.every((s) => out.includes(s)) ? 'Sold out' : `${out.join(', ')} sold out`
+}
 
 // ---------------------------------------------------------------------------
 // Product list rendering for the dashboard.
@@ -111,6 +122,7 @@ export function ProductRow({ p, name, busy, onToggle, onEdit, onDelete }) {
               not been given one yet shows nothing rather than a web
               address passed off as an ID. */}
           <span className="font-mono normal-case">{productId(p)}</span>
+          {soldOutText(p) ? <> · <b className="adm-soldout-tag normal-case">{soldOutText(p)}</b></> : null}
         </p>
         <p className="text-[15px] mt-1 font-medium">
           <span className="text-red-600 font-bold">₹{p.price}</span>
@@ -162,6 +174,7 @@ export function GroupCard({
           <p className="font-semibold text-[16px] leading-snug truncate">{g.name}</p>
           <p className="text-[13px] text-black/50 mt-0.5 capitalize">
             {typeLabel(lead.type)} · {g.rows.length} colours · {liveCount} live
+            {stockLabel(stockSummary(g.rows)) ? <> · <b className="adm-soldout-tag normal-case">{stockLabel(stockSummary(g.rows))}</b></> : null}
           </p>
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {g.rows.map((r, i) => (
@@ -224,6 +237,7 @@ export function GroupCard({
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-[14px] truncate">{colours[i] || 'No colour'}</p>
                 <p className="text-[12px] text-black/45 font-mono truncate">{productId(r)}</p>
+                {soldOutText(r) ? <p className="text-[12px] adm-soldout-tag">{soldOutText(r)}</p> : null}
               </div>
               <p className="text-[14px] font-medium shrink-0">
                 <span className="text-red-600 font-bold">₹{r.price}</span>

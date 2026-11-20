@@ -16,6 +16,10 @@ export const LISTS = {
   related: { id: 'related_products', name: 'You may also like' },
   wishlist: { id: 'wishlist', name: 'Wishlist' },
   searchSuggestions: { id: 'search_suggestions', name: 'Search suggestions' },
+  // What a sold-out page offers instead: other colours of the set, then
+  // similar sets (src/components/SoldOutBlock.jsx). Its own name, so GA4 shows
+  // how many sold-out visitors open something else (owner's OK, 20 Nov 2026).
+  soldOutSimilar: { id: 'sold_out_similar', name: 'Sold out – similar' },
 }
 
 /**

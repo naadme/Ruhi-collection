@@ -225,3 +225,121 @@
   font-weight: 600;
 }
 .adm-express-switch-btn:disabled { opacity: 0.6; }
+
+/* Sold out (20 Nov 2026). Size buttons on the Stock screen and in the product
+   editor: in stock is white; sold out is grey and struck through, as the
+   shopper sees it. Every button is a finger-sized target. */
+.adm-size {
+  min-width: 48px;
+  min-height: 40px;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  background: #fff;
+  color: rgba(0, 0, 0, 0.8);
+  font-size: 15px;
+  font-weight: 600;
+}
+.adm-size--out {
+  background: #f4f4f5;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: rgba(0, 0, 0, 0.4);
+  text-decoration: line-through;
+}
+.adm-size-all {
+  min-height: 40px;
+  padding: 0 0.85rem;
+  border-radius: 8px;
+  border: 1px dashed rgba(0, 0, 0, 0.35);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+}
+.adm-size:disabled,
+.adm-size-all:disabled {
+  opacity: 0.6;
+}
+
+/* The one question asked before a tap sells out a whole design. */
+.adm-soldout-ask {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid #b45309;
+  background: #fffbeb;
+  color: #78350f;
+  font-size: 14px;
+}
+.adm-soldout-ask ul {
+  margin: 0.4rem 0 0.75rem 1.1rem;
+  list-style: disc;
+}
+
+/* What a tap did, with Undo; an error in red. */
+.adm-soldout-note {
+  margin-top: 0.5rem;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.65);
+}
+.adm-soldout-note--error {
+  color: #b91c1c;
+}
+.adm-link {
+  margin-left: 0.5rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  min-height: 32px;
+}
+
+/* "1 size sold out" / "All sold out" beside a design's name. */
+.adm-soldout-tag {
+  color: #b45309;
+  font-weight: 700;
+}
+
+/* Plain admin buttons for the boxes above. */
+.adm-btn {
+  min-height: 40px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.7);
+  background: #fff;
+  color: #000;
+  font-size: 14px;
+  font-weight: 600;
+}
+.adm-btn--dark {
+  background: #000;
+  color: #fff;
+}
+
+/* The sold-out alert at the top of the dashboard: amber while the 24 hours
+   run, a deeper frame once it is a reminder to change the ad. */
+.adm-soldout-alert {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  color: #78350f;
+  font-size: 15px;
+}
+.adm-soldout-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  font-size: 16px;
+}
+.adm-soldout-alert-item {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(180, 83, 9, 0.25);
+}
+.adm-soldout-alert-item--due {
+  padding: 0.75rem;
+  border: 2px solid #b45309;
+  border-radius: 10px;
+  background: #fff;
+}

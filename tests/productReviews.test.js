@@ -259,7 +259,8 @@ test('anyone may open the review form on the product page', () => {
 test('only an owner may reach the moderation panel, and it offers the three decisions', () => {
   const dash = read('src/admin/Dashboard.jsx')
   assert.match(dash, /\['reviews', 'Reviews'\]/, 'the section exists')
-  assert.match(dash, /SECTIONS\.filter\(\(\[k\]\) => k === 'products' \|\| showOrders\)/,
+  // A product manager sees Products and, since 20 Nov 2026, Stock: nothing else.
+  assert.match(dash, /SECTIONS\.filter\(\(\[k\]\) => k === 'products' \|\| k === 'stock' \|\| showOrders\)/,
     'and like orders and banners, it is owner-only — a product manager cannot publish')
   assert.match(dash, /<ReviewsPanel notify=\{notify\} products=\{all\} \/>/, 'rendered with the catalogue')
 

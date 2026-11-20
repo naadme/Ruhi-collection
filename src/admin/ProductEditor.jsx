@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabase'
 import { TYPES } from '../data/products'
 import { useCategories } from '../context/CategoriesContext'
 import CategoryManager from './CategoryManager'
+import SoldOutChips from './SoldOutChips'
+import { useProducts } from '../context/ProductsContext'
 import {
   blankVariant, buildPlan, buildTitle, groupForm, MAX_IMAGES_PER_COLOUR, photosOf, slug,
   SIZE_OPTIONS, toggleSize, validateForm, withIds,
@@ -253,7 +255,7 @@ function VisibilitySwitch({ on, onToggle, compact }) {
 // One colour card inside the editor: the free-text colour, its own ID, price,
 // photos and visibility. Every colour is edited independently and saved as its
 // own `products` row — which is exactly how the storefront groups them.
-function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, onUpload, onRemove, onUndo }) {
+function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, onUpload, onRemove, onUndo, stockRow, stockRows, designName }) {
   const label = String(v.colour).trim() || (v.original ? 'Colour' : `Colour ${index + 1}`)
   return (
     <div data-vkey={v.key} data-row={v.original?.id || undefined} className="border border-black/15 rounded-xl overflow-hidden scroll-mt-6">
@@ -401,6 +403,23 @@ function ColourCard({ v, index, liveCount, isNewProduct, uploading, onChange, on
             compact
             onToggle={() => onChange({ is_active: !v.is_active })}
           />
+
+          {/* Sold out (20 Nov 2026): this colour's own sizes, saved at once,
+              as on the Stock screen. A colour not saved yet has none. */}
+          {stockRow && stockRow.is_active && (
+            <div>
+              <p className="text-[14px] font-semibold">Sold out in this colour</p>
+              <p className="text-[13px] text-black/55 mb-2">
+                Tap a size that has run out. Shoppers still see it, struck through, with other colours and similar
+                styles to buy. Saved at once.
+              </p>
+              <SoldOutChips row={stockRow} rows={stockRows} designName={designName} />
+            </div>
+          )}
+          <p className="text-[12px] text-black/45">
+            Hidden takes a colour off the shop completely: use it only when you stop selling it. For “none left right
+            now”, use Sold out.
+          </p>
         </div>
       )}
     </div>
@@ -431,6 +450,8 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
   const typeOptions = useMemo(() => optionsFor(form.shared.type), [optionsFor, form.shared.type])
 
   useOverlay(open, onClose, panel)
+  // Before any early return: a hook must run on every render.
+  const { getRow } = useProducts()
 
   // Load the product once, at the moment the editor opens: later re-renders
   // of the dashboard (toasts, spinners) must never wipe what the client typed.
@@ -574,6 +595,9 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
   if (!open) return null
 
   const live = form.variants.filter((v) => !v.removed)
+  // The saved colours as the catalogue holds them now, for their sold-out
+  // sizes (marked from here or the Stock screen; never part of Save).
+  const stockRows = form.variants.map((v) => (v.original ? getRow(v.original.id) : null)).filter(Boolean)
   const removals = form.variants.length - live.length
 
   return (
@@ -676,6 +700,9 @@ export default function ProductEditor({ open, isNew, initial, takenIds = [], foc
                 onUpload={upload}
                 onRemove={() => setVariant(v.key, { removed: true })}
                 onUndo={() => setVariant(v.key, { removed: false })}
+                stockRow={v.original ? getRow(v.original.id) : null}
+                stockRows={stockRows}
+                designName={form.shared.name}
               />
             ))}
             <button

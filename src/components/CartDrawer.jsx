@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { Suspense, useCallback, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { useCart } from '../context/CartContext'
@@ -9,8 +9,9 @@ import { cartEvent } from '../lib/trackingItems'
 import Img from './Img'
 import QtyControl from './QtyControl'
 import { ShopRatingNote } from './Stars'
+import { SoldOutCartLines } from './SoldOutParts'
 export default function CartDrawer() {
-  const { open, setOpen, lines, trackedItems, subtotal, setQty, remove } = useCart()
+  const { open, setOpen, lines, soldOutLines, trackedItems, subtotal, setQty, remove } = useCart()
   const panel = useRef(null)
   const close = useCallback(() => setOpen(false), [setOpen])
   useOverlay(open, close, panel)
@@ -34,11 +35,16 @@ export default function CartDrawer() {
       <aside ref={panel} role="dialog" aria-modal="true" aria-label="Your cart" tabIndex={-1} className="absolute right-0 top-0 h-full w-full max-w-[440px] bg-white flex flex-col outline-none" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center p-6 border-b"><h2 className="text-2xl">Your cart</h2><button onClick={close} aria-label="Close cart"><X /></button></div>
         {!lines.length ? (
-          <div className="flex-1 grid place-items-center text-center p-6"><div><p className="text-3xl mb-6">Your cart is empty</p>
+          <div className="flex-1 grid place-items-center text-center p-6"><div>
+            {/* Everything left in it has sold out: say so rather than "empty". */}
+            {soldOutLines.length > 0 && <Suspense fallback={null}><SoldOutCartLines lines={soldOutLines} onRemove={remove} onGo={close} className="text-left mb-8" /></Suspense>}
+            <p className="text-3xl mb-6">{soldOutLines.length ? 'Nothing in your cart can be ordered' : 'Your cart is empty'}</p>
             {/* Close + land on the shop even when we are already on /shop, where a bare Link is a no-op. */}
             <Link to="/shop" onClick={() => { close(); window.scrollTo(0, 0) }} className="inline-block bg-[#8A6556] text-white px-10 py-4 rounded-lg">Continue shopping</Link></div></div>
         ) : (<>
-          <ul className="flex-1 overflow-auto p-6 space-y-6">{lines.map((l) => (
+          <ul className="flex-1 overflow-auto p-6 space-y-6">
+            {soldOutLines.length > 0 && <li><Suspense fallback={null}><SoldOutCartLines lines={soldOutLines} onRemove={remove} onGo={close} /></Suspense></li>}
+            {lines.map((l) => (
             <li key={l.id + l.size} className="flex gap-4"><Img src={l.image} alt={l.product.title} sizes="80px" className="w-20 h-24 object-cover" />
               <div className="flex-1"><p className="leading-tight">{l.product.title}</p><p className="text-sm text-black/60">Size: {l.size}{l.color ? ` · ${l.color}` : ''}</p><p className="font-ui font-semibold text-red-600">{inr(l.price)}</p>
                 <div className="flex items-center gap-4 mt-2"><QtyControl qty={l.qty} onChange={(q) => setQty(l.id, l.size, q)} small /><button onClick={() => remove(l.id, l.size)} className="text-sm underline">Remove</button></div></div></li>))}</ul>

@@ -134,10 +134,12 @@ export function viewedItem(product, routeId, chosenSize, { category } = {}) {
   const colours = product.colors?.length > 1 ? product.colors : []
   const variant = variantFor(colours, routeId) || product
   const sizes = variant.sizes?.length ? variant.sizes : product.sizes || []
+  // Before a size is chosen, the first size in stock (brief, Annexure A3).
+  const out = Array.isArray(variant.sold_out_sizes) ? variant.sold_out_sizes : []
   return trackedItem({
     productId: variant.sku,
     groupId: designGroupId(variant),
-    size: sizes.includes(chosenSize) ? chosenSize : sizes[0],
+    size: sizes.includes(chosenSize) ? chosenSize : sizes.find((s) => !out.includes(s)) || sizes[0],
     name: product.title,
     colour: (colours.length ? variant.color : '') || product.colour,
     category,

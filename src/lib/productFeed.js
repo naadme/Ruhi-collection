@@ -36,10 +36,12 @@ export function absoluteUrl(src, site) {
  * `rows` are `products` rows exactly as the database stores them; `site` is
  * the shop's address, e.g. https://www.ruhi-collections.com.
  *
- * Availability: the shop hides a product the moment it is sold out, and each
- * colour lists only the sizes it stocks, so every size of every product on
- * sale is in stock. A row without a Product ID or a price cannot be sold and
- * is left out.
+ * Availability (20 Nov 2026): a size the owner has marked sold out on its
+ * colour (`sold_out_sizes`, src/lib/stock.js) is "out_of_stock", exactly as
+ * its page shows it, so Meta's catalog ads and Google stop showing it; every
+ * other size is "in_stock". A product we stopped selling (hidden) is left out
+ * altogether, which is Google's rule for discontinued items. A row without a
+ * Product ID or a price cannot be sold and is left out.
  */
 export function feedItems(rows, { site }) {
   const sold = (rows || []).filter((r) => r && r.is_active !== false && isClientProduct(r))
@@ -60,6 +62,7 @@ export function feedItems(rows, { site }) {
       if (!photos.length) continue
       const colour = text(row.colour) || partsOf(row)?.colour || ''
       const sizes = Array.isArray(row.sizes) && row.sizes.length ? row.sizes : []
+      const soldOut = Array.isArray(row.sold_out_sizes) ? row.sold_out_sizes : []
       for (const size of sizes) {
         const id = itemId(sku, size)
         if (!id) continue
@@ -79,7 +82,7 @@ export function feedItems(rows, { site }) {
           // shopper pays is the sale price. Both must match the page.
           price: rupees(before > charged ? before : charged),
           sale_price: before > charged ? rupees(charged) : undefined,
-          availability: 'in_stock',
+          availability: soldOut.includes(size) ? 'out_of_stock' : 'in_stock',
           brand: BRAND,
           condition: 'new',
           // The shop's own designs carry no GTIN or MPN — Google's way of
