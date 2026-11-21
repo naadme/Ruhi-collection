@@ -118,3 +118,20 @@ test('the speed check takes its limits and baseline from speedSettings.mjs', () 
   assert.match(source, /mergeBaseline\(baseline, results, LIVE\)/)
   assert.doesNotMatch(source, /budget\.lab\.(runs|max|pages)/, 'the live check must not fall back to the lab settings')
 })
+
+// 21 Nov 2026: three lab runs in fresh worktrees, which have no .env.local, built
+// a shop that stopped on start ("Supabase is not configured"). Lighthouse saw a
+// blank page (NO_FCP), and the HTML measured without its early-start script.
+test('a build without the shop\'s Supabase settings is refused before it is measured', () => {
+  const guard = source.match(/const missing = \[([^\]]+)\]/)
+  assert.ok(guard, 'the check names the settings it needs')
+  const needed = [...guard[1].matchAll(/'([^']+)'/g)].map(([, key]) => key)
+  const app = readFileSync(new URL('../src/lib/supabase.js', import.meta.url), 'utf8')
+  for (const [, key] of app.matchAll(/import\.meta\.env\.(VITE_[A-Z_]+)/g)) assert.ok(needed.includes(key), `the app needs ${key}; the check must too`)
+  assert.match(source, /loadEnv\('production', ROOT, 'VITE_'\)/, 'read the way vite build reads them')
+  assert.ok(source.indexOf('const missing') < source.indexOf("execFileSync('npx', ['vite', 'build'"), 'checked before the build')
+})
+
+test('the check finds its own files in a folder whose name has a space', () => {
+  assert.match(source, /const ROOT = fileURLToPath\(new URL\('\.\.', import\.meta\.url\)\)/)
+})

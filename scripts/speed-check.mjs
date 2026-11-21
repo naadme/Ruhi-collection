@@ -28,10 +28,13 @@ import { createServer } from 'node:http'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { extname, join, normalize, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
 import { checkSettings, mergeBaseline } from './speedSettings.mjs'
 
-const ROOT = new URL('..', import.meta.url).pathname
+// A real path, not the URL's: in ".../Ruhi Collections/..." the URL spells the
+// space as %20, and no file is found there.
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const args = new Set(process.argv.slice(2))
 const LIVE = args.has('--live')
 const LAB = args.has('--lab') || LIVE
@@ -86,6 +89,19 @@ const measuredAt = new Date().toISOString()
 const results = LIVE ? { measuredAt, live: {} } : { measuredAt, files: {}, chunks: {}, lab: {} }
 let outDir = null
 if (!LIVE) {
+  // A build without the shop's public Supabase settings is not the shop: the
+  // app stops on start ("Supabase is not configured"), so every page stays
+  // blank and Lighthouse fails with NO_FCP, and index.html loses its
+  // early-start script, so the HTML measures about 1.2 KB too small. Git
+  // ignores .env.local, so a new worktree has none: on 21 Nov 2026 three lab
+  // runs in fresh worktrees failed that way.
+  const { loadEnv } = await import('vite')
+  const env = loadEnv('production', ROOT, 'VITE_')
+  const missing = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY'].filter((key) => !env[key])
+  if (missing.length) {
+    console.error(`✗ No ${missing.join(' or ')} for this build, so it would not be the shop the check is meant to measure.\n  Copy or link .env.local from the main checkout into ${ROOT} (it holds only public values), then run the check again.`)
+    process.exit(1)
+  }
   outDir = mkdtempSync(join(tmpdir(), 'ruhi-speed-'))
   console.log('Building the shop…')
   execFileSync('npx', ['vite', 'build', '--outDir', outDir, '--emptyOutDir', '--logLevel', 'error'], { cwd: ROOT, stdio: 'inherit' })
