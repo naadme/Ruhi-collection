@@ -1,3 +1,9 @@
+// NOT USED BY THE HOMEPAGE since the 21 Nov 2026 redesign: the homepage is
+// src/components/home/HomeModern.jsx (its hero is home/HeroCarousel.jsx, built
+// on the same helpers: heroSlider, heroLinks, bannerPosition, categoryTiles,
+// bestsellers). This file is kept, unimported, only because several tests
+// still read its source; nothing here is bundled. Move those tests to the new
+// files, then delete this file.
 import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Truck, Headset, IndianRupee, Instagram, MessageCircle, Mail, Phone, ChevronLeft, ChevronRight, Plus, Check } from 'lucide-react'

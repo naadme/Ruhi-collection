@@ -29,3 +29,19 @@ button, select, [role="button"]{border-radius:.5rem}
 /* Room at the very end of the page for the product page's phone buy bar, so
    the footer's last links are never hidden under it (StickyBuyBar.jsx). */
 @media (max-width: 767px){body.has-buy-bar{padding-bottom:calc(4.5rem + env(safe-area-inset-bottom))}}
+/* Homepage product cards (src/components/home/parts.jsx): the shop's own
+   ProductCard, set a size smaller and with soft corners to suit the homepage's
+   narrower rails. Scoped to `.home-card`, so the shop and product pages are
+   unchanged. */
+.home-card .aspect-\[3\/4\]{border-radius:14px}
+.home-card h3{font-size:15px;line-height:1.35;margin-top:.65rem;letter-spacing:.01em}
+.home-card h3 + p{font-size:14.5px;margin-top:.15rem}
+@media (min-width:768px){.home-card h3{font-size:17px}.home-card h3 + p{font-size:16px}}
+/* The wishlist heart on homepage cards is drawn 36 px wide; this invisible
+   ring makes its tap area 44 px (the touch-target minimum) without changing
+   how it looks. */
+.home-card button[aria-pressed]::before{content:"";position:absolute;inset:-4px;border-radius:9999px}
+/* The homepage hero's story bars (src/components/home/HeroCarousel.jsx): the
+   bar filling up is the timer for the next photo. Transform only, so the
+   phone's compositor animates it without layout work. */
+@keyframes hero-bar{from{transform:scaleX(0)}to{transform:scaleX(1)}}

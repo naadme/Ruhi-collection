@@ -14,15 +14,15 @@ import { bannerPositionStyle, focusAfterDrag, focusAfterNudge } from '../lib/ban
  * `ratio` is the shape to draw, and it has to be the shape the PAGE really
  * uses rather than a convenient rectangle: a preview wider than the real frame
  * shows the owner a slice of her photograph she will never see, and hides the
- * top and bottom she will. The banner panel passes the hero's own two shapes
- * (720/684 wide, 390/380 phone); each caller passes its own.
+ * top and bottom she will. The banner panel passes the hero's one shape
+ * (3:4, src/lib/heroShape.js); each caller passes its own.
  *
  * Dragging moves the PHOTOGRAPH under a fixed frame — the way a print is
  * moved under a mount — which is why the frame never grows and the uploaded
  * file is never touched.
  */
 
-export default function FrameBox({ src, label, framing, boxWidth, ratio, onDrag, onKey }) {
+export default function FrameBox({ src, label, framing, boxWidth, ratio, onDrag, onKey, onMeasure }) {
   const boxRef = useRef(null)
   const dragRef = useRef(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
@@ -96,7 +96,13 @@ export default function FrameBox({ src, label, framing, boxWidth, ratio, onDrag,
             src={src}
             alt=""
             draggable="false"
-            onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+            onLoad={(e) => {
+              const size = { w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }
+              setNatural(size)
+              // The caller may want the photo's own size too (the banner panel
+              // warns when a photo is the wrong shape or too small).
+              onMeasure?.(size)
+            }}
             className="absolute inset-0 w-full h-full object-cover"
             style={bannerPositionStyle(framing)}
           />

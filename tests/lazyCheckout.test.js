@@ -25,8 +25,10 @@ test('App loads Checkout lazily, through the shared loader', () => {
   assert.doesNotMatch(APP, /import\s+Checkout\s+from/, 'a static import would pull checkout back into every page')
   assert.match(APP, /const Checkout = lazy\(checkoutPage\.lazy\(CheckoutUnavailable\)\)/)
   assert.match(APP, /<Route path="checkout" element={<Checkout \/>} \/>/)
-  // Same shared Suspense as the dashboard and the legal pages.
-  assert.equal(APP.match(/<Suspense/g).length, 1)
+  // Same shared Suspense as the dashboard and the legal pages. The only other
+  // boundary is the homepage's own, around its route (tests/lazyHome.test.js).
+  assert.equal(APP.match(/<Suspense/g).length, 2)
+  assert.match(APP, /<Route path="checkout" element={<Checkout \/>} \/>/)
 })
 
 test('the checkout page is fetched by a dynamic import, and nothing imports it statically', () => {
