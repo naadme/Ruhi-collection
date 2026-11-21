@@ -13,6 +13,8 @@
 /** Lists that are always the same. */
 export const LISTS = {
   homeBestSellers: { id: 'home_best_sellers', name: 'Home: Best Sellers' },
+  // The homepage's newest designs (homepage redesign, Nov 2026).
+  homeNewIn: { id: 'home_new_in', name: 'Home: New in' },
   related: { id: 'related_products', name: 'You may also like' },
   wishlist: { id: 'wishlist', name: 'Wishlist' },
   searchSuggestions: { id: 'search_suggestions', name: 'Search suggestions' },

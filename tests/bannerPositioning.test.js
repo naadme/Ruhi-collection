@@ -283,28 +283,22 @@ test('the panel saves, compares and previews the framing — and only that', () 
   assert.match(PANEL, /image: String\(rows\[i\]\.image\)\.trim\(\)/, 'the photograph is still just its address')
 })
 
-test('the panel offers both homepage shapes, because they crop differently', () => {
-  // The hero is half the screen from `md` up and a full-width phone below it:
-  // a photograph framed for one is cropped by the other, so the owner is shown
-  // both and both are draggable.
-  const desktop = PANEL.match(/label="Desktop"[\s\S]{0,260}?boxWidth=\{(\d+)\}[\s\S]{0,80}?ratio="(\d+)\s*\/\s*(\d+)"/)
-  const phone = PANEL.match(/label="Phone"[\s\S]{0,260}?boxWidth=\{(\d+)\}[\s\S]{0,80}?ratio="(\d+)\s*\/\s*(\d+)"/)
-  assert.ok(desktop && phone, 'both shapes are offered')
-  assert.ok(Number(desktop[1]) > Number(phone[1]), 'and the desktop one really is wider')
-
-  // A preview drawn at some convenient rectangle instead of the real one would
-  // show the owner a slice of her photograph she will never see, and hide the
-  // top and bottom she will — so the previews are pinned to the hero's own
-  // CSS. The phone frame is as tall as the hero is below `md`, and the desktop
-  // frame as tall as it is from `lg` up.
-  const phoneTall = HERO.match(/overflow-hidden h-\[(\d+)px\]/)
-  const desktopTall = HERO.match(/lg:h-\[(\d+)px\]/)
-  assert.ok(phoneTall && desktopTall, 'the hero still declares its two heights')
-  assert.equal(phone[3], phoneTall[1], `the phone preview matches the hero's ${phoneTall[1]}px`)
-  assert.equal(desktop[3], desktopTall[1], `the desktop preview matches the hero's ${desktopTall[1]}px`)
-  assert.equal(phone[2], '390', 'a phone is about as wide as it is tall')
-  assert.ok(Number(desktop[2]) / Number(desktop[3]) > 0.9, 'and half a laptop screen is wider than tall')
-  assert.notEqual(phone[3], desktop[3], 'the two really are different shapes')
+test('the panel previews the hero at the one shape the homepage draws', () => {
+  // Since the 21 Nov 2026 redesign the hero is one shape, 3:4, on phones and
+  // laptops (src/lib/heroShape.js). The preview has to be that same shape: a
+  // preview drawn at some convenient rectangle would show the owner a slice of
+  // her photograph she will never see, and hide the top and bottom she will.
+  const SHAPE = read('src/lib/heroShape.js')
+  const MODERN = read('src/components/home/HomeModern.jsx')
+  assert.match(SHAPE, /export const HERO_RATIO = '3 \/ 4'/)
+  assert.match(PANEL, /import \{[^}]*HERO_RATIO[^}]*\} from '\.\.\/lib\/heroShape'/)
+  assert.match(PANEL, /<FrameBox\b[\s\S]{0,300}?ratio=\{HERO_RATIO\}/, 'the preview is drawn at the hero shape')
+  assert.equal((PANEL.match(/<FrameBox\b/g) || []).length, 1, 'one shape, so one preview')
+  assert.match(MODERN, /style=\{\{ aspectRatio: HERO_RATIO \}\}/, 'and the homepage hero is drawn at the same shape')
+  // The photo-size guideline and the per-photo warning sit beside it.
+  assert.match(PANEL, /Photo size for banners/)
+  assert.match(PANEL, /onMeasure=\{setSize\}/)
+  assert.match(PANEL, /heroPhotoNote\(size\.w, size\.h\)/)
 
   // Dragging, and a way back, for someone who is not a designer. The pointer
   // handling is the shared control's job; the buttons around it are the panel's.
@@ -342,4 +336,16 @@ test('every file that frames a banner imports what it uses', () => {
     const missing = missingImports(source, named)
     assert.deepEqual(missing, [], `${file} uses but does not import: ${missing.join(', ')}`)
   }
+})
+
+test('a new framing replaces a saved banner\'s stored one (21 Nov 2026 fix)', () => {
+  // A banner read from the database carries focus_x / focus_y, and those win
+  // when the framing is read back. The panel used to merge the plain
+  // { x, y, zoom } a drag or arrow key produces, so a saved banner could not
+  // be re-framed at all. It now writes the columns themselves.
+  const saved = { id: 'b1', image: 'https://example.com/a.jpg', focus_x: 50, focus_y: 50, zoom: 1 }
+  const next = focusAfterNudge(saved, 0, 10)
+  assert.equal(bannerPosition({ ...saved, ...next }).y, 50, 'the old merge kept the stored value')
+  assert.equal(bannerPosition({ ...saved, ...positionColumns(next) }).y, 40, 'the new merge moves it')
+  assert.match(PANEL, /\{ \.\.\.r, \.\.\.positionColumns\(next\) \}/, 'and the panel uses the new merge')
 })

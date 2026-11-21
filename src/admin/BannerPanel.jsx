@@ -34,6 +34,7 @@ import {
 import { countByStatus, filterByStatus } from '../lib/statusFilter.js'
 import StatusFilter from './StatusFilter.jsx'
 import FrameBox from './FrameBox.jsx'
+import { HERO_MIN_SIZE, HERO_RATIO, heroPhotoNote } from '../lib/heroShape'
 
 const bucket = 'product-images'
 const inputCls =
@@ -55,6 +56,10 @@ function BannerRow({ row, index, total, busy, uploading, canReorder, destination
   // arrows would move a banner past one the owner cannot see. They are
   // switched off rather than made to act on the wrong row.
   const reorderable = canReorder !== false
+  // The photo's own size, learned when the preview loads: a photo of the
+  // wrong shape, or too small, gets a plain-words note under the preview.
+  const [size, setSize] = useState(null)
+  const shapeNote = size ? heroPhotoNote(size.w, size.h) : null
   return (
     <li className={`bg-white border border-black/10 rounded-xl p-4 flex flex-wrap gap-4 items-start ${active ? '' : 'opacity-70'}`}>
       <div className="w-[120px] h-[80px] shrink-0 rounded-lg border border-black/15 bg-neutral-100 overflow-hidden grid place-items-center">
@@ -128,33 +133,32 @@ function BannerRow({ row, index, total, busy, uploading, canReorder, destination
 
         {/* Which part of the photograph the homepage keeps.
             The hero fills its frame and cuts off whatever falls outside, so a
-            tall photograph loses its head and its hem and a wide one loses its
-            ends. Drag either preview to choose what stays; the two shapes are
-            the homepage's own — half the screen from `md` up, a full-width
-            phone below it — and they always agree because there is only one
-            framing to set.
+            photograph taller than the frame loses its head and its hem and a
+            wider one loses its sides. Since the 21 Nov 2026 redesign the hero
+            is ONE shape, 3:4, on phones and laptops alike
+            (src/lib/heroShape.js), so one preview shows exactly what every
+            shopper sees; drag it to choose what stays.
             Nothing is ever cropped in storage — the file stays exactly as
             uploaded, and this only decides what the frame shows of it. */}
         <div className="pt-1">
           <div className="flex flex-wrap gap-3 items-start">
-            <FrameBox
-              src={row.image}
-              label="Desktop"
-              framing={framing}
-              boxWidth={200}
-              ratio="720 / 684"
-              onDrag={onFraming}
-              onKey={onFraming}
-            />
-            <FrameBox
-              src={row.image}
-              label="Phone"
-              framing={framing}
-              boxWidth={132}
-              ratio="390 / 380"
-              onDrag={onFraming}
-              onKey={onFraming}
-            />
+            <div className="space-y-1.5">
+              <FrameBox
+                src={row.image}
+                label="Homepage · phones and laptops"
+                framing={framing}
+                boxWidth={150}
+                ratio={HERO_RATIO}
+                onDrag={onFraming}
+                onKey={onFraming}
+                onMeasure={setSize}
+              />
+              {size && (
+                <p className={`text-[12px] max-w-[260px] ${shapeNote ? 'text-amber-800' : 'text-green-800'}`}>
+                  {shapeNote || `Fits: ${size.w} × ${size.h} px, 3:4.`}
+                </p>
+              )}
+            </div>
             <div className="flex-1 min-w-[150px] space-y-2">
               <label className="block text-[12px] font-semibold uppercase tracking-wider text-black/45" htmlFor={`zoom-${index}`}>
                 Zoom
@@ -459,9 +463,20 @@ export default function BannerPanel({ notify }) {
         <div>
           <h1 className="text-[34px] md:text-[40px] font-bold tracking-tight leading-none">Homepage banner</h1>
           <p className="text-black/55 mt-2 text-[15px]">
-            The photos in the slider on the right of the homepage hero, in order. With no banner saved, the
-            homepage shows its default category photos.
+            The photos in the homepage's hero card, in order. They move on by themselves every 5 seconds, and
+            shoppers can swipe. With no banner saved, the homepage shows its default category photos.
           </p>
+          {/* The photo-size guideline, next to the upload (21 Nov 2026). */}
+          <div className="mt-4 max-w-[720px] rounded-xl border border-black/10 bg-white px-4 py-3 text-[14px] text-black/70">
+            <p className="font-semibold text-black">Photo size for banners</p>
+            <ul className="mt-1.5 list-disc pl-5 space-y-1">
+              <li>Upright (portrait) photo, <b>3:4</b>, at least <b>{HERO_MIN_SIZE.width} × {HERO_MIN_SIZE.height} px</b>. A photo taken upright on a phone is already 3:4.</li>
+              <li>The same 3:4 shape is shown on phones and laptops, so what the preview below shows is what shoppers see.</li>
+              <li>Keep faces and the outfit in the upper three quarters. The bottom quarter carries one short headline and a small button; the rating sits under the photo. The top edge has only thin progress bars and a small pause button.</li>
+              <li>No words in the photo: the homepage writes the headline itself, based on where the banner links.</li>
+              <li>Instagram 4:5 posts lose a little at the sides; Stories (9:16) lose about a quarter of their height.</li>
+            </ul>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <input
@@ -575,7 +590,13 @@ export default function BannerPanel({ notify }) {
                   destinations={destinations}
                   onUrl={(url) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, image: url } : r)))}
                   onLink={(link) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, link } : r)))}
-                  onFraming={(next) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...next } : r)))}
+                  // Written as the row's own columns (focus_x / focus_y / zoom).
+                  // Merging the plain { x, y, zoom } left a saved banner's stored
+                  // focus_x / focus_y in place, and those win when the framing is
+                  // read back (bannerPosition), so a saved banner could not be
+                  // re-framed at all — drags and arrow keys did nothing (found
+                  // 21 Nov 2026).
+                  onFraming={(next) => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, ...positionColumns(next) } : r)))}
                   onToggle={() => setRows((rows) => rows.map((r, j) => (j === i ? { ...r, is_active: r.is_active === false } : r)))}
                   onMove={(dir) => move(i, dir)}
                   onRemove={() => removeAt(i)}

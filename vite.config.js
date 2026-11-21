@@ -54,6 +54,33 @@ const preloadCheckoutOnCheckout = () => {
   }
 }
 
+// The homepage's code is its own file too (src/lib/homePage.js, homepage
+// redesign 21 Nov 2026), so product pages download less. On `/` itself the
+// same few bytes ask for it straight away — with the small files it shares
+// with the dashboard, which the bundler splits out — so the homepage does not
+// wait for the main script before fetching its own code. Plain `preload`, for
+// the reason above.
+const preloadHomeOnHome = () => {
+  let base = '/'
+  return {
+    name: 'preload-home-on-home',
+    apply: 'build',
+    configResolved(config) { base = config.base },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const bundle = ctx.bundle || {}
+        const chunk = Object.values(bundle).find((c) => c.type === 'chunk' && c.isDynamicEntry && c.name === 'Home')
+        if (!chunk) throw new Error('preload-home-on-home: no Home chunk in the build')
+        const own = (chunk.imports || []).filter((f) => bundle[f]?.type === 'chunk' && !bundle[f].isEntry && bundle[f].name !== 'vendor')
+        const hrefs = JSON.stringify([chunk.fileName, ...own].map((f) => base + f))
+        const script = `<script>if(location.pathname.replace(/\\/+$/,'')===''){${hrefs}.forEach(function(h){var l=document.createElement('link');l.rel='preload';l.as='script';l.crossOrigin='';l.href=h;document.head.appendChild(l)})}</script>`
+        return html.replace('</head>', `  ${script}\n  </head>`)
+      },
+    },
+  }
+}
+
 // The page starts its own slowest work in its first milliseconds, before the
 // app's code has arrived (src/boot/earlyStart.js explains what and why):
 // - an inline script, placed right after the GTM snippet and before any
@@ -104,7 +131,7 @@ const earlyStartScript = () => {
 }
 
 export default defineConfig({
-  plugins: [react(), spa404(), preloadCheckoutOnCheckout(), earlyStartScript()],
+  plugins: [react(), spa404(), preloadCheckoutOnCheckout(), preloadHomeOnHome(), earlyStartScript()],
   build: {
     // The build always starts from an empty output directory. A file left
     // behind by an earlier build must never be published again — a stale
