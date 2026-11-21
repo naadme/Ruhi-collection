@@ -33,7 +33,8 @@ const extract = (src, startMarker, endMarker, label) => {
 
 const CART = read('src/context/CartContext.jsx')
 const WISHLIST = read('src/context/WishlistContext.jsx')
-const SECTIONS = read('src/components/Sections.jsx')
+const HERO = read('src/components/home/HeroCarousel.jsx')
+const MODERN = read('src/components/home/HomeModern.jsx')
 
 /** Evaluate an extracted declaration with `localStorage` supplied as a stub. */
 const compile = (decl, storage) => {
@@ -117,29 +118,31 @@ test('the wishlist reads only real id strings', () => {
 
 test('the hero guards an empty slide list instead of dereferencing undefined', () => {
   // `at % 0` is NaN, so `slides[NaN]` is undefined and `cur.key` threw. The
-  // wrap now lives in src/lib/heroSlider.js's `slideAt`, which returns `null`
-  // for an empty list — tests/heroSlider.test.js drives that rule directly.
-  assert.match(SECTIONS, /const n = slides\.length/, 'n is still the slide count')
-  assert.match(SECTIONS, /const at = slideAt\(atRaw, n\)/, 'the index is wrapped by the shared guard')
-  assert.match(SECTIONS, /const cur = at === null \? null : slides\[at\]/,
+  // hero (src/components/home/HeroCarousel.jsx) now asks for the photo on
+  // screen only when there is one, and never wraps an index by zero.
+  assert.match(HERO, /const n = slides\.length/, 'n is still the slide count')
+  assert.match(HERO, /const current = n \? slides\[Math\.min\(at, n - 1\)\] : null/,
+    'nothing is read when there is nothing to read')
+  assert.match(HERO, /if \(!el \|\| !n\) return\s+const to = \(\(i % n\) \+ n\) % n/,
     'nothing is wrapped when there is nothing to wrap')
-  // The markup must not touch `cur` unconditionally. The guard also waits for
-  // the owner's banner to be known, so the full-size fallback photograph is
-  // not downloaded and then thrown away.
-  assert.match(SECTIONS, /\{cur && bannersKnown && \(/, 'the hero image is rendered only when a slide exists')
-  assert.ok(!/key=\{cur\.key\}/.test(SECTIONS.split('{cur && bannersKnown && (')[0].split('const cur')[1] ?? ''),
-    'no unconditional read of cur.key above the guard')
-  // Static half must NOT be behind the guard — the copy has to stay on screen.
-  const heroCopy = SECTIONS.split('{cur && bannersKnown && (')[0]
-  assert.ok(heroCopy.includes("Ruhi Women's"), 'the static hero copy is unaffected by the guard')
-  assert.ok(heroCopy.includes('SHOP NOW'), 'the SHOP OUT button is unaffected by the guard')
+  // The photos are drawn from the list itself, so an empty list draws none.
+  // The guard also waits for the owner's banner to be known, so the full-size
+  // fallback photograph is not downloaded and then thrown away.
+  assert.match(HERO, /\{bannersKnown && slides\.map\(\(slide, i\) => \(/, 'a photo is rendered only for a slide that exists')
+  // The words over the photo must NOT depend on a slide — they have to stay
+  // on screen. With no photo they are the shop-wide words.
+  assert.match(HERO, /children\(\{ slide: bannersKnown \? current : null, index: at, count: n \}\)/,
+    'the words are handed no slide rather than an undefined one')
+  assert.match(MODERN, /const to = String\(slide\?\.to \|\| ''\)/, 'and read it defensively')
+  assert.match(MODERN, /if \(!key \|\| !categories\.some\(\(c\) => c\.key === key\)\) return SHOP_COPY/,
+    'falling back to the shop-wide headline and button')
 })
 
 // ---- 3. the zero-slide guard cannot regress the slider ---------------------
 
 test('the guard only changes the empty case: arrows and links are intact', () => {
-  assert.match(SECTIONS, /\{n > 1 && \(/, 'arrows still appear only with more than one slide')
-  assert.match(SECTIONS, /onClick=\{\(\) => go\(-1\)\}/, 'previous arrow preserved')
-  assert.match(SECTIONS, /onClick=\{\(\) => go\(1\)\}/, 'next arrow preserved')
-  assert.match(SECTIONS, /to=\{cur\.to\}/, 'the slide still links to its category/banner')
+  assert.match(HERO, /\{arrows && n > 1 && \(/, 'arrows still appear only with more than one slide')
+  assert.match(HERO, /onClick=\{\(\) => go\(at - 1\)\}/, 'previous arrow preserved')
+  assert.match(HERO, /onClick=\{\(\) => go\(at \+ 1\)\}/, 'next arrow preserved')
+  assert.match(HERO, /to=\{slide\.to\}/, 'the slide still links to its category/banner')
 })

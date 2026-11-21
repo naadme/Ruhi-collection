@@ -139,11 +139,14 @@ test('a category is never listed twice', () => {
 // ---------------------------------------------------------------------------
 
 test('the homepage card is one link covering the picture and the name', () => {
-  const sections = read('src/components/Sections.jsx')
-  const row = sections.slice(sections.indexOf('Shop by Category'))
+  const home = read('src/components/home/HomeModern.jsx')
+  const row = home.slice(home.indexOf('function Bento()'), home.indexOf('function PriceBlock()'))
+  assert.ok(row.length > 0, 'the "Shop by category" row is where it was')
   assert.match(row, /<Link[\s\S]*?to=\{c\.to\}[\s\S]*?<Img src=\{c\.image\}[\s\S]*?\{c\.label\}[\s\S]*?<\/Link>/,
     'the picture and the name are inside the same link')
-  assert.match(row, /stockedCategoryTiles/, 'and the tiles come from the shared module')
+  assert.match(row, /useCategoryTiles\(\)/, 'the tiles come from the homepage\'s one read of them')
+  assert.match(read('src/components/home/homeData.js'), /\[\.\.\.stockedCategoryTiles\(categories, listable\), \.\.\.extraCategoryTiles\(categories, listable\)\]/,
+    'and that read is the shared module')
 })
 
 test('the Collections page reads the same tiles', () => {

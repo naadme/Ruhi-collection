@@ -80,13 +80,13 @@ test('a banner keeps its saved link, or falls back to the shop', () => {
 })
 
 test('the hero renders exactly this rule, and nothing invented beside it', () => {
-  const sections = read('src/components/Sections.jsx')
-  assert.match(sections, /heroSlides\(banners/, 'the slide list comes from src/lib/heroSlider.js')
-  assert.match(sections, /slideAt\(atRaw, n\)/, 'the index is wrapped by the same module')
-  assert.match(sections, /\{n > 1 && \(/, 'arrows appear whenever there is more than one slide')
-  assert.match(sections, /onClick=\{\(\) => go\(-1\)\}/, 'previous arrow')
-  assert.match(sections, /onClick=\{\(\) => go\(1\)\}/, 'next arrow')
-  assert.match(sections, /setAt\(0\)\s*\}\s*,\s*\[banners\.length\]/, 'a new banner starts the carousel at its first photo')
-  assert.doesNotMatch(sections, /banners\.length\n?\s*\?\s*banners\.map/,
+  const hero = read('src/components/home/HeroCarousel.jsx')
+  assert.match(hero, /heroSlides\(banners/, 'the slide list comes from src/lib/heroSlider.js')
+  assert.match(hero, /const to = \(\(i % n\) \+ n\) % n/, 'a step past either end wraps round to the other')
+  assert.match(hero, /\{arrows && n > 1 && \(/, 'arrows appear whenever there is more than one slide')
+  assert.match(hero, /onClick=\{\(\) => go\(at - 1\)\}/, 'previous arrow')
+  assert.match(hero, /onClick=\{\(\) => go\(at \+ 1\)\}/, 'next arrow')
+  assert.match(hero, /setAt\(0\)[\s\S]{0,80}?\}, \[bannerKeys\.size\]\)/, 'a new banner starts the carousel at its first photo')
+  assert.doesNotMatch(hero, /banners\.length\n?\s*\?\s*banners\.map/,
     'banners no longer REPLACE the fallback list — that replacement was the bug')
 })

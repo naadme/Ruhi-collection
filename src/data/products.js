@@ -119,7 +119,8 @@ export const getProduct = (id) => products.find((x) => x.id === id)
 // One tile per catalogue type — the homepage "Shop by Category" row reads
 // these, so it can never disagree with the shop's Type filter. The image map
 // is keyed by type and the homepage only shows categories the store actually
-// stocks (see Sections.jsx), so a new category is never advertised empty.
+// stocks (see src/lib/categoryTiles.js), so a new category is never
+// advertised empty.
 const CAT_IMG = {
   tops: 'catTops',
   coord: 'catCoord',
@@ -136,7 +137,7 @@ export const categories = TYPES.map((t) => ({
 /** The photographs the four launch categories were given. A category the
  *  client creates later has no photo of its own, so the storefront tiles it
  *  with the first product photo in that category instead (see
- *  src/components/Sections.jsx) — never a broken image. */
+ *  src/lib/categoryTiles.js) — never a broken image. */
 export const categoryFallbackImage = (key) => img[CAT_IMG[key]] || null
 
 // Testimonials are existing site copy; the linked product and photo always

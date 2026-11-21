@@ -1,8 +1,9 @@
 // The homepage hero's photos, as a row the shopper swipes through.
 //
-// Same photos, order, links and framing as the old hero (src/components/
-// Sections.jsx `Hero`): the owner's saved banners first, in saved order, with
-// the stocked-category photos after them (src/lib/heroSlider.js), each banner
+// Same photos, order, links and framing as the old hero (the removed
+// src/components/Sections.jsx `Hero`): the owner's saved banners first, in
+// saved order, with the stocked-category photos after them
+// (src/lib/heroSlider.js), each banner
 // cropped exactly as she framed it in the admin panel. What changed is how a
 // shopper moves between them: on a phone they swipe, the way every shopping
 // app and Instagram itself works, with dots that show where they are and can
@@ -32,7 +33,7 @@ import { stockedCategoryTiles } from '../../lib/categoryTiles'
 import { newEventId, trackSafely } from '../../lib/tracking'
 import { heroPromotion, productIdFromPath, promotionEvent, viewedItem } from '../../lib/trackingItems'
 
-/** The hero's slides and whether the banner list is known yet (see the old Hero for why it waits). */
+/** The hero's slides and whether the banner list is known yet: no fallback photo is drawn before then, so it is never downloaded only to be replaced by a banner. */
 function useHeroSlides() {
   const [banners, setBanners] = useState([])
   const [bannersKnown, setBannersKnown] = useState(false)

@@ -117,8 +117,8 @@ test('the smaller copies really exist', () => {
 test('the cards and the tiles ask for the size they are shown at', () => {
   const card = read('src/components/ProductCard.jsx')
   assert.match(card, /sizes="\(max-width: 640px\) 50vw[^"]*300px"/, 'the product card')
-  const sections = read('src/components/Sections.jsx')
-  assert.match(sections, /sizes="\(max-width: 768px\) 45vw, 272px"/, 'the homepage category tile')
+  const home = read('src/components/home/HomeModern.jsx')
+  assert.match(home, /sizes=\{i === 0 \? '\(max-width: 768px\) 50vw, 46vw' : '\(max-width: 768px\) 50vw, 23vw'\}/, 'the homepage category tiles')
   const img = read('src/components/Img.jsx')
   assert.match(img, /srcSet=\{srcSet\}/, 'and the image component passes it on')
   assert.match(img, /sizes=\{srcSet \? sizes : undefined\}/)

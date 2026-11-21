@@ -30,7 +30,7 @@ import { missingImports } from './helpers/imports.mjs'
 const read = (rel) => readFileSync(path.join(process.cwd(), rel), 'utf8')
 
 const SQL = read('supabase/migrations/20261024120000_banner_positioning.sql')
-const HERO = read('src/components/Sections.jsx')
+const HERO = read('src/components/home/HeroCarousel.jsx')
 const PANEL = read('src/admin/BannerPanel.jsx')
 // The drag control itself now lives in its own module so that every image
 // editor in the portal shares one control — the assertions that are about
@@ -239,12 +239,11 @@ test('the default framing is the rendering every banner already has', () => {
 // ---- the storefront and the panel agree -------------------------------------
 
 test('the hero draws a banner through the one framing rule', () => {
-  assert.match(HERO, /bannerPositionStyle\(cur\.position\)/, 'the hero applies the shared style')
-  assert.match(HERO, /<Img[^>]*style=\{bannerPositionStyle/, 'to the photograph itself, not to a wrapper')
+  assert.match(HERO, /bannerPositionStyle\(slide\.position\)/, 'the hero applies the shared style')
+  assert.match(HERO, /<Img\b(?:(?!\/>)[\s\S])*?style=\{bannerPositionStyle/, 'to the photograph itself, not to a wrapper')
   // And nothing else about the hero moved.
-  assert.match(HERO, /animate-\[fade_\.35s_ease\]/, 'the fade is untouched')
-  assert.match(HERO, /aria-label="Show previous photo"/, 'the arrows are untouched')
-  assert.match(HERO, /aria-label="Show next photo"/)
+  assert.match(HERO, /aria-label="Previous photo"/, 'the arrows are untouched')
+  assert.match(HERO, /aria-label="Next photo"/)
 })
 
 test('the hero’s slide rule carries each banner’s own framing through', () => {
@@ -332,7 +331,7 @@ test('every file that frames a banner imports what it uses', () => {
     'positionColumns', 'samePosition', 'coverSize', 'BANNER_POSITION',
     'ZOOM_MIN', 'ZOOM_MAX', 'bannerPositionStyle',
   ]
-  for (const [file, source] of [['BannerPanel.jsx', PANEL], ['FrameBox.jsx', BOX], ['Sections.jsx', HERO], ['heroSlider.js', SLIDER]]) {
+  for (const [file, source] of [['BannerPanel.jsx', PANEL], ['FrameBox.jsx', BOX], ['HeroCarousel.jsx', HERO], ['heroSlider.js', SLIDER]]) {
     const missing = missingImports(source, named)
     assert.deepEqual(missing, [], `${file} uses but does not import: ${missing.join(', ')}`)
   }

@@ -28,7 +28,7 @@ import { stockedCategoryTiles } from '../src/lib/categoryTiles.js'
 import { missingImports } from './helpers/imports.mjs'
 
 const read = (rel) => readFileSync(path.join(process.cwd(), rel), 'utf8')
-const HERO = read('src/components/Sections.jsx')
+const HERO = read('src/components/home/HeroCarousel.jsx')
 const RULES = read('src/lib/heroLinks.js')
 
 // A row in the shape ProductsContext.toProduct produces.
@@ -215,7 +215,7 @@ test('the guess is gone from the rule itself', () => {
   assert.doesNotMatch(RULES, /find\(\(p\) => p\?\.type/, 'no "first product in the category"')
   assert.doesNotMatch(RULES, /\[0\]/, 'nothing takes the first of anything')
   // And the component that used to hold a copy of the rule no longer does.
-  assert.doesNotMatch(HERO, /products\.find\(/, 'Sections.jsx resolves nothing on its own')
+  assert.doesNotMatch(HERO, /products\.find\(/, 'HeroCarousel.jsx resolves nothing on its own')
   assert.doesNotMatch(HERO, /p\?\.type === c\.key/, 'and keeps no category guess of its own')
 })
 
@@ -262,7 +262,7 @@ test('every slide of the real homepage resolves to a page that exists', () => {
 })
 
 test('the hero resolves its slides through the shared rule and nothing else', () => {
-  assert.match(HERO, /heroFallbackSlides\(/, 'Sections.jsx asks src/lib/heroLinks.js')
+  assert.match(HERO, /heroFallbackSlides\(/, 'HeroCarousel.jsx asks src/lib/heroLinks.js')
   assert.match(HERO, /heroSlides\(/, 'and src/lib/heroSlider.js for the order')
   assert.doesNotMatch(HERO, /productHref\(product\)/, 'it names no product of its own')
 })
@@ -276,7 +276,7 @@ test('the hero imports every name it uses', () => {
     'heroFallbackSlides', 'heroSlides', 'bannerPositionStyle',
     'stockedCategoryTiles', 'fetchHomeBanners',
   ])
-  assert.deepEqual(missing, [], `Sections.jsx uses but does not import: ${missing.join(', ')}`)
+  assert.deepEqual(missing, [], `HeroCarousel.jsx uses but does not import: ${missing.join(', ')}`)
 })
 
 test('the import check itself catches a missing import, and nothing else', () => {
@@ -284,7 +284,7 @@ test('the import check itself catches a missing import, and nothing else', () =>
   // mistake that shipped, and stay quiet on the two things that look like uses
   // but are not — a comment naming the module, and an import path.
   const good = HERO
-  const broken = HERO.replace("import { heroFallbackSlides } from '../lib/heroLinks'\n", '')
+  const broken = HERO.replace("import { heroFallbackSlides } from '../../lib/heroLinks'\n", '')
   assert.deepEqual(missingImports(broken, ['heroFallbackSlides']), ['heroFallbackSlides'],
     'the original bug is caught')
   assert.deepEqual(missingImports(good, ['heroFallbackSlides']), [],
