@@ -224,16 +224,24 @@ test('two different homepage products never share a link', () => {
 // ---- the components use that one rule --------------------------------------
 
 test('every product link on the site is built by the shared rule', () => {
-  for (const file of ['src/components/ProductCard.jsx', 'src/components/Sections.jsx', 'src/components/SearchBar.jsx']) {
+  for (const file of ['src/components/ProductCard.jsx', 'src/components/home/parts.jsx', 'src/components/SearchBar.jsx']) {
     const src = read(file)
     assert.match(src, /productHref/, `${file} links through src/lib/productLinks.js`)
     assert.doesNotMatch(src, /`\/product\/\$\{/, `${file} builds no link of its own`)
   }
+  // The rest of the homepage links only to what the shared rules hand it.
+  for (const file of ['src/components/home/HomeModern.jsx', 'src/components/home/HeroCarousel.jsx', 'src/components/home/homeData.js']) {
+    assert.doesNotMatch(read(file), /`\/product\/\$\{/, `${file} builds no link of its own`)
+  }
 })
 
-test('the homepage’s product grids all use the same card', () => {
-  const sections = read('src/components/Sections.jsx')
-  // The Best Sellers row and the review cards both render catalogue cards.
-  assert.match(sections, /<ProductGrid/, 'the Best Sellers row renders the shared card grid')
-  assert.match(sections, /productHref\(shown\)/, 'a review card links to the product it shows')
+test('the homepage’s product rows all use the same card', () => {
+  const home = read('src/components/home/HomeModern.jsx')
+  const parts = read('src/components/home/parts.jsx')
+  // The Bestsellers and Just landed rows render catalogue cards, and a review
+  // card links to the product it was written for.
+  assert.match(home, /<ProductGridList list=\{LISTS\.homeBestSellers\}/, 'the Bestsellers row renders the shared card grid')
+  assert.match(home, /<ProductRail list=\{LISTS\.homeNewIn\}/, 'and so does Just landed')
+  assert.equal((parts.match(/<ProductCard product=\{p\} \/>/g) || []).length, 2, 'both draw the shop’s own ProductCard')
+  assert.match(parts, /const href = productHref\(quote\.product\)/, 'a review card links to the product it shows')
 })

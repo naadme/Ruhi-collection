@@ -170,12 +170,15 @@ test('the product card renders a link only when it has a product to open', () =>
 
 test('the category page and the homepage use the same card', () => {
   const shop = read('src/pages/Shop.jsx')
-  const sections = read('src/components/Sections.jsx')
   const grid = read('src/components/ProductGrid.jsx')
+  const home = read('src/components/home/parts.jsx')
   assert.match(shop, /<ProductGrid/, 'the category page renders the shared grid')
-  assert.match(sections, /<ProductGrid/, 'the homepage renders the same grid')
   assert.match(grid, /<ProductCard/, 'and the grid renders the shared card')
   assert.match(grid, /key=\{p\.id\}/, 'each card is keyed by its own product id')
+  // The homepage's product rows (src/components/home/parts.jsx) draw that
+  // same card, each keyed by its own product id.
+  assert.match(home, /<div key=\{p\.id\} className="home-card"><ProductCard product=\{p\} \/><\/div>/, 'the homepage grid')
+  assert.match(home, /<div key=\{p\.id\} className=\{`shrink-0 snap-start home-card \$\{cardClass\}`\}>\s*<ProductCard product=\{p\} \/>/, 'and the homepage rail')
 })
 
 // ---- the other grids --------------------------------------------------------

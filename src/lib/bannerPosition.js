@@ -6,7 +6,7 @@
 // to that is `object-position` — which part of the photograph the crop keeps —
 // and this module is the ONE place that decides its value, so the preview the
 // owner drags in the admin panel (src/admin/BannerPanel.jsx) and the photograph
-// shoppers see (src/components/Sections.jsx) can never disagree.
+// shoppers see (src/components/home/HeroCarousel.jsx) can never disagree.
 //
 // Nothing here ever writes to the photograph. A banner stores three numbers —
 // how far right the crop starts, how far down, and how much it is enlarged —

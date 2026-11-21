@@ -2,8 +2,8 @@
 // "Banners" section of the dashboard.
 //
 // The saved rows drive the homepage hero's photo slider
-// (src/components/Sections.jsx). Images are uploaded with the SAME storage
-// bucket and upload flow the product editor uses (`product-images`), and the
+// (src/components/home/HeroCarousel.jsx). Images are uploaded with the SAME
+// storage bucket and upload flow the product editor uses (`product-images`), and the
 // rows themselves live in the `banners` table, writable only by admins
 // through RLS. Nothing here changes the hero's layout, styling or animation
 // — only which photos it slides between.

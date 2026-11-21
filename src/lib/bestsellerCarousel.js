@@ -5,10 +5,11 @@
 // reachable — but four or fewer designs simply belong on the screen, with no
 // arrows pointing at a second page that does not exist.
 //
-// The rule lives apart from src/components/Sections.jsx so it can be tested in
-// plain Node, following the same split as `bestsellerRules.js` /
-// `categoryTiles.js`: the homepage renders whatever these functions say, so
-// the row cannot drift away from what the tests prove.
+// Not used by any page since the 21 Nov 2026 homepage redesign: the
+// Bestsellers row (src/components/home/HomeModern.jsx) now shows the first
+// four designs, with no paging. Kept, with its tests
+// (tests/bestsellerCarousel.test.js), in case paging comes back; nothing
+// imports it, so none of it is bundled.
 //
 // Nothing here invents, reorders or copies a design — every function returns
 // entries of the list it was given, in the order they already had.

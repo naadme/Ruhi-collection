@@ -101,10 +101,9 @@ test('the panel can switch a banner on and off, and shows the live ones', () => 
 })
 
 test('the banner row survives the change — the carousel is untouched', () => {
-  const sections = read('src/components/Sections.jsx')
-  assert.match(sections, /heroSlides\(banners/, 'the hero still reads the shared slide rule')
-  assert.match(sections, /animate-\[fade_\.35s_ease\]/, 'and the fade is unchanged')
-  assert.match(sections, /object-cover/, 'and so is the way the photo fills its half')
+  const hero = read('src/components/home/HeroCarousel.jsx')
+  assert.match(hero, /heroSlides\(banners/, 'the hero still reads the shared slide rule')
+  assert.match(hero, /object-cover/, 'and the photo still fills its frame')
 })
 
 test('the banners table can switch a banner on and off', () => {

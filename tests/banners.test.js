@@ -11,7 +11,7 @@ const read = (p) => fs.readFileSync(path.join(process.cwd(), p), 'utf8');
 
 const SQL = read('supabase/migrations/20261019120000_home_hero_banners.sql');
 const BANNERS = read('src/lib/banners.js');
-const HERO = read('src/components/Sections.jsx');
+const HERO = read('src/components/home/HeroCarousel.jsx');
 const PANEL = read('src/admin/BannerPanel.jsx');
 const DASHBOARD = read('src/admin/Dashboard.jsx');
 
@@ -85,7 +85,7 @@ test('the hero does not show a fallback photograph before the banner is known', 
   // every visitor downloads it in full and then throws it away the moment the
   // owner's banner arrives — the hero waits for the answer instead.
   assert.match(HERO, /bannersKnown/);
-  assert.match(HERO, /\{cur && bannersKnown && \(/);
+  assert.match(HERO, /\{bannersKnown && slides\.map\(/);
   // ...but it can never be left empty: a read that does not come back falls
   // back to the photograph after two seconds.
   assert.match(HERO, /setTimeout\(settle, 2000\)/);

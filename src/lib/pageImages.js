@@ -44,7 +44,7 @@ import { bannerPosition, bannerPositionStyle } from './bannerPosition.js'
  *
  *   About hero   h-[70vh] min-h-[440px], full width  (src/pages/About.jsx)
  *   Contact      h-[160px] md:h-[220px], full width  (src/pages/Contact.jsx)
- *   Our story    aspect-square                        (src/components/Sections.jsx)
+ *   Our story    aspect-square                        (the old homepage; no page shows it since 21 Nov 2026)
  *   About A/B    aspect-[4/3] and aspect-[4/5]        (src/pages/About.jsx)
  *
  * A full-width frame is a different shape on a laptop than on a phone — the
