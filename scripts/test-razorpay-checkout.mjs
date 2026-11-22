@@ -484,6 +484,28 @@ const attempt = (orderId, status, extra = {}) => ({
   const data = await res.json()
   check('recover, still pending → processing', res.status === 200 && data.status === 'processing', JSON.stringify(data))
   check('recover, still pending → nothing written', orderPatches().length === 0)
+  // Nobody approved it yet, so the page may offer Pay again (22 Nov 2026).
+  check('recover, still pending → stage created', data.stage === 'created', JSON.stringify(data))
+}
+
+// 17b. An approved attempt beside an unapproved one: the page must wait.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'created'), attempt(id, 'authorized')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, created + authorized → processing, stage authorized',
+    data.status === 'processing' && data.stage === 'authorized' && orderPatches().length === 0, JSON.stringify(data))
+}
+
+// 17c. An hour-old approved attempt is not in flight; a fresh unapproved one is.
+{
+  const id = placed('live')
+  state.orderPayments = [attempt(id, 'authorized', { created_at: nowSeconds() - 60 * 60 }), attempt(id, 'created')]
+  const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
+  const data = await res.json()
+  check('recover, old authorized + fresh created → stage created',
+    data.status === 'processing' && data.stage === 'created', JSON.stringify(data))
 }
 
 // 18. Only failed attempts, or none: unpaid, nothing written.
@@ -571,6 +593,7 @@ const attempt = (orderId, status, extra = {}) => ({
   const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
   const data = await res.json()
   check('recover, authorized → processing', data.status === 'processing' && orderPatches().length === 0)
+  check('recover, authorized → stage authorized', data.stage === 'authorized', JSON.stringify(data))
 }
 
 // 27. An old abandoned attempt on the reused Razorpay order is not "in flight".
@@ -580,6 +603,7 @@ const attempt = (orderId, status, extra = {}) => ({
   const res = await post(verifyPayment, 'verify-razorpay-payment', recoverBody(id))
   const data = await res.json()
   check('recover, hour-old created attempt → unpaid', data.status === 'unpaid', JSON.stringify(data))
+  check('recover, unpaid → no stage', data.stage === undefined, JSON.stringify(data))
 }
 
 // 28. The gateway order itself must be for the order's total.

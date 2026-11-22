@@ -23,6 +23,7 @@ import { checkoutWhatsAppLink } from '../lib/whatsapp'
 import { PaymentCancelled, PaymentFailed, onlinePaymentReady, openRazorpay, preloadRazorpay } from '../lib/razorpay'
 import { checkPendingPayment, createRazorpayOrder, verifyRazorpayPayment } from '../lib/payments'
 import { clearPendingPayment, loadPendingPayment, savePendingPayment } from '../lib/pendingPayment'
+import { isOpenRequest, paysSameOrder } from '../lib/payAgain'
 import { newEventId, trackEcommerce, trackSafely } from '../lib/tracking'
 import { cartEvent, checkoutErrorEvent, contactEvent, couponEvent, paymentEvent, sameStep, shippingEvent } from '../lib/trackingItems'
 import { attributionForOrder } from '../lib/adClicks'
@@ -276,8 +277,12 @@ export default function Checkout() {
   const [failure, setFailure] = useState('')
   const [submitting, setSubmitting] = useState(false)
   // A payment started on an earlier load of this page whose outcome never
-  // reached it: { reference, state: 'checking' | 'processing' | 'error', message }.
+  // reached it: { reference, state: 'checking' | 'processing' | 'open' |
+  // 'stalled' | 'error', message }. 'open' is a request the shopper never
+  // approved, with the email and amount it was for (src/lib/payAgain.js).
   const [recovery, setRecovery] = useState(null)
+  const recoveryNow = useRef(null)
+  recoveryNow.current = recovery
   // True while Razorpay's window is open on THIS load — its own callback will
   // report the outcome, so the recovery check stays out of the way.
   const paying = useRef(false)
@@ -500,7 +505,9 @@ export default function Checkout() {
     if (!pending) { setRecovery(null); return }
     recovering.current = true
     const askedFor = attempt.current
-    setRecovery((prev) => (prev?.reference === pending.reference && prev.state === 'processing'
+    // A banner that is already up stays as it is while it is checked again: an
+    // open request must not lock Pay for the second each check takes.
+    setRecovery((prev) => (prev?.reference === pending.reference && (prev.state === 'processing' || prev.state === 'open')
       ? prev
       : { reference: pending.reference, state: 'checking' }))
     // An answer only counts for the payment it was asked about: by the time
@@ -531,7 +538,24 @@ export default function Checkout() {
       if (res?.status === 'processing') {
         const waited = Date.now() - pollSince.current
         if (waited < 15 * 60 * 1000) {
-          setRecovery({ reference: pending.reference, state: 'processing' })
+          if (isOpenRequest(res, pending)) {
+            // Nobody approved it: the shopper may change the details and pay
+            // again (src/lib/payAgain.js), and the checks carry on behind the
+            // banner in case they approve it in their UPI app after all.
+            // Right after the window closed, the banner is shown at the top,
+            // as the "you closed the window" note is; never on a later check.
+            const justClosed = !!unpaidNote.current
+            unpaidNote.current = ''
+            setRecovery((prev) => (prev?.state === 'open' && prev.reference === pending.reference ? prev : {
+              reference: pending.reference,
+              state: 'open',
+              email: pending.customer?.email || '',
+              amount: pending.amount,
+            }))
+            if (justClosed) window.scrollTo({ top: 0, behavior: 'smooth' })
+          } else {
+            setRecovery({ reference: pending.reference, state: 'processing' })
+          }
           pollTimer.current = setTimeout(() => recoverPayment({ scheduled: true }), waited < 2 * 60 * 1000 ? 5000 : 20000)
         } else {
           setRecovery({ reference: pending.reference, state: 'stalled' })
@@ -544,7 +568,12 @@ export default function Checkout() {
       showUnpaidNote()
     } catch (err) {
       if (!current()) return
-      if (err?.retryable) {
+      const wasOpen = recoveryNow.current?.state === 'open' && recoveryNow.current.reference === pending.reference
+      if (err?.retryable && wasOpen && Date.now() - pollSince.current < 15 * 60 * 1000) {
+        // A check that didn't get through changes nothing about a request
+        // nobody approved: Pay stays free and the next check is scheduled.
+        pollTimer.current = setTimeout(() => recoverPayment({ scheduled: true }), 20000)
+      } else if (err?.retryable) {
         setRecovery({ reference: pending.reference, state: 'error', message: err?.message })
       } else {
         // The server has decided and asking again will not change it: drop
@@ -576,7 +605,18 @@ export default function Checkout() {
   }, [recoverPayment])
 
   // While a payment may still be going through, a second one is not offered.
+  // An 'open' request (never approved) is not one of them: see payAgain.js.
   const awaitingPayment = ['checking', 'processing', 'error'].includes(recovery?.state)
+  // The note Pay showed when a new email or total had to wait for an open
+  // request: it goes once that request is over (expired, paid or approved).
+  const openNote = useRef('')
+  const isOpen = recovery?.state === 'open'
+  useEffect(() => {
+    if (isOpen || !openNote.current) return
+    const note = openNote.current
+    openNote.current = ''
+    setFailure((cur) => (cur === note ? '' : cur))
+  }, [isOpen])
 
   const on = (k) => (e) => {
     const { value } = e.target
@@ -721,6 +761,7 @@ export default function Checkout() {
       reference: started.reference,
       razorpay_order_id: started.razorpay_order_id,
       customer,
+      amount: started.amount,
     })
     setRecovery(null)
     stopPolling()
@@ -820,6 +861,18 @@ export default function Checkout() {
     if (lines.length > MAX_CART_LINES) {
       checkoutError('too_many_items')
       setFailure(`An order can hold up to ${MAX_CART_LINES} different items, and your basket has ${lines.length}. Please remove a few items before checking out — nothing has been charged.`)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    // A UPI request from the last attempt is still open. Paying again is fine
+    // on the same Razorpay order, which a new email or a new total would not
+    // get: the shopper could then approve both (src/lib/payAgain.js).
+    if (recovery?.state === 'open' && !paysSameOrder(recovery, {
+      email: f.email,
+      total: totalFor(subtotal, coupon ? discountFor(coupon, subtotal) : 0, shipping),
+    })) {
+      openNote.current = `Your earlier payment request for ${inr(recovery.amount / 100)} is still open in your UPI app. To pay with a different email or order total, please wait about 10 minutes until it expires, or keep them as they were to pay now.`
+      setFailure(openNote.current)
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
@@ -971,12 +1024,15 @@ export default function Checkout() {
 
         {recovery && (
           <div role="status" className="mb-4 flex items-start gap-3 border border-black/15 bg-white rounded-xl px-4 py-3.5 text-[15px]">
-            {recovery.state === 'error' || recovery.state === 'stalled'
+            {recovery.state === 'error' || recovery.state === 'stalled' || recovery.state === 'open'
               ? <AlertTriangle size={18} className="shrink-0 mt-0.5" />
               : <Loader2 size={18} className="shrink-0 mt-0.5 animate-spin" />}
             <div className="flex-1">
               <p>
                 {recovery.state === 'checking' && <>Checking your payment for order <b>{recovery.reference}</b>…</>}
+                {recovery.state === 'open' && (
+                  <>Your payment for order <b>{recovery.reference}</b> isn't complete. You can correct your address or other details below and pay again. Already approved it in your UPI app? Wait here a moment, we're checking with Razorpay.</>
+                )}
                 {recovery.state === 'processing' && (
                   <>Razorpay is still confirming your payment for order <b>{recovery.reference}</b>. If you approved it in your UPI app, please don't pay again — this page keeps checking. If you didn't finish paying, the request expires within about 10 minutes and you can pay again then.</>
                 )}
@@ -987,7 +1043,7 @@ export default function Checkout() {
                   <>{recovery.message || "We couldn't check your payment just now. Please don't pay again."} Your order reference is <b>{recovery.reference}</b>.</>
                 )}
               </p>
-              {recovery.state !== 'checking' && (
+              {recovery.state !== 'checking' && recovery.state !== 'open' && (
                 <button type="button" onClick={() => recoverPayment()} className="mt-2 font-semibold underline underline-offset-2">
                   Check again
                 </button>

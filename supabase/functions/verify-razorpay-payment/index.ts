@@ -266,9 +266,19 @@ async function recover(body: Json): Promise<Response> {
   // Razorpay order is reused across attempts, so only a recent attempt counts:
   // UPI requests expire within about 10 minutes.
   const since = Math.floor(Date.now() / 1000) - IN_FLIGHT_SECONDS
-  const inFlight = payments.some((p) =>
+  const inFlight = payments.filter((p) =>
     (p.status === 'created' || p.status === 'authorized') && Number(p.created_at) >= since)
-  return json(200, { ok: true, status: inFlight ? 'processing' : 'unpaid' })
+  if (inFlight.length === 0) return json(200, { ok: true, status: 'unpaid' })
+  // Which of the two, so the page knows whether the shopper may pay again
+  // (22 Nov 2026). `authorized`: the shopper approved it and Razorpay is
+  // taking the money; Razorpay itself refuses another attempt on this order
+  // until that one is settled, so the page waits. `created` only: a request
+  // nobody has approved (the shopper came back from the UPI app without
+  // paying, or closed the window). Paying again on this same Razorpay order is
+  // safe: Razorpay lets one payment per order succeed and refunds a duplicate
+  // on its own. Locking the page for the request's 10 minutes cost a sale.
+  const stage = inFlight.some((p) => p.status === 'authorized') ? 'authorized' : 'created'
+  return json(200, { ok: true, status: 'processing', stage })
 }
 
 serve(handle)

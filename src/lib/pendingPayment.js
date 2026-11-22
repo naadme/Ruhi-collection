@@ -22,10 +22,12 @@ const KEY = 'ruhi:pending-payment'
 // kept with it do not linger on a shared phone.
 export const PENDING_PAYMENT_TTL_MS = 2 * 60 * 60 * 1000
 
-export function savePendingPayment({ reference, razorpay_order_id, customer = null }, now = Date.now()) {
+// `amount` is what the Razorpay order charges, in paise: a retry with the same
+// email and amount pays on this same Razorpay order (src/lib/payAgain.js).
+export function savePendingPayment({ reference, razorpay_order_id, customer = null, amount = null }, now = Date.now()) {
   if (!reference || !razorpay_order_id) return
   try {
-    localStorage.setItem(KEY, JSON.stringify({ reference, razorpay_order_id, customer, at: now }))
+    localStorage.setItem(KEY, JSON.stringify({ reference, razorpay_order_id, customer, amount, at: now }))
   } catch {
     /* private browsing or a full quota — the webhook still records the payment */
   }
@@ -43,6 +45,7 @@ export function loadPendingPayment(now = Date.now()) {
         reference: String(saved.reference),
         razorpay_order_id: String(saved.razorpay_order_id),
         customer: saved.customer && typeof saved.customer === 'object' ? saved.customer : null,
+        amount: Number.isInteger(saved.amount) && saved.amount > 0 ? saved.amount : null,
       }
     }
     localStorage.removeItem(KEY)
