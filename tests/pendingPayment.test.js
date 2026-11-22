@@ -18,7 +18,20 @@ beforeEach(() => store.clear());
 
 test('a payment saved before the window opens is found again after a reload', () => {
   savePendingPayment({ reference: '03112605', razorpay_order_id: 'order_abc', customer: CUSTOMER }, 1000);
-  assert.deepEqual(loadPendingPayment(2000), { reference: '03112605', razorpay_order_id: 'order_abc', customer: CUSTOMER });
+  assert.deepEqual(loadPendingPayment(2000), { reference: '03112605', razorpay_order_id: 'order_abc', customer: CUSTOMER, amount: null });
+});
+
+test('the amount the Razorpay order charges travels with the payment (22 Nov 2026)', () => {
+  savePendingPayment({ reference: '22112601', razorpay_order_id: 'order_abc', customer: CUSTOMER, amount: 84900 }, 1000);
+  assert.equal(loadPendingPayment(2000).amount, 84900);
+});
+
+test('a missing or broken amount reads as unknown, never as a number', () => {
+  for (const amount of [undefined, null, 0, -100, 849.5, '84900', 'abc']) {
+    store.clear();
+    store.set('ruhi:pending-payment', JSON.stringify({ reference: 'r', razorpay_order_id: 'o', amount, at: Date.now() }));
+    assert.equal(loadPendingPayment().amount, null, `amount ${JSON.stringify(amount)}`);
+  }
 });
 
 test('a stale payment is dropped rather than checked', () => {
