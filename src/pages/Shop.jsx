@@ -6,6 +6,8 @@ import { useProducts } from '../context/ProductsContext'
 import { useCategories } from '../context/CategoriesContext'
 import { searchResultProducts } from '../lib/productSearch'
 import { topRatedFirst } from '../lib/ratingSummary'
+import { recommendedOrder } from '../lib/recommendedOrder'
+import { useProductRanks } from '../lib/productRank'
 import { useRatings } from '../context/RatingsContext'
 import { newEventId, trackEvent, trackSafely } from '../lib/tracking'
 import { searchEvent, sortEvent } from '../lib/trackingItems'
@@ -91,7 +93,17 @@ export default function Shop() {
     [products, q, t, typeLabel],
   )
   termResults.current = filtered.length
+
+  // A category page (/shop?type=…, no search) opens on "Recommended":
+  // bestsellers, then new arrivals, then the rest by orders and views
+  // (src/lib/recommendedOrder.js). All Products and search results keep the
+  // catalogue's own order, newest first, as "Featured".
+  const categoryView = !!t && !searching
+  const recommended = categoryView && !sort
+  const { ranks, settled: ranksSettled } = useProductRanks(recommended)
+
   const items = useMemo(() => {
+    if (recommended) return recommendedOrder(filtered, { ranks })
     const sorted = [...filtered]
     if (sort === 'low') sorted.sort((a, b) => a.price - b.price)
     if (sort === 'high') sorted.sort((a, b) => b.price - a.price)
@@ -100,7 +112,7 @@ export default function Shop() {
     if (sort === 'rating') return topRatedFirst(sorted, totals)
     if (sort === 'name') sorted.sort((a, b) => a.title.localeCompare(b.title))
     return sorted
-  }, [filtered, sort, totals])
+  }, [filtered, sort, totals, recommended, ranks])
 
   // Unfiltered catalogue reads "All Products"; a category or search still
   // names itself, so only the default label changed.
@@ -131,7 +143,7 @@ export default function Shop() {
       <div className="flex flex-wrap items-center gap-4 my-8 border-y border-black/10 py-4">
         <Sel label="Type" value={searching ? '' : t} onChange={setType} opts={[['', 'All'], ...optionsFor(t).map((x) => [x.key, x.label])]} />
         <Sel label="Sort" value={sort} onChange={chooseSort} opts={[
-          ['', 'Featured'], ['low', 'Price, low to high'], ['high', 'Price, high to low'],
+          ['', categoryView ? 'Recommended' : 'Featured'], ['low', 'Price, low to high'], ['high', 'Price, high to low'],
           ['rating', 'Top rated'], ['name', 'Name, A–Z'],
         ]} />
         {showClear && (
@@ -154,7 +166,9 @@ export default function Shop() {
       <ProductGrid
         items={items}
         priority={2}
-        loading={loading && source !== 'database'}
+        // Recommended waits for the ranking at most 1.5 s (src/lib/productRank.js),
+        // so the cards are shown once, in their final order.
+        loading={(loading && source !== 'database') || (recommended && !ranksSettled)}
         empty={{
           title: searching ? `Nothing matches “${q.trim()}”` : 'No products in this view',
           body: !loading

@@ -53,6 +53,10 @@ export function earlyStart(win, cfg) {
     box.products = quiet(read('products?select=*&order=created_at.desc,id.asc'))
     box.categories = quiet(read('categories?select=*&order=position.asc,key.asc'))
     box.ratings = quiet(read('product_reviews?select=product_id,rating&status=eq.approved&order=id.asc&offset=0&limit=' + cfg.ratingsPage))
+    // On a category page (/shop?type=…, not a search) the Recommended order's
+    // ranking too (src/lib/productRank.js): one small read, only there.
+    var search = String(win.location.search || '')
+    if (path === '/shop' && /[?&]type=[^&]/.test(search) && !/[?&]q=[^&]/.test(search)) box.ranks = quiet(read('product_rank?select=design_id,position'))
     if (path === '/') box.banners = quiet(read('banners?select=*&slot=eq.' + cfg.heroSlot + '&order=position.asc,created_at.asc'))
     // Whether Express delivery is on (the dashboard's switch, 19 Nov 2026), on
     // the pages that offer it: product, cart and checkout (src/lib/shopSettings.js).

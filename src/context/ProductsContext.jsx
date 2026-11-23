@@ -35,6 +35,9 @@ const toProduct = (r) => {
     // The design's own ID, shared by all its colours and fixed for good
     // (20261102130000_design_ids.sql) — GTM's item_group_id.
     design_id: r.design_id || '',
+    // When the row was added: the Recommended order's "new arrivals"
+    // (src/lib/recommendedOrder.js). Already in the row the shop reads.
+    created_at: r.created_at || null,
     title: r.title,
     type: r.type,
     price: Number(r.price) || 0,
