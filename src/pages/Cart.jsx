@@ -9,6 +9,7 @@ import QtyControl from '../components/QtyControl'
 import { ShopRatingNote } from '../components/Stars'
 import { inr, shippingFor, totalFor } from '../lib/pricing'
 import ExpressNote from '../components/ExpressNote'
+import useExpressOffer from '../hooks/useExpressOffer'
 import { newEventId, trackEcommerce } from '../lib/tracking'
 import { cartEvent } from '../lib/trackingItems'
 import { SoldOutCartLines } from '../components/SoldOutParts'
@@ -16,6 +17,8 @@ import { SoldOutCartLines } from '../components/SoldOutParts'
 export default function Cart() {
   usePageTitle('Cart')
   const { lines, soldOutLines, trackedItems, unavailable, prune, subtotal, setQty, remove, setOpen, empty } = useCart()
+  // Express by air, and its A/B test: counted once the cart page shows items.
+  const expressOffered = useExpressOffer(lines.length > 0)
   const { answered, source } = useProducts()
   // Until the database has answered, the basket can only be priced from the
   // bundled seed (placeholder prices, and "unavailable" for anything newer).
@@ -140,7 +143,7 @@ export default function Cart() {
             </div>
           </dl>
           {/* Express by air (19 Nov 2026), while the owner has it on. */}
-          <ExpressNote className="block mt-2 text-[13px] text-black/60" />
+          <ExpressNote on={expressOffered} className="block mt-2 text-[13px] text-black/60" />
 
           <Link
             to="/checkout"

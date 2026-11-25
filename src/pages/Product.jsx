@@ -31,7 +31,7 @@ import WhatsAppButton from '../components/WhatsAppButton'
 import StickyBuyBar from '../components/StickyBuyBar'
 import { SizeChartLink } from '../components/SizeChart'
 import { prefetchCheckout } from '../lib/checkoutPage'
-import useExperiment from '../hooks/useExperiment'
+import useExpressOffer from '../hooks/useExpressOffer'
 import { designRows, inStockSizes, isColourSoldOut, isDesignSoldOut, isSizeSoldOut, soldOutSizes } from '../lib/stock'
 import { soldOutBlock } from '../lib/soldOutParts'
 import { NoLongerAvailable, SoldOutBlock } from '../components/SoldOutParts'
@@ -211,10 +211,10 @@ export default function Product() {
   // page and learns about the size from select_size instead.
   const viewed = viewedItem(p, id, size, { category: p ? typeLabel(p.type) : '' })
   const viewedId = viewed?.item_id || ''
-  // The A/A check (src/lib/experimentList.js): both versions are this page as
-  // it is. A visitor counts once the real product is on screen — the moment
-  // view_item goes out. Remove when the check is over.
-  useExperiment('aa_check', { active: Boolean(viewedId) })
+  // Express by air, and the A/B test of it (src/hooks/useExpressOffer.js): a
+  // visitor counts once the real product is on screen, the moment view_item
+  // goes out, in both versions.
+  const expressOffered = useExpressOffer(Boolean(viewedId))
   const viewedPage = useRef(null)
   useEffect(() => {
     if (!viewedId) return undefined
@@ -587,7 +587,7 @@ export default function Product() {
             <span>
               Free shipping for all products · Delivery in 7-10 working days
               {/* Express by air (19 Nov 2026), while the owner has it on. */}
-              <ExpressNote className="block mt-1" />
+              <ExpressNote on={expressOffered} className="block mt-1" />
             </span>
           </p>
           <p className="mt-2 flex items-start gap-2 text-[14px] text-black/60">

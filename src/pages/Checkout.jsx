@@ -17,7 +17,7 @@ import { leadItems, leadSource, saveCheckoutLead } from '../lib/checkoutLeads'
 import { loadDetails, saveDetails } from '../lib/checkoutMemory'
 import { lookupPincode, preloadPincode } from '../lib/pincodes'
 import { deliveryWindowText, expressArrivalText } from '../lib/delivery'
-import { useExpressDelivery } from '../lib/shopSettings'
+import useExpressOffer from '../hooks/useExpressOffer'
 import { suggestEmail } from '../lib/emailTypos'
 import { checkoutWhatsAppLink } from '../lib/whatsapp'
 import { PaymentCancelled, PaymentFailed, onlinePaymentReady, openRazorpay, preloadRazorpay } from '../lib/razorpay'
@@ -298,13 +298,15 @@ export default function Checkout() {
   const [couponBusy, setCouponBusy] = useState(false)
   const [couponNote, setCouponNote] = useState(null)
   // Free standard delivery unless the shopper picks Express by air (19 Nov
-  // 2026). Express is offered while the dashboard's switch is on; if the
-  // database refuses it (paused since this page opened), it goes away for
-  // this visit and the order falls back to free delivery.
+  // 2026). Express is offered while the dashboard's switch is on and the A/B
+  // test gives this visitor the shop with Express (src/hooks/useExpressOffer.js;
+  // counted once checkout shows items). If the database refuses it (paused
+  // since this page opened), it goes away for this visit and the order falls
+  // back to free delivery.
   const [speed, setSpeed] = useState(STANDARD)
-  const expressSwitch = useExpressDelivery()
+  const expressOffered = useExpressOffer(lines.length > 0)
   const [expressRefused, setExpressRefused] = useState(false)
-  const expressOn = expressSwitch && !expressRefused
+  const expressOn = expressOffered && !expressRefused
   useEffect(() => { if (!expressOn && speed !== STANDARD) setSpeed(STANDARD) }, [expressOn, speed])
   // Items in the cart (Express is ₹149 for each one) and what delivery costs.
   const pieces = lines.reduce((n, l) => n + (Number(l.qty) || 0), 0)
