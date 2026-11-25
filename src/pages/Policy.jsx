@@ -3,6 +3,8 @@ import { useParams, Link } from 'react-router-dom'
 import { site } from '../data/site'
 import { newEventId, trackSafely } from '../lib/tracking'
 import { contactEvent } from '../lib/trackingItems'
+import { seesShopBeforeExpress } from '../lib/expressTest'
+import { policyBeforeExpress } from '../lib/policyBeforeExpress'
 
 // A legal page must not claim it was updated "today" every day it is read, so
 // this is a fixed value rather than `new Date()`. Bump it whenever the policy
@@ -162,7 +164,9 @@ const POLICIES = {
 
 export default function Policy() {
   const { slug } = useParams()
-  const policy = POLICIES[slug]
+  // Version b of the Express A/B test reads the policies as they were before
+  // Express (src/lib/expressTest.js).
+  const policy = seesShopBeforeExpress() ? policyBeforeExpress(slug, POLICIES[slug]) : POLICIES[slug]
   usePageTitle(policy ? policy.title : 'Policy')
 
   if (!policy) {

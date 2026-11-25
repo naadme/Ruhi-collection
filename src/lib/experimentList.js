@@ -28,20 +28,25 @@
 // To change a running test, stop it and start a new one with a new id.
 
 export const EXPERIMENTS = [
-  // A/A check: both versions are the current product page (Product.jsx counts
-  // a visitor when the product is on screen). Expect a 50/50 split of visitors
-  // and no real difference between a and b. It proves the split, the counting
-  // and the report before a real test runs.
+  // Express delivery by air (live 19 Nov 2026) against the shop before it,
+  // for the 20–24 Nov drop: does offering Express cost paid orders?
+  // a: the shop as it is, offering Express while the dashboard switch is on.
+  // b: the shop before Express: no Express line on the product and cart pages,
+  //    one free-delivery line at checkout.
+  // A visitor counts once a product, the cart page or checkout is on screen,
+  // also while Express is paused; the report splits the on and paused hours
+  // (src/hooks/useExpressOffer.js).
   {
-    id: 'aa_check',
-    area: 'none',
+    id: 'express_offer',
+    area: 'delivery',
     variants: ['a', 'b'],
     split: [50, 50],
     status: 'running',
-    started: '2026-11-13',
-    plan: { metric: 'add_to_cart', perVersion: 250, minDays: 7 },
+    started: '2026-11-25',
+    plan: { metric: 'paid_order', perVersion: 2600, minDays: 56 },
   },
 ]
 
 // Ids of tests that have ended, kept so that none is ever used again.
-export const RETIRED = []
+// aa_check: the A/A check, 13–25 Nov 2026; it passed (insights log 24, 25).
+export const RETIRED = ['aa_check']

@@ -8,6 +8,7 @@ import { emailOk } from '../lib/checkout'
 import usePageTitle from '../hooks/usePageTitle'
 import { newEventId, trackSafely } from '../lib/tracking'
 import { contactEvent, interactionEvent } from '../lib/trackingItems'
+import { faqBeforeExpress, seesShopBeforeExpress } from '../lib/expressTest'
 
 // GA4's contact event for a tap on one of this page's contact links.
 const tapped = (href) => () => trackSafely(() => contactEvent(href, { location: 'contact_page', eventId: newEventId() }))
@@ -150,7 +151,7 @@ export default function Contact() {
             <ul className="mt-5 space-y-5 text-[19px]">{info.map(([I, t, href], i) => <li key={i} className="flex gap-4"><I className="shrink-0 mt-1 text-brand-green" size={22} aria-hidden="true" />{href ? <a href={href} onClick={tapped(href)} className="underline-offset-4 hover:underline break-all">{t}</a> : t}</li>)}</ul>
           </div>
           <div className="flex flex-wrap gap-3">{site.social.map((s) => { const I = SOCIAL_ICON[s.label]; return (<a key={s.label} href={s.href} onClick={tapped(s.href)} target="_blank" rel="noreferrer" aria-label={s.label} title={s.label} className="inline-flex items-center border border-black/30 rounded-full px-5 py-2 hover:bg-black hover:text-white transition">{I ? <I size={20} aria-hidden="true" /> : s.label}</a>) })}</div>
-          <div><h3 className="text-2xl mb-4">FAQ</h3>{site.faq.map(([q, a]) => <details key={q} className="border-b border-black/10 py-3"><summary className="cursor-pointer text-[18px]">{q}</summary><p className="text-black/65 mt-2">{a}</p></details>)}</div>
+          <div><h3 className="text-2xl mb-4">FAQ</h3>{(seesShopBeforeExpress() ? faqBeforeExpress(site.faq) : site.faq).map(([q, a]) => <details key={q} className="border-b border-black/10 py-3"><summary className="cursor-pointer text-[18px]">{q}</summary><p className="text-black/65 mt-2">{a}</p></details>)}</div>
         </aside>
       </section>
     </>

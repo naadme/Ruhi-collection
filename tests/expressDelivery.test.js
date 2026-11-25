@@ -196,7 +196,7 @@ test('the total, Pay and the phone Pay bar follow the choice; the server prices 
 })
 
 test('while Express is paused, checkout shows only free delivery, and falls back to it if refused', () => {
-  assert.match(CHECKOUT, /const expressOn = expressSwitch && !expressRefused/)
+  assert.match(CHECKOUT, /const expressOn = expressOffered && !expressRefused/)
   assert.match(CHECKOUT, /useEffect\(\(\) => \{ if \(!expressOn && speed !== STANDARD\) setSpeed\(STANDARD\) \}, \[expressOn, speed\]\)/)
   assert.match(CHECKOUT, /\{expressOn \? \(/)
   assert.match(CHECKOUT, /if \(\/express delivery is paused\/i\.test\(err\?\.message \|\| ''\)\) \{\n\s+setExpressRefused\(true\)\n\s+setSpeed\(STANDARD\)/)
@@ -204,10 +204,10 @@ test('while Express is paused, checkout shows only free delivery, and falls back
 
 test('the shop pages mention Express only while it is on, priced, without coverage talk', () => {
   for (const f of ['src/pages/Product.jsx', 'src/pages/Cart.jsx']) {
-    assert.match(read(f), /<ExpressNote className="block mt-\d[^"]*" \/>/, f)
+    assert.match(read(f), /<ExpressNote on=\{expressOffered\} className="block mt-\d[^"]*" \/>/, f)
   }
   const note = read('src/components/ExpressNote.jsx')
-  assert.match(note, /const on = useExpressDelivery\(\)\n\s+if \(!on\) return null/)
+  assert.match(note, /export default function ExpressNote\(\{ on, className = '' \}\) \{\n\s+if \(!on\) return null/)
   assert.match(note, /Need it sooner\? <b className="font-semibold text-black\/75">Express by air<\/b> in \{EXPRESS_DAYS\} days, \{inr\(EXPRESS_FEE_PER_ITEM\)\} per item, at checkout\./)
   const settings = read('src/lib/shopSettings.js')
   assert.match(settings, /return typeof row\?\.express_delivery === 'boolean' \? row\.express_delivery : true/, 'unreadable counts as on; the database still refuses a paused Express')
@@ -309,4 +309,88 @@ test('the policies and FAQ say what Express is, and that its charge is not refun
   assert.match(policy, /When an Express order is returned, the Express delivery charge \(₹149 per item\) is not refunded\./)
   assert.doesNotMatch(policy, /nothing extra to pay for delivery/)
   assert.match(read('src/data/site.js'), /Need it sooner\? Choose Express by air at checkout: it arrives in 4 days, for ₹149 per item\./)
+})
+
+// ---- the A/B test of Express (25 Nov 2026) --------------------------------------
+
+test('express_offer: half the visitors get the shop before Express, decided on paid orders over 8 weeks', async () => {
+  const { EXPERIMENTS } = await import('../src/lib/experimentList.js')
+  const { assign, shownVariant } = await import('../src/lib/experiments.js')
+  const t = EXPERIMENTS.find((x) => x.id === 'express_offer')
+  assert.ok(t, 'express_offer is in the list')
+  assert.equal(t.status, 'running')
+  assert.equal(t.area, 'delivery')
+  assert.deepEqual(t.variants, ['a', 'b'])
+  assert.deepEqual(t.split, [50, 50])
+  assert.deepEqual(t.plan, { metric: 'paid_order', perVersion: 2600, minDays: 56 })
+  // About half of 20,000 made-up visitors land in each version.
+  let b = 0
+  for (let i = 0; i < 20000; i += 1) if (assign(t, `visitor-${i}-${(i * 7919) % 104729}`) === 'b') b += 1
+  assert.ok(b > 9700 && b < 10300, `b got ${b} of 20000`)
+  // Anyone not counted (staff, bots, a browser that forgets) sees the shop with Express.
+  assert.equal(shownVariant(t, { counted: false, visitor: 'x' }), 'a')
+  assert.equal(shownVariant({ ...t, status: 'stopped' }, { counted: true, visitor: 'x' }), 'a')
+  assert.equal(shownVariant(t, { counted: false, force: { express_offer: 'b' } }), 'b')
+})
+
+test('express_offer: version b never offers Express; a visitor counts whether or not Express is paused', () => {
+  const hook = read('src/hooks/useExpressOffer.js')
+  assert.match(hook, /import \{ EXPRESS_TEST \} from '\.\.\/lib\/expressTest'/)
+  assert.match(hook, /const version = useExperiment\(EXPRESS_TEST, \{ active: Boolean\(ready\) \}\)/)
+  assert.match(hook, /return on && version !== 'b'/)
+  assert.match(read('src/lib/expressTest.js'), /export const EXPRESS_TEST = 'express_offer'/)
+  // The pages use the hook for every mention of Express; nothing reads the switch on its own.
+  for (const f of ['src/pages/Product.jsx', 'src/pages/Cart.jsx', 'src/pages/Checkout.jsx', 'src/components/ExpressNote.jsx']) {
+    assert.doesNotMatch(read(f), /useExpressDelivery|expressDeliveryOn/, f)
+  }
+})
+
+test('express_offer: version b reads the delivery answer and the policies as they were before Express', async () => {
+  const { faqBeforeExpress } = await import('../src/lib/expressTest.js')
+  const { policyBeforeExpress } = await import('../src/lib/policyBeforeExpress.js')
+  // The FAQ: only the delivery answer changes, back to its words before 19 Nov.
+  const faq = [
+    ['How long does delivery take?', 'Delivery is free, and most orders arrive in 7-10 working days across India. Need it sooner? Choose Express by air at checkout: it arrives in 4 days, for ₹149 per item.'],
+    ['Which payment methods do you accept?', 'Pay securely online at checkout with UPI, cards, net banking or wallets.'],
+  ]
+  assert.deepEqual(faqBeforeExpress(faq), [
+    ['How long does delivery take?', 'Most orders arrive in 7-10 working days across India.'],
+    ['Which payment methods do you accept?', 'Pay securely online at checkout with UPI, cards, net banking or wallets.'],
+  ])
+  // In site.js the delivery answer is the only one that mentions Express.
+  const answers = read('src/data/site.js').split('faq: [')[1].split('\n  ],')[0].split('\n').filter((l) => l.trim().startsWith("['"))
+  assert.equal(answers.filter((l) => /express/i.test(l)).length, 1)
+  assert.match(answers.find((l) => /express/i.test(l)), /^\s*\['How long does delivery take\?'/)
+  // A policy: Express lines gone, the old free-shipping line and date back.
+  const shipping = { title: 'Shipping policy', updated: '19 November 2026', sections: [
+    ['How much shipping costs', ['Standard delivery is free on every order, whatever the order value — there is no minimum spend.', 'Need it sooner? Express delivery by air is optional and costs ₹149 per item.', 'The cart shows it.']],
+    ['When your order arrives', ['Working days are Monday to Saturday, excluding public holidays.', 'Express orders are sent by air and arrive within 4 days.']],
+  ] }
+  assert.deepEqual(policyBeforeExpress('shipping-policy', shipping), { title: 'Shipping policy', updated: undefined, sections: [
+    ['How much shipping costs', ['Shipping is free on every order, whatever the order value — there is no minimum spend and nothing extra to pay for delivery.', 'The cart shows it.']],
+    ['When your order arrives', ['Working days are Monday to Saturday, excluding public holidays.']],
+  ] })
+  const refund = { title: 'Return & refund policy', updated: '19 November 2026', sections: [['How refunds are paid', ['Refunds go back.', 'When an Express order is returned, the Express delivery charge (₹149 per item) is not refunded.']]] }
+  assert.deepEqual(policyBeforeExpress('refund-policy', refund), { ...refund, updated: '5 November 2026', sections: [['How refunds are paid', ['Refunds go back.']]] })
+  const privacy = { title: 'Privacy policy', sections: [] }
+  assert.equal(policyBeforeExpress('privacy-policy', privacy), privacy)
+  // Where the pages use them.
+  assert.match(read('src/pages/Policy.jsx'), /const policy = seesShopBeforeExpress\(\) \? policyBeforeExpress\(slug, POLICIES\[slug\]\) : POLICIES\[slug\]/)
+  assert.match(read('src/pages/Contact.jsx'), /\(seesShopBeforeExpress\(\) \? faqBeforeExpress\(site\.faq\) : site\.faq\)\.map\(/)
+  // Every Express line in the policies is one policyBeforeExpress takes out (they all say "Express").
+  const policyFile = read('src/pages/Policy.jsx')
+  assert.equal((policyFile.match(/'[^'\n]*Express[^'\n]*'/g) || []).filter((t) => t.includes(' ')).length, 3)
+})
+
+test('express_offer: every change of the Express switch is logged, with the changes before 25 Nov filled in', () => {
+  const sql = fs.readFileSync(path.join(DIR, '20261125120000_express_switch_changes.sql'), 'utf8')
+  assert.match(sql, /create table if not exists public\.express_switch_changes \(/)
+  assert.match(sql, /after update of express_delivery on public\.shop_settings/)
+  assert.match(sql, /if new\.express_delivery is distinct from old\.express_delivery then/)
+  assert.match(sql, /using \(public\.is_admin\(\)\)/)
+  assert.match(sql, /revoke all on table public\.express_switch_changes from anon, authenticated;/)
+  for (const row of ["(true,  timestamptz '2026-11-19 16:19:00+05:30')", "(false, timestamptz '2026-11-20 11:46:00+05:30')", "(true,  timestamptz '2026-11-23 09:18:18+05:30')"]) {
+    assert.ok(sql.includes(row), row)
+  }
+  assert.match(sql, /where not exists \(select 1 from public\.express_switch_changes where source = 'backfill'\)/)
 })

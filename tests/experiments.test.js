@@ -380,10 +380,17 @@ test('a sign-out clears the visitor from GTM but keeps the tests this browser is
 
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
 
-test('the site places visitors before drawing, and counts the A/A check on the product page', () => {
+test('the site places visitors before drawing, and counts the Express test where Express is offered', () => {
   const main = read('src/main.jsx')
   assert.ok(main.indexOf('startExperiments()') > 0 && main.indexOf('startExperiments()') < main.indexOf('ReactDOM.createRoot'))
-  assert.match(read('src/pages/Product.jsx'), /useExperiment\('aa_check', \{ active: Boolean\(viewedId\) \}\)/)
+  // The A/A check ended on 25 Nov 2026: retired, and no page counts it any more.
+  assert.ok(RETIRED.includes('aa_check'))
+  assert.ok(!EXPERIMENTS.some((t) => t.id === 'aa_check'))
+  assert.doesNotMatch(read('src/pages/Product.jsx'), /aa_check/)
+  // express_offer counts a visitor where Express is offered, the same moment in both versions.
+  assert.match(read('src/pages/Product.jsx'), /const expressOffered = useExpressOffer\(Boolean\(viewedId\)\)/)
+  assert.match(read('src/pages/Cart.jsx'), /const expressOffered = useExpressOffer\(lines\.length > 0\)/)
+  assert.match(read('src/pages/Checkout.jsx'), /const expressOffered = useExpressOffer\(lines\.length > 0\)/)
   assert.match(read('src/context/AuthContext.jsx'), /if \(adminRow \|\| productManagerRow\) markStaff\(\)/)
   assert.match(read('src/pages/Checkout.jsx'), /experiments: experimentsForOrder\(\)/)
   assert.match(read('src/lib/payments.js'), /experiments && Object\.keys\(experiments\)\.length \? \{ experiments \} : \{\}/)
