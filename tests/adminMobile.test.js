@@ -96,5 +96,6 @@ test('the Page images section opens without crashing', () => {
 
 test('an opened order shows each item in full on a phone', () => {
   const src = read(`${ADMIN}/OrdersPanel.jsx`)
-  assert.match(src, /<span className="min-w-0 break-words">\s*\{it\.title\}/, 'the item line wraps: size, quantity and Product ID stay readable')
+  // Since 26 Nov 2026 the title is a link to the exact product, inside the same wrapping span.
+  assert.match(src, /<span className="min-w-0 break-words">[\s\S]{0,400}?>\{it\.title\}<\/a>\s*: it\.title\}/, 'the item line wraps: size, quantity and Product ID stay readable')
 })

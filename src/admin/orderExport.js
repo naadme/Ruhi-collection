@@ -17,6 +17,16 @@ import { buildXlsx } from '../lib/xlsx.js'
 import { splitTitle } from '../lib/productGrouping.js'
 import { formatShopDateTime } from '../lib/shopTime.js'
 
+/**
+ * The full address of a line's exact product (that colour's own page), so the
+ * "Product link" cell opens it (26 Nov 2026; it used to hold the bare id).
+ */
+const SHOP_URL = 'https://www.ruhi-collections.com'
+export const productUrl = (productId) => {
+  const id = String(productId ?? '').trim()
+  return id ? `${SHOP_URL}/product/${encodeURIComponent(id)}` : ''
+}
+
 const PAY_METHOD = {
   razorpay: 'Online payment (Razorpay)',
   cod: 'Cash on delivery',
@@ -27,8 +37,8 @@ export const EXPORT_COLUMNS = [
   'Order ID', 'Order date', 'Order status', 'Payment method', 'Payment status',
   'Customer name', 'Customer email', 'Customer phone', 'Shipping address',
   // "Product ID" is the client's six-character Product ID (CCPPCL) — the
-  // number they read off the product. The product's own link is kept beside it so the
-  // internal id is never lost.
+  // number they read off the product. The product's own link (its full web
+  // address) is kept beside it, so a click opens the exact colour bought.
   'Product ID', 'Product link', 'Product', 'Colour', 'Size', 'Quantity',
   'Item price', 'Item total',
   'Coupon code', 'Discount', 'Subtotal', 'Shipping', 'Order total', 'Delivery note',
@@ -90,7 +100,7 @@ export function ordersToRows(orders) {
         // The Product ID of the exact row that was bought, snapshotted onto
         // the line when the order was placed.
         it.sku || '',
-        it.product_id || '',
+        productUrl(it.product_id),
         it.title || '',
         splitTitle(it.title)?.colour || '',
         it.size || '',
