@@ -53,6 +53,24 @@ test('the admin order details show the Product ID of every line', () => {
   assert.match(panel, /font-mono/, 'in the same monospaced style the order ID uses')
 })
 
+test('each ordered line in the admin has a "View product" button for the exact colour', () => {
+  // 26 Nov 2026, the owner's ask: from any order, open the exact product the
+  // customer bought, on the colour she chose.
+  const panel = read('src/admin/OrdersPanel.jsx')
+  assert.match(panel, /const href = productHref\(\{ id: it\.product_id \}\)/,
+    'the link is the line\'s own colour row, the page that opens on that colour')
+  assert.match(panel, /const colour = orderLineColour\(it\.title\)/, 'the colour comes from the order\'s own snapshot')
+  const button = panel.match(/<a\s+href=\{href\}\s+target="_blank"\s+rel="noopener noreferrer"\s+className="adm-view-product"[\s\S]*?<\/a>/)
+  assert.ok(button, 'a button-styled link, in a new tab, so the Orders screen stays open')
+  assert.match(button[0], /View product/)
+  assert.match(button[0], /\{colour\}/, 'and it names the colour')
+  // Admin-only look lives in admin.css: a Tailwind class used only here would
+  // add bytes to every shopper's stylesheet.
+  const css = read('src/admin/admin.css')
+  assert.match(css, /\.adm-view-product \{[\s\S]*?min-height: 40px/, 'big enough to tap on a phone')
+  assert.doesNotMatch(button[0], /lucide|<svg/i, 'no new icon: every package ships to shoppers too')
+})
+
 test('the Google Sheet carries the Product ID, the colour and the product links', () => {
   assert.ok(SHEET_COLUMNS.includes('Product ID'))
   assert.ok(SHEET_COLUMNS.includes('Colour'))
