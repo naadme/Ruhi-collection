@@ -6,7 +6,8 @@
 // The colour is part of the title the order snapshots — the catalogue writes
 // a product's title as "Design - Colour" — so it is read back out of that
 // title rather than looked up again. The Product ID is the line's own
-// snapshot (`order_items.sku`), which can never drift onto another product.
+// snapshot (`order_items.sku`), which can never drift onto another product;
+// it is read for tracking and the team, and never shown to the customer.
 
 /**
  * The colour of an ordered line, from the title the order snapshotted.
@@ -41,12 +42,19 @@ export function orderLineSku(item) {
   return String(item?.sku ?? '').trim()
 }
 
-/** "Blue · Size M · ×2 · 0101BL" — the line's facts, in the shop's order. */
+/**
+ * "Blue · Size M · ×2" — the line's facts as the customer reads them.
+ *
+ * No Product ID (26 Nov 2026): shoppers mistook the six characters for
+ * something to note or quote. The line's name links to the exact colour's
+ * own page (`/product/<product_id>`), and the colour is written out here, so
+ * the customer can always find what she bought. The code stays team-side
+ * (admin, owner email, Orders sheet).
+ */
 export function orderLineDetail(item) {
   return [
     orderLineColour(item?.title),
     item?.size ? `Size ${item.size}` : '',
     item?.qty ? `×${item.qty}` : '',
-    orderLineSku(item),
   ].filter(Boolean).join(' · ')
 }

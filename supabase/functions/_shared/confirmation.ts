@@ -120,7 +120,7 @@ async function fetchItems(orderId: string): Promise<Json[]> {
   // what shipped, and it is why the emails went out with no items in them.
   const res = await serviceFetch(
     `/rest/v1/order_items?order_id=eq.${encodeURIComponent(orderId)}` +
-      '&select=title,size,qty,unit_price,sku&order=created_at.asc',
+      '&select=product_id,title,size,qty,unit_price,sku&order=created_at.asc',
   )
   if (!res.ok) {
     console.warn('[confirmation] order_items query failed:', res.status, await res.text())

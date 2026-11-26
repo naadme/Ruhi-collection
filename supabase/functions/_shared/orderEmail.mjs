@@ -9,7 +9,7 @@
 // Plain text only. The shop's own words, the customer's own details, and
 // nothing that could be mistaken for markup.
 
-import { orderItemColour } from './orderItems.mjs'
+import { orderItemColour, orderItemLink } from './orderItems.mjs'
 
 /** ₹1,234 — the same shape the storefront shows. */
 const money = (v) => {
@@ -134,9 +134,12 @@ function totalLine(order) {
  * The confirmation email for one order.
  *
  * `order` carries the order facts and `items` the order's lines. Every line
- * shows the product's name, the size, the colour, the Product ID of the exact
- * product that was bought, the quantity and the price — the same facts the
- * order shows in the admin panel and in the spreadsheet.
+ * shows the product's name, the colour, the size, the quantity and the price,
+ * with the direct link to the exact product (that colour's own page) under it.
+ *
+ * No Product ID (26 Nov 2026): customers mistook the six characters for
+ * something they had to quote. The link and the colour name the exact product
+ * she bought; the code stays in the owner's mail, the admin and the sheet.
  */
 export function buildConfirmationText(order, items) {
   const o = order || {}
@@ -172,18 +175,20 @@ export function buildConfirmationText(order, items) {
   lines.push('Items')
 
   for (const item of orderItems) {
+    // The colour is not a column of its own on the order line: it is part of
+    // the title the order snapshotted ("Denim Shirt - Blue").
+    const colour = orderItemColour(item?.title)
     const bits = [
+      colour && `Colour: ${colour}`,
       asText(item?.size) && `Size ${asText(item.size)}`,
-      // The colour is not a column of its own on the order line: it is part of
-      // the title the order snapshotted ("Denim Shirt - Blue").
-      orderItemColour(item?.title),
-      asText(item?.sku) && `Product ID ${asText(item.sku)}`,
     ].filter(Boolean).join(', ')
     const qty = money(item?.qty)
     lines.push(
       `- ${asText(item?.title)}${bits ? ` (${bits})` : ''}` +
         ` × ${qty}${item?.unit_price ? ` — ${inr(money(item.unit_price) * qty)}` : ''}`,
     )
+    const link = orderItemLink(item)
+    if (link) lines.push(`  ${link}`)
   }
 
   lines.push('')
@@ -284,6 +289,9 @@ export function buildOwnerNotificationText(order, items) {
       `- ${asText(item?.title)}${bits ? ` (${bits})` : ''}` +
         ` × ${qty}${item?.unit_price ? ` — ${inr(money(item.unit_price) * qty)}` : ''}`,
     )
+    // The exact product's own page, so the owner can see what to pack (26 Nov 2026).
+    const link = orderItemLink(item)
+    if (link) lines.push(`  ${link}`)
   }
 
   lines.push('')

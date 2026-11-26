@@ -1,5 +1,5 @@
-// The facts shown for an ordered line: its colour, its size, its quantity and
-// its Product ID — and the promise that the customer's side of the shop and
+// The facts shown for an ordered line: its colour, its size and its quantity
+// (never its Product ID, since 26 Nov 2026) — and the promise that the customer's side of the shop and
 // the server's side (the emails and the spreadsheet) say the same thing.
 //
 // src/lib/orderLine.js is a mirror of supabase/functions/_shared/
@@ -73,14 +73,16 @@ test('the Product ID is the line’s own snapshot, and is never invented', () =>
 })
 
 test('the detail line shows what was ordered, and only what was ordered', () => {
+  // 26 Nov 2026: the customer never sees the Product ID — it confused
+  // shoppers. The colour, size and quantity are what she reads.
   assert.equal(
     orderLineDetail({ title: 'Mulmul Cotton Trousers - White', size: 'M', qty: 2, sku: '0101WH' }),
-    'White · Size M · ×2 · 0101WH',
+    'White · Size M · ×2',
   )
   assert.equal(
     orderLineDetail({ title: 'Cotton Dress', sku: '0202DR' }),
-    '0202DR',
-    'no colour and no size recorded → just the Product ID',
+    '',
+    'no colour and no size recorded → nothing, and never the Product ID',
   )
   assert.equal(
     orderLineDetail({ title: 'Cotton Dress' }),

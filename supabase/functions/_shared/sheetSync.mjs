@@ -140,7 +140,7 @@ export async function loadSyncOrders(baseUrl, serviceKey, limit = SYNC_LOOKBACK_
       + `?select=id,reference,previous_reference,is_test,created_at,status,payment_status,payment_method,full_name,email,phone,`
       + 'address,city,state,pincode,subtotal,discount,coupon_code,shipping,total,'
       + 'razorpay_order_id,razorpay_payment_id,note,'
-      + 'order_items(title,size,qty,unit_price,sku)'
+      + 'order_items(product_id,title,size,qty,unit_price,sku)'
       + `&order=created_at.desc&limit=${limit}`,
     { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
   )

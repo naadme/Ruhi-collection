@@ -108,7 +108,7 @@ async function fetchItems(orderId: string): Promise<Json[]> {
   // "not equal to" and the filter is refused.
   const res = await serviceFetch(
     `/rest/v1/order_items?order_id=eq.${encodeURIComponent(orderId)}` +
-      '&select=title,size,qty,unit_price,sku&order=created_at.asc',
+      '&select=product_id,title,size,qty,unit_price,sku&order=created_at.asc',
   )
   if (!res.ok) {
     console.warn('[owner-notification] order_items query failed:', res.status, await res.text())

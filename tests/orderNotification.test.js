@@ -66,8 +66,8 @@ const cod = (over = {}) => online({
 })
 
 const items = [
-  { title: 'Denim Shirt - Blue', size: 'M', qty: 2, unit_price: 900, sku: '0101BU' },
-  { title: 'Cotton Dress - Green', size: 'L', qty: 1, unit_price: 800, sku: '0302GR' },
+  { product_id: 'denim-shirt-blue', title: 'Denim Shirt - Blue', size: 'M', qty: 2, unit_price: 900, sku: '0101BU' },
+  { product_id: 'cotton-dress-green', title: 'Cotton Dress - Green', size: 'L', qty: 1, unit_price: 800, sku: '0302GR' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -123,8 +123,10 @@ test('the owner is told who ordered, where it goes and what is in it', () => {
   assert.match(text, /12 Rose Garden/)
   assert.match(text, /Pune, Maharashtra/)
   assert.match(text, /411001/)
-  assert.match(text, /Denim Shirt - Blue \(Size M, Blue, Product ID 0101BU\) × 2 — ₹1,800/)
-  assert.match(text, /Cotton Dress - Green \(Size L, Green, Product ID 0302GR\) × 1 — ₹800/)
+  // The owner keeps the Product ID, and gets the exact product's link under
+  // each line (26 Nov 2026).
+  assert.match(text, /Denim Shirt - Blue \(Size M, Blue, Product ID 0101BU\) × 2 — ₹1,800\n  https:\/\/www\.ruhi-collections\.com\/product\/denim-shirt-blue\n/)
+  assert.match(text, /Cotton Dress - Green \(Size L, Green, Product ID 0302GR\) × 1 — ₹800\n  https:\/\/www\.ruhi-collections\.com\/product\/cotton-dress-green\n/)
 })
 
 test('the owner is told the payment status, and it is true for each method', () => {

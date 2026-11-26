@@ -645,7 +645,7 @@ test('the same order is never sent to the same sheet twice', async () => {
   assert.equal(forcedBody.orders, 0, 'no second row is appended')
   assert.equal(forcedBody.refreshed, 1, 'the existing row is brought up to date')
   assert.equal(world.google.appended.length, 1, 'the sheet did not grow')
-  const refresh = world.google.writes.find((w) => /(^|!)A2:X2$/.test(w.range))
+  const refresh = world.google.writes.find((w) => /(^|!)A2:Y2$/.test(w.range))
   assert.ok(refresh, "the order's own row was rewritten")
   assert.equal(refresh.values[0][0], 'RCH-0001')
 })

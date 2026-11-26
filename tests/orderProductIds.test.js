@@ -14,7 +14,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
-import { SHEET_COLUMNS, orderRows } from '../supabase/functions/_shared/sheetRows.mjs'
+import { LEGACY_SHEET_COLUMNS, SHEET_COLUMNS, legacyOrderRows, orderRows } from '../supabase/functions/_shared/sheetRows.mjs'
 import { orderItemColour } from '../supabase/functions/_shared/orderItems.mjs'
 import { EXPORT_COLUMNS, ordersToRows } from '../src/admin/orderExport.js'
 
@@ -53,23 +53,42 @@ test('the admin order details show the Product ID of every line', () => {
   assert.match(panel, /font-mono/, 'in the same monospaced style the order ID uses')
 })
 
-test('the Google Sheet carries the Product ID and the colour', () => {
+test('the Google Sheet carries the Product ID, the colour and the product links', () => {
   assert.ok(SHEET_COLUMNS.includes('Product ID'))
   assert.ok(SHEET_COLUMNS.includes('Colour'))
   // The new columns are at the END: the export appends, so a column inserted in
   // the middle would shift every column to its right.
-  assert.equal(SHEET_COLUMNS[SHEET_COLUMNS.length - 2], 'Product ID')
-  assert.equal(SHEET_COLUMNS[SHEET_COLUMNS.length - 1], 'Colour')
+  assert.equal(SHEET_COLUMNS[SHEET_COLUMNS.length - 3], 'Product ID')
+  assert.equal(SHEET_COLUMNS[SHEET_COLUMNS.length - 2], 'Colour')
+  assert.equal(SHEET_COLUMNS[SHEET_COLUMNS.length - 1], 'Product Links', '26 Nov 2026: appended last')
+  assert.equal(LEGACY_SHEET_COLUMNS[LEGACY_SHEET_COLUMNS.length - 1], 'Product link', 'old sheets get it last too')
 
   const [row] = orderRows({
     reference: '01102601',
     created_at: '2026-10-01T10:00:00.000Z',
-    order_items: [{ title: 'Denim Shirt - Blue', size: 'M', qty: 2, unit_price: 900, sku: '0101BU' }],
+    order_items: [
+      { product_id: 'denim-shirt-blue', title: 'Denim Shirt - Blue', size: 'M', qty: 2, unit_price: 900, sku: '0101BU' },
+      { product_id: 'cotton-dress-green', title: 'Cotton Dress - Green', size: 'L', qty: 1, unit_price: 800, sku: '0302GR' },
+    ],
   })
+  assert.equal(row.length, SHEET_COLUMNS.length, 'one cell per column')
   const at = (name) => row[SHEET_COLUMNS.indexOf(name)]
-  assert.equal(at('Product ID'), '0101BU')
-  assert.equal(at('Colour'), 'Blue')
-  assert.equal(at('Products'), 'Denim Shirt - Blue (Size M) × 2')
+  assert.equal(at('Product ID'), '0101BU, 0302GR')
+  assert.equal(at('Colour'), 'Blue, Green')
+  assert.equal(at('Products'), 'Denim Shirt - Blue (Size M) × 2; Cotton Dress - Green (Size L) × 1')
+  assert.equal(at('Product Links'),
+    'https://www.ruhi-collections.com/product/denim-shirt-blue\nhttps://www.ruhi-collections.com/product/cotton-dress-green',
+    'one link per line, in the order the Products column lists them')
+
+  const legacy = legacyOrderRows({
+    reference: '01102601',
+    created_at: '2026-10-01T10:00:00.000Z',
+    order_items: [{ product_id: 'denim-shirt-blue', title: 'Denim Shirt - Blue', size: 'M', qty: 2, unit_price: 900, sku: '0101BU' }],
+  })
+  assert.equal(legacy[0].length, LEGACY_SHEET_COLUMNS.length)
+  assert.equal(legacy[0][LEGACY_SHEET_COLUMNS.indexOf('Product link')], 'https://www.ruhi-collections.com/product/denim-shirt-blue')
+  assert.equal(legacyOrderRows({ reference: 'x', order_items: [] })[0].length, LEGACY_SHEET_COLUMNS.length,
+    'an order with no lines still fills every column')
 })
 
 test('the Excel download carries the Product ID', () => {
@@ -81,18 +100,21 @@ test('the Excel download carries the Product ID', () => {
   }])
   const at = (name) => rows[0][EXPORT_COLUMNS.indexOf(name)]
   assert.equal(at('Product ID'), '0101BU')
-  assert.equal(at('Product link'), 'denim-shirt-blue', 'the product\'s own link is kept beside it')
+  assert.equal(at('Product link'), 'https://www.ruhi-collections.com/product/denim-shirt-blue',
+    'the product\'s own full link is kept beside it (26 Nov 2026: was the bare id)')
 })
 
-test('the confirmation email carries the Product ID', () => {
-  const confirmation = read('supabase/functions/_shared/confirmation.ts')
-  assert.match(confirmation, /select=title,size,qty,unit_price,sku/,
-    'the Product ID is read from the line')
+test('the emails read the product of each line, so they can link to it', () => {
+  for (const f of ['confirmation.ts', 'ownerNotification.ts']) {
+    assert.match(read(`supabase/functions/_shared/${f}`), /select=product_id,title,size,qty,unit_price,sku/,
+      `${f} reads the line's product, for its link`)
+  }
   // The body itself lives in the shared module, which the test suite drives
-  // directly (tests/orderEmail.test.js).
+  // directly (tests/orderEmail.test.js, tests/orderNotification.test.js).
+  // Since 26 Nov 2026 the Product ID is in the OWNER's mail only — once.
   const body = read('supabase/functions/_shared/orderEmail.mjs')
-  assert.match(body, /Product ID \$\{asText\(item\.sku\)\}/,
-    'and it is in the item line')
+  assert.equal((body.match(/Product ID \$\{asText\(item\.sku\)\}/g) || []).length, 1,
+    'the Product ID is in one item line: the owner\'s')
 })
 
 test('the colour of an ordered line is read from the title it snapshotted', () => {

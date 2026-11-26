@@ -11,6 +11,7 @@ import { downloadOrdersXlsx } from './orderExport'
 import GoogleSheetsPanel from './GoogleSheetsPanel'
 import ExpressSwitch from './ExpressSwitch'
 import { syncSheetsNow } from '../lib/googleSheets'
+import { productHref } from '../lib/productLinks'
 
 const STATUSES = [
   ['pending', 'Pending'],
@@ -162,7 +163,11 @@ function Row({ order, open, onToggle, onStatus, busy }) {
               {items.map((it) => (
                 <li key={it.id} className="flex justify-between gap-4 text-[15px]">
                   <span className="min-w-0 break-words">
-                    {it.title}
+                    {/* The exact colour's own page, in a new tab so the
+                        Orders screen stays open (26 Nov 2026). */}
+                    {productHref({ id: it.product_id })
+                      ? <a href={productHref({ id: it.product_id })} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{it.title}</a>
+                      : it.title}
                     <span className="text-black/45 text-[13px]"> · Size {it.size} · ×{it.qty}</span>
                     {/* The six-character Product ID of the exact row that was
                         bought, snapshotted onto the line when the order was

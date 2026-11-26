@@ -1,5 +1,6 @@
 // The facts about one ordered line that every place that reports an order
-// needs: the Product ID and the colour.
+// needs: the colour, the product's own link and (team-side only) the
+// Product ID.
 //
 // The Product ID is SNAPSHOT onto the line when the order is placed
 // (`public.order_items.sku`), so it is the ID of the exact product that was
@@ -36,4 +37,20 @@ export function orderItemColour(title) {
 export function orderItemSku(item) {
   const sku = String(item?.sku ?? '').trim()
   return sku
+}
+
+/** The shop's public address. Product links in mails and sheets point here. */
+export const SHOP_URL = 'https://www.ruhi-collections.com'
+
+/**
+ * The direct link to the exact product of an ordered line — the colour's own
+ * page, `/product/<product_id>`, the same address the site opens for it.
+ *
+ * The customer's mail shows this instead of the Product ID (26 Nov 2026): a
+ * link she can tap names the exact design and colour, a six-character code
+ * did not. A line with no product id has no page, and gets no link.
+ */
+export function orderItemLink(item) {
+  const id = String(item?.product_id ?? '').trim()
+  return id ? `${SHOP_URL}/product/${encodeURIComponent(id)}` : ''
 }

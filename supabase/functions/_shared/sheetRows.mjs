@@ -26,7 +26,7 @@
 // writing the shape they already have, so existing data does not move. New
 // spreadsheets are always created with the new layout.
 
-import { orderItemColour } from './orderItems.mjs'
+import { orderItemColour, orderItemLink } from './orderItems.mjs'
 
 /** The name of the spreadsheet this integration creates. */
 export const DEFAULT_SHEET_TITLE = 'Ruhi Collections – Orders'
@@ -58,6 +58,9 @@ export const SHEET_COLUMNS = [
   'Note',
   'Product ID',
   'Colour',
+  // 26 Nov 2026: the exact product's own page, one link per line, in the
+  // order the Products column lists them. Appended, so no column moves.
+  'Product Links',
 ]
 
 /** The columns of spreadsheets made by the previous version. Never changed. */
@@ -68,6 +71,8 @@ export const LEGACY_SHEET_COLUMNS = [
   'Discount (₹)', 'Coupon', 'Shipping (₹)', 'Order total (₹)',
   'Razorpay order', 'Razorpay payment', 'Note',
   'Product ID', 'Colour',
+  // 26 Nov 2026: appended at the end, so every existing column keeps its place.
+  'Product link',
 ]
 
 export const ORDER_LAYOUT = 'order'
@@ -183,6 +188,7 @@ export function orderRows(order) {
     asText(order.note),
     productIdsOf(order),
     coloursOf(order),
+    productLinksOf(order),
   ]]
 }
 
@@ -191,6 +197,16 @@ export function productIdsOf(order) {
   const items = Array.isArray(order?.order_items) ? order.order_items : []
   const ids = items.map((it) => String(it?.sku ?? '').trim()).filter(Boolean)
   return [...new Set(ids)].join(', ')
+}
+
+/**
+ * The direct link to each line's exact product (that colour's own page), one
+ * per line in the order the Products column lists them, each on its own line
+ * of the cell so Sheets makes every one clickable.
+ */
+export function productLinksOf(order) {
+  const items = Array.isArray(order?.order_items) ? order.order_items : []
+  return items.map((it) => orderItemLink(it)).filter(Boolean).join('\n')
 }
 
 /** The colours recorded on the order's lines, once each. */
@@ -232,7 +248,7 @@ export function legacyOrderRows(order) {
     asText(order.note),
   ]
   const items = Array.isArray(order.order_items) ? order.order_items : []
-  if (!items.length) return [[...head, '', '', '', '', '', ...tail, '', '']]
+  if (!items.length) return [[...head, '', '', '', '', '', ...tail, '', '', '']]
   return items.map((it) => [
     ...head,
     asText(it.title),
@@ -243,6 +259,7 @@ export function legacyOrderRows(order) {
     ...tail,
     asText(it.sku),
     orderItemColour(it.title),
+    orderItemLink(it),
   ])
 }
 

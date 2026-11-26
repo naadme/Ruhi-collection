@@ -43,8 +43,8 @@ const order = (over = {}) => ({
 })
 
 const items = [
-  { title: 'Denim Shirt - Blue', size: 'M', qty: 2, unit_price: 900, sku: '0101BU' },
-  { title: 'Cotton Dress - Green', size: 'L', qty: 1, unit_price: 800, sku: '0302GR' },
+  { product_id: 'denim-shirt-blue', title: 'Denim Shirt - Blue', size: 'M', qty: 2, unit_price: 900, sku: '0101BU' },
+  { product_id: 'cotton-dress-green', title: 'Cotton Dress - Green', size: 'L', qty: 1, unit_price: 800, sku: '0302GR' },
 ]
 
 test('the email carries the brand, the Order ID and the order date', () => {
@@ -54,10 +54,16 @@ test('the email carries the brand, the Order ID and the order date', () => {
   assert.match(text, /Order date: 21 Oct 2026, 00:00 IST/, 'the shop\'s own date and time')
 })
 
-test('the email carries each product, its Product ID, its colour and its price', () => {
+test('the email carries each product, its colour, its size, its price and its own link', () => {
   const text = buildConfirmationText(order(), items)
-  assert.match(text, /Denim Shirt - Blue \(Size M, Blue, Product ID 0101BU\) × 2 — ₹1,800/)
-  assert.match(text, /Cotton Dress - Green \(Size L, Green, Product ID 0302GR\) × 1 — ₹800/)
+  assert.match(text, /- Denim Shirt - Blue \(Colour: Blue, Size M\) × 2 — ₹1,800\n  https:\/\/www\.ruhi-collections\.com\/product\/denim-shirt-blue\n/)
+  assert.match(text, /- Cotton Dress - Green \(Colour: Green, Size L\) × 1 — ₹800\n  https:\/\/www\.ruhi-collections\.com\/product\/cotton-dress-green\n/)
+})
+
+test('the customer never sees a Product ID (26 Nov 2026: it confused shoppers)', () => {
+  const text = buildConfirmationText(order(), items)
+  assert.doesNotMatch(text, /Product ID/)
+  assert.doesNotMatch(text, /0101BU|0302GR/)
 })
 
 test('the email carries the money and the status', () => {
@@ -83,9 +89,9 @@ test('the subject names the order and the shop', () => {
   assert.equal(buildConfirmationSubject('21102601'), 'Your Ruhi Womens Clothing order 21102601 — confirmation')
 })
 
-test('a line without a colour or a Product ID still reads well', () => {
+test('a line without a colour or a product link still reads well', () => {
   const text = buildConfirmationText(order(), [{ title: 'Cotton Dress', size: 'M', qty: 1, unit_price: 800 }])
-  assert.match(text, /Cotton Dress \(Size M\) × 1 — ₹800/)
+  assert.match(text, /Cotton Dress \(Size M\) × 1 — ₹800\n\n/, 'no link line when the line names no product')
   assert.ok(!/undefined/.test(text), 'nothing is left undefined')
   assert.ok(!/null/.test(text), 'and nothing is left null')
 })

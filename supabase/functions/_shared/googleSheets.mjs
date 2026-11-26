@@ -562,7 +562,7 @@ export async function loadOrdersForExport(baseUrl, serviceKey, ids) {
     `${baseUrl}/rest/v1/orders?id=in.(${list})`
     + '&select=id,reference,created_at,status,payment_status,payment_method,full_name,email,phone,'
     + 'address,city,state,pincode,subtotal,discount,coupon_code,shipping,total,'
-    + 'razorpay_order_id,razorpay_payment_id,note,order_items(title,size,qty,unit_price,sku)'
+    + 'razorpay_order_id,razorpay_payment_id,note,order_items(product_id,title,size,qty,unit_price,sku)'
     + '&order=created_at.desc&limit=5000',
     { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
   )

@@ -151,20 +151,33 @@ test('the headers are written into an empty sheet, once', async () => {
 })
 
 test('a column added since the sheet was created is named in the first row', async () => {
-  // The sheet was created with the old 22 columns; the Product ID and the
-  // colour are new, so their headings are written into the row that is
-  // already there. Nothing else moves.
-  const oldHeader = SHEET_COLUMNS.slice(0, SHEET_COLUMNS.length - 2)
+  // The sheet was created with the old 22 columns; the Product ID, the
+  // colour and (26 Nov 2026) the product links are new, so their headings
+  // are written into the row that is already there. Nothing else moves.
+  const oldHeader = SHEET_COLUMNS.slice(0, SHEET_COLUMNS.length - 3)
   const calls = mockGoogle({ headerRow: oldHeader })
   const result = await exportOrdersToSheet({
     accessToken: 'token', sheetId: 'sheet', tab: 'Orders',
     orders: [order()], alreadyExported: [], includeExported: false, filters: {},
   })
-  assert.equal(result.headingsWritten, 2, 'the two new headings were written')
+  assert.equal(result.headingsWritten, 3, 'the three new headings were written')
   const put = calls.find((c) => c.method === 'PUT')
   assert.ok(put, 'a write was made')
-  assert.match(put.url, /W1%3AX1/, 'into the cells after the ones already there')
-  assert.deepEqual(put.body.values, [['Product ID', 'Colour']])
+  assert.match(put.url, /W1%3AY1/, 'into the cells after the ones already there')
+  assert.deepEqual(put.body.values, [['Product ID', 'Colour', 'Product Links']])
+})
+
+test('a sheet that already has the Product ID and colour gains only the product links', async () => {
+  // The live sheet as it was on 26 Nov 2026: 24 columns, ending in Colour.
+  const calls = mockGoogle({ headerRow: SHEET_COLUMNS.slice(0, SHEET_COLUMNS.length - 1) })
+  const result = await exportOrdersToSheet({
+    accessToken: 'token', sheetId: 'sheet', tab: 'Orders',
+    orders: [order()], alreadyExported: [], includeExported: false, filters: {},
+  })
+  assert.equal(result.headingsWritten, 1)
+  const put = calls.find((c) => c.method === 'PUT')
+  assert.match(put.url, /Y1%3AY1/, 'the one new heading goes in the next empty cell')
+  assert.deepEqual(put.body.values, [['Product Links']])
 })
 
 test('a sheet whose first row is data is never overwritten', async () => {
@@ -206,7 +219,7 @@ test('asking for a refresh updates the existing row instead of adding a duplicat
   assert.equal(calls.filter((c) => c.method === 'POST').length, 0, 'no duplicate row')
   const put = calls.find((c) => c.method === 'PUT')
   assert.ok(put, 'the row was rewritten in place')
-  assert.match(put.url, /A2%3AX2/, 'the row the order already occupies')
+  assert.match(put.url, /A2%3AY2/, 'the row the order already occupies')
   assert.equal(put.body.values[0][0], '21102601')
   assert.equal(put.body.values[0][SHEET_COLUMNS.indexOf('Order Status')], 'shipped')
 })

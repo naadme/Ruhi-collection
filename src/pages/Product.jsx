@@ -463,16 +463,11 @@ export default function Product() {
             </p>
           )}
 
-          {/* The colour's own Product ID — the six characters the order
-              sheet, the confirmation email and the admin's order details all
-              quote for this exact colour. It follows the colour the shopper
-              has chosen, so the code they read here is the code they will see
-              on their order. */}
-          {String(shown.sku || '').trim() && (
-            <p className="text-[13px] text-black/45 mt-2 font-mono">
-              Product ID <span className="text-black/60">{shown.sku}</span>
-            </p>
-          )}
+          {/* No Product ID here (26 Nov 2026): shoppers mistook the code for
+              something they had to note or quote. The page's own address
+              already names this exact colour, and the order shows the product
+              link and the colour. The code stays for the team (admin, owner
+              email, Orders sheet). */}
 
           {/* A colour change swaps the URL to the colour's own row so the
               link stays shareable, but it replaces the current history entry
