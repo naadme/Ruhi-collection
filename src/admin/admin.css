@@ -343,3 +343,33 @@
   border-radius: 10px;
   background: #fff;
 }
+
+/* "View product · Colour ↗" under each ordered line (26 Nov 2026): opens the
+   exact product the customer bought, on the colour she chose, in a new tab.
+   On its own line and at least 40px tall, so it is easy to tap on a phone. */
+.adm-view-product {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  /* A flex row drops the spaces at its items' edges, so the gap spaces them. */
+  gap: 0.35rem;
+  min-height: 40px;
+  margin-top: 0.4rem;
+  padding: 0 0.85rem;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.adm-view-product:hover,
+.adm-view-product:focus-visible {
+  background: #1a1a1a;
+  border-color: #1a1a1a;
+  color: #fff;
+}
+.adm-view-product-colour {
+  font-weight: 400;
+}

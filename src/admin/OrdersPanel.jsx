@@ -12,6 +12,7 @@ import GoogleSheetsPanel from './GoogleSheetsPanel'
 import ExpressSwitch from './ExpressSwitch'
 import { syncSheetsNow } from '../lib/googleSheets'
 import { productHref } from '../lib/productLinks'
+import { orderLineColour } from '../lib/orderLine'
 
 const STATUSES = [
   ['pending', 'Pending'],
@@ -160,13 +161,17 @@ function Row({ order, open, onToggle, onStatus, busy }) {
             </h4>
             <ul className="mt-3 space-y-2">
               {items.length === 0 && <li className="text-[14px] text-black/50">No line items recorded.</li>}
-              {items.map((it) => (
+              {items.map((it) => {
+                // The exact colour's own page (`/product/<the colour row>`),
+                // which opens with that colour picked. A new tab, so the
+                // Orders screen stays where it was (26 Nov 2026).
+                const href = productHref({ id: it.product_id })
+                const colour = orderLineColour(it.title)
+                return (
                 <li key={it.id} className="flex justify-between gap-4 text-[15px]">
                   <span className="min-w-0 break-words">
-                    {/* The exact colour's own page, in a new tab so the
-                        Orders screen stays open (26 Nov 2026). */}
-                    {productHref({ id: it.product_id })
-                      ? <a href={productHref({ id: it.product_id })} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{it.title}</a>
+                    {href
+                      ? <a href={href} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{it.title}</a>
                       : it.title}
                     <span className="text-black/45 text-[13px]"> · Size {it.size} · ×{it.qty}</span>
                     {/* The six-character Product ID of the exact row that was
@@ -178,10 +183,26 @@ function Row({ order, open, onToggle, onStatus, busy }) {
                         {it.sku}
                       </span>
                     )}
+                    {/* The owner's way to see exactly what was bought: the
+                        product, already on the colour the customer chose. */}
+                    {href && (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="adm-view-product"
+                        aria-label={`View ${it.title} on the shop${colour ? `, colour ${colour}` : ''} (opens in a new tab)`}
+                      >
+                        View product
+                        {colour ? <span className="adm-view-product-colour">· {colour}</span> : null}
+                        <span aria-hidden="true">↗</span>
+                      </a>
+                    )}
                   </span>
                   <span className="font-ui shrink-0">{inr(it.unit_price * it.qty)}</span>
                 </li>
-              ))}
+                )
+              })}
             </ul>
             <dl className="mt-4 pt-3 border-t border-black/10 space-y-1.5 text-[14px]">
               <div className="flex justify-between"><dt className="text-black/60">Subtotal</dt><dd className="font-ui">{inr(order.subtotal)}</dd></div>
