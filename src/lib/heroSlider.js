@@ -1,8 +1,8 @@
 // What the homepage hero slides between, and when its arrows appear.
 //
-// Moved out of src/components/Sections.jsx so the rule can be unit-tested in
-// plain Node — it is the part that decides both which photos a shopper sees
-// and whether the carousel still has working previous/next controls.
+// Kept apart from the hero (src/components/home/HeroCarousel.jsx) so the rule
+// can be unit-tested in plain Node — it is the part that decides both which
+// photos a shopper sees and whether the carousel still has working previous/next controls.
 //
 // The rule
 //   slides = the admin's saved banners, IN SAVED ORDER, followed by the
@@ -57,9 +57,10 @@ export function heroSlides(banners, fallback) {
 }
 
 /** Arrows appear exactly when there is somewhere to go: more than one slide.
- *  With nothing at all the right half stays blank (see the zero-slide guard
- *  in Sections.jsx) and with a single slide the controls would be dead
- *  buttons, so neither shows them. */
+ *  With nothing at all the hero draws no photo (see the zero-slide guard in
+ *  src/components/home/HeroCarousel.jsx, which checks `n > 1` itself) and
+ *  with a single slide the controls would be dead buttons, so neither shows
+ *  them. */
 export const showArrows = (slides) => (Array.isArray(slides) ? slides.length : 0) > 1
 
 /** Wrap-around index, safe for an empty list (`at % 0` is NaN). */

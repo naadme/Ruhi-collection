@@ -1,7 +1,8 @@
 // What the homepage shows, worked out in one place.
 //
-// Every rule here is the rule the old homepage (src/components/Sections.jsx)
-// already followed — the owner's saved banners first, her Bestseller picks,
+// Every rule here is the rule the old homepage (src/components/Sections.jsx,
+// since removed) already followed — the owner's saved banners first, her
+// Bestseller picks,
 // stocked categories only, sold-out designs left out — moved into hooks so the
 // homepage (HomeModern) reads the same data, the same way, as before.
 //

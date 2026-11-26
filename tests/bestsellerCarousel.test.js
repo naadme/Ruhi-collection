@@ -8,7 +8,10 @@
 // pointing at a page that is gone.
 //
 // The rule lives in src/lib/bestsellerCarousel.js so it can be proved here in
-// plain Node; Sections.jsx only ever renders what it says.
+// plain Node. Since the 21 Nov 2026 homepage redesign no page uses it: the
+// Bestsellers row (src/components/home/HomeModern.jsx) shows the first four
+// designs, with no paging. These tests keep the rule honest in case paging
+// comes back.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -23,7 +26,6 @@ import {
 } from '../src/lib/bestsellerCarousel.js'
 
 const read = (rel) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8')
-const SECTIONS = read('src/components/Sections.jsx')
 
 /** `n` real catalogue cards, numbered so the order is checkable. */
 const designs = (n) => Array.from({ length: n }, (_, i) => ({ id: `design-${i + 1}` }))
@@ -102,38 +104,4 @@ test('nothing here reorders, copies or invents a design', () => {
     'and the source list is never touched')
   assert.equal(bestsellerSlice(null, 0).length, 0)
   assert.equal(bestsellerSlice('not a list', 0).length, 0)
-})
-
-// ---- the section uses that rule --------------------------------------------
-
-const body = SECTIONS.slice(
-  SECTIONS.indexOf('export const BestSellers'),
-  SECTIONS.indexOf('export const OurStory'),
-)
-
-test('the row renders the shared card grid, arrows or no arrows', () => {
-  assert.match(body, /<ProductGrid/, 'the same cards, prices, wishlist hearts and images as always')
-  assert.match(body, /items=\{shown\}/, 'the grid is handed the designs this page shows')
-  assert.match(body, /const shown = arrows \? bestsellerSlice\(items, page\) : items/,
-    'four or fewer are shown whole; more are paged by the rule above')
-})
-
-test('the arrows are rendered only while there is more to see', () => {
-  assert.match(body, /const arrows = !gridLoading && bestsellerArrows\(total\)/,
-    'the rule itself decides — four or fewer, no arrows in the page at all')
-  assert.match(body, /\{arrows \? \(/, 'the arrow layout is chosen by it')
-  assert.match(body, /\) : grid\}/, 'and the plain row is what stands without them')
-  assert.match(body, /aria-label="Show previous best sellers"/)
-  assert.match(body, /aria-label="Show next best sellers"/)
-  assert.match(body, /disabled=\{page === 0\}/, 'the first arrow is off on the first page')
-  assert.match(body, /disabled=\{page >= pages - 1\}/, 'the second is off on the last')
-  // The arrows wrap to their own row on a phone instead of squeezing the
-  // cards, and sit either side of them from `md` up.
-  assert.match(body, /flex flex-wrap items-center justify-center gap-3 md:gap-5 md:justify-start/)
-  assert.match(body, /w-full md:w-auto md:flex-1 min-w-0/)
-})
-
-test('a page number left behind by a shorter list is pulled back', () => {
-  assert.match(body, /setPage\(\(p\) => Math\.min\(p, pages - 1\)\)/,
-    'so the arrows can never point at a page that is gone')
 })

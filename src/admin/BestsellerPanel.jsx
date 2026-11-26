@@ -1,9 +1,10 @@
 // Best Sellers management — the admin-only surface behind the "Bestsellers"
 // section of the dashboard.
 //
-// The saved rows drive the homepage's Best Sellers row (src/components/
-// Sections.jsx). This panel offers exactly the CARDS the storefront shows —
-// one entry per design, built by the same `groupedCards()` rule — so a design
+// The saved rows drive the homepage's Bestsellers row (`useBestsellers` in
+// src/components/home/homeData.js). This panel offers exactly the CARDS the
+// storefront shows — one entry per design, built by the same `groupedCards()`
+// rule — so a design
 // promoted here can never be a card the shop does not already have.
 //
 // Nothing is stored but product ids and a position. No sales figure is
